@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+mysql-connector-python
+pydantic
+python-dotenv
+python-multipart
+openpyxl
+xlsxwriter
+python-dateutil
+pandas
+python-jose[cryptography]
+passlib[bcrypt]
+bcrypt==4.0.1

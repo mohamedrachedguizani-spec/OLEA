@@ -1,0 +1,1222 @@
+{
+  "version": "2025.1-complete",
+  "description": "Mapping COMPLET SAGE → BFC Budget OLEA Tunisia",
+  
+  "metadata": {
+    "derniere_verification": "2025-01-15",
+    "nombre_comptes": 85,
+    "entite": "OLEA Tunisia",
+    "devise": "TND"
+  },
+
+  "mapping_chiffre_affaires": {
+    "7050001T": {
+      "libelle_sage": "COMMISSION COMPTANT/GMP IARDT",
+      "agregat_bfc": "CA Brut",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R70601",
+      "bfc_mapping": "G706200"
+    },
+    "7050002T": {
+      "libelle_sage": "COMMISSION TERME/CONTENIEUX TERME IARDT",
+      "agregat_bfc": "CA Brut",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R70601",
+      "bfc_mapping": "G706200"
+    },
+    "7051000T": {
+      "libelle_sage": "COMMISSION GRAND COMPTE SANTE",
+      "agregat_bfc": "CA Brut",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Produit",
+      "sens": "+",
+      "is_principal": true,
+      "bpc_mapping": "R70601",
+      "bfc_mapping": "G706200"
+    },
+    "7052000T": {
+      "libelle_sage": "COMMISSION GRAND COMPTE IARDT",
+      "agregat_bfc": "CA Brut",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R70601",
+      "bfc_mapping": "G706200"
+    }
+  },
+
+  "mapping_retrocessions": {
+    "62204T": {
+      "libelle_sage": "Rétrocession Unirisc",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62204",
+      "bfc_mapping": "G622200",
+      "note": "Normalement à 0 pour OLEA Tunisia"
+    },
+    "62205T": {
+      "libelle_sage": "Rétrocession IARD - Media",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62205",
+      "bfc_mapping": "G622200"
+    },
+    "62206T": {
+      "libelle_sage": "Rétrocession prévoyance santé France",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62206",
+      "bfc_mapping": "G622200"
+    },
+    "62207T": {
+      "libelle_sage": "Rétrocession retraite",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62207",
+      "bfc_mapping": "G622200"
+    },
+    "62208T": {
+      "libelle_sage": "Rétrocession prévoyance santé Internationale",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62208",
+      "bfc_mapping": "G622200"
+    },
+    "62201T": {
+      "libelle_sage": "Rétrocession IARD - Autres",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62201",
+      "bfc_mapping": "G622200"
+    },
+    "62202T": {
+      "libelle_sage": "Rétrocession transport",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62202",
+      "bfc_mapping": "G622200"
+    },
+    "62203T": {
+      "libelle_sage": "Rétrocession assurance de personnes",
+      "agregat_bfc": "Retrocessions",
+      "categorie": "CHIFFRE D'AFFAIRES",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R62203",
+      "bfc_mapping": "G622200",
+      "note": "Ne plus utiliser - archivé"
+    }
+  },
+
+  "mapping_frais_personnel": {
+    "6410000T": {
+      "libelle_sage": "SIVP",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Rémunérations",
+      "bpc_mapping": "R64100",
+      "bfc_mapping": "G641100"
+    },
+    "6410002T": {
+      "libelle_sage": "STAGEAIRE",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Rémunérations",
+      "bpc_mapping": "R64100",
+      "bfc_mapping": "G641100"
+    },
+    "6410003T": {
+      "libelle_sage": "Salaire Régime Indépendant",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Rémunérations",
+      "bpc_mapping": "R64100",
+      "bfc_mapping": "G641100"
+    },
+    "6411000T": {
+      "libelle_sage": "Salaires appointements",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Salaires",
+      "is_principal": true,
+      "bpc_mapping": "R64100",
+      "bfc_mapping": "G641100"
+    },
+    "6412000T": {
+      "libelle_sage": "Congés payés",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R64100",
+      "bfc_mapping": "G641100"
+    },
+    "6414000T": {
+      "libelle_sage": "Indemnités avantages divers",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R64100",
+      "bfc_mapping": "G641100"
+    },
+    "6420001T": {
+      "libelle_sage": "TICKET RESTAURANT",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R64100",
+      "bfc_mapping": "G641100"
+    },
+    "6440000T": {
+      "libelle_sage": "Rémunérations exploitant",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R64400",
+      "bfc_mapping": "G641100"
+    },
+    "6470000T": {
+      "libelle_sage": "CHARGE PATRONALE",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Charges sociales",
+      "bpc_mapping": "R64700",
+      "bfc_mapping": "G641100"
+    },
+    "6471000T": {
+      "libelle_sage": "ACCIDENT DE TRAVAIL",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Charges sociales",
+      "bpc_mapping": "R64710",
+      "bfc_mapping": "G641100"
+    },
+    "6473000T": {
+      "libelle_sage": "COTISATION REGIME INDEPENDANT",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Charges sociales",
+      "bpc_mapping": "R64730",
+      "bfc_mapping": "G641100"
+    },
+    "6611000T": {
+      "libelle_sage": "TFP",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Impôts et taxes sur rémunérations",
+      "bpc_mapping": "R63100",
+      "bfc_mapping": "G631100"
+    },
+    "6612000T": {
+      "libelle_sage": "FOPROLOS",
+      "agregat_bfc": "Frais de Personnel",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Impôts et taxes sur rémunérations",
+      "bpc_mapping": "R63100",
+      "bfc_mapping": "G631100"
+    }
+  },
+
+  "mapping_interco_frais": {
+    "61104T": {
+      "libelle_sage": "BRAND FEES OLEA HOLDING",
+      "agregat_bfc": "Brand Fees",
+      "categorie": "COÛTS INTERCO",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Frais de marque",
+      "bpc_mapping": "R61100",
+      "bfc_mapping": "G611104",
+      "validation_interco": {
+        "type": "pourcentage_ca_trimestriel",
+        "taux_trimestriel": [0, 0, 0, 0.0083],
+        "base_calculation": "CA Brut dernier trimestre",
+        "tolerance": 100
+      },
+      "note": "0.83% sur le dernier trimestre uniquement"
+    },
+    "61104T-MGT": {
+      "libelle_sage": "MGMT FEES OLEA HOLDING",
+      "agregat_bfc": "Management Fees",
+      "categorie": "COÛTS INTERCO",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Frais de gestion",
+      "bpc_mapping": "R61100",
+      "bfc_mapping": "G611104",
+      "validation_interco": {
+        "type": "pourcentage_ca",
+        "taux": 0.05,
+        "actif": false,
+        "commentaire": "Désactivé selon instructions fichier"
+      },
+      "note": "5% - Actuellement désactivé"
+    }
+  },
+
+  "mapping_honoraires": {
+    "6122000T": {
+      "libelle_sage": "IT COST OLEA HOLDING",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "IT Costs",
+      "bpc_mapping": "R61100",
+      "bfc_mapping": "G611104",
+      "validation_interco": {
+        "type": "pourcentage_ca",
+        "taux": 0.03,
+        "base_calculation": "CA Brut",
+        "tolerance": 500
+      },
+      "note": "3% du CA - Validation interco obligatoire"
+    },
+    "6122100T": {
+      "libelle_sage": "IT COST OLEA SERVICES",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "IT Costs",
+      "bpc_mapping": "R61100",
+      "bfc_mapping": "G611104"
+    },
+    "6122200T": {
+      "libelle_sage": "IT COST OLEA MAURICE",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "IT Costs",
+      "bpc_mapping": "R61100",
+      "bfc_mapping": "G611104"
+    },
+    "6220001T": {
+      "libelle_sage": "HONORAIRE BEG",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Honoraires",
+      "bpc_mapping": "R62200",
+      "bfc_mapping": "G622620"
+    },
+    "6220002T": {
+      "libelle_sage": "HONORAIRES CAC",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Honoraires",
+      "bpc_mapping": "R62290",
+      "bfc_mapping": "G622630"
+    },
+    "6220003T": {
+      "libelle_sage": "APPORTEURS AFFAIRES",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Commissions",
+      "bpc_mapping": "R62200",
+      "bfc_mapping": "G622620"
+    },
+    "6220004T": {
+      "libelle_sage": "HONORAIRES JURIDIQUE",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Honoraires",
+      "bpc_mapping": "R62200",
+      "bfc_mapping": "G622620"
+    }
+  },
+
+  "mapping_frais_commerciaux": {
+    "6230000T": {
+      "libelle_sage": "Publicité, publications, relations",
+      "agregat_bfc": "Frais Commerciaux",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Communication",
+      "bpc_mapping": "R62300",
+      "bfc_mapping": "G623101"
+    },
+    "6230001T": {
+      "libelle_sage": "DON",
+      "agregat_bfc": "Frais Commerciaux",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Dons",
+      "bpc_mapping": "R62300",
+      "bfc_mapping": "G623800"
+    },
+    "6240000T": {
+      "libelle_sage": "Transports biens et personnel",
+      "agregat_bfc": "Frais Commerciaux",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Transport",
+      "bpc_mapping": "R62400",
+      "bfc_mapping": "G624000"
+    },
+    "6250000T": {
+      "libelle_sage": "Déplacements, missions, réceptions",
+      "agregat_bfc": "Frais Commerciaux",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Déplacements",
+      "bpc_mapping": "R62500",
+      "bfc_mapping": "G625700"
+    },
+    "6255000T": {
+      "libelle_sage": "Frais réception",
+      "agregat_bfc": "Frais Commerciaux",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Réception",
+      "bpc_mapping": "R62500",
+      "bfc_mapping": "G625700"
+    },
+    "6256000T": {
+      "libelle_sage": "FRAIS DE MISSION",
+      "agregat_bfc": "Frais Commerciaux",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Missions",
+      "bpc_mapping": "R62500",
+      "bfc_mapping": "G625700"
+    }
+  },
+
+  "mapping_impots": {
+    "6360000T": {
+      "libelle_sage": "PENALITE DE RETARD",
+      "agregat_bfc": "Impôts et taxes",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Pénalités",
+      "bpc_mapping": "R63513",
+      "bfc_mapping": "G635130"
+    },
+    "6652000T": {
+      "libelle_sage": "TCL SUR CA A L'EXPORT",
+      "agregat_bfc": "Impôts et taxes",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Taxes professionnelles",
+      "bpc_mapping": "R63520",
+      "bfc_mapping": "G635200"
+    },
+    "6654000T": {
+      "libelle_sage": "DROIT D'ENREGISTTREMENT",
+      "agregat_bfc": "Impôts et taxes",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Droits d'enregistrement",
+      "bpc_mapping": "R63700",
+      "bfc_mapping": "G637800"
+    }
+  },
+
+  "mapping_fonctionnement": {
+    "6061000T": {
+      "libelle_sage": "Eau, électricité ...",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Services publics",
+      "bpc_mapping": "R60600",
+      "bfc_mapping": "G606100"
+    },
+    "6061100T": {
+      "libelle_sage": "Electricité",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Services publics",
+      "bpc_mapping": "R60600",
+      "bfc_mapping": "G606100"
+    },
+    "6062000T": {
+      "libelle_sage": "ACHAT PRODUITS DENTRETIEN",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Fournitures",
+      "bpc_mapping": "R60600",
+      "bfc_mapping": "G606300"
+    },
+    "6063000T": {
+      "libelle_sage": "Fournitures Entretien, petit équip.",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Fournitures",
+      "bpc_mapping": "R60600",
+      "bfc_mapping": "G606300"
+    },
+    "6064000T": {
+      "libelle_sage": "Fournitures administratives",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Fournitures",
+      "bpc_mapping": "R60600",
+      "bfc_mapping": "G606310"
+    },
+    "6065000T": {
+      "libelle_sage": "ESSENCE",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Carburant",
+      "bpc_mapping": "R60600",
+      "bfc_mapping": "G606110"
+    },
+    "6069000T": {
+      "libelle_sage": "CONSOMMABLE",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Consommables",
+      "bpc_mapping": "R60600",
+      "bfc_mapping": "G606200"
+    },
+    "6130000T": {
+      "libelle_sage": "LOYER ZAGHOUEN",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Loyers",
+      "bpc_mapping": "R61300",
+      "bfc_mapping": "G613201"
+    },
+    "6130003T": {
+      "libelle_sage": "LOCATION VOITURE",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Locations",
+      "bpc_mapping": "R61300",
+      "bfc_mapping": "G613560"
+    },
+    "6150000T": {
+      "libelle_sage": "Entretien et réparations",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Entretien",
+      "bpc_mapping": "R61500",
+      "bfc_mapping": "G615200"
+    },
+    "6150001T": {
+      "libelle_sage": "Entretien",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Entretien",
+      "bpc_mapping": "R61500",
+      "bfc_mapping": "G615200"
+    },
+    "6154000T": {
+      "libelle_sage": "Entretien locaux",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Entretien",
+      "bpc_mapping": "R61500",
+      "bfc_mapping": "G615200"
+    },
+    "6155100T": {
+      "libelle_sage": "Entretien matériel de transport",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Entretien",
+      "bpc_mapping": "R61500",
+      "bfc_mapping": "G615510"
+    },
+    "6160000T": {
+      "libelle_sage": "Primes d'assurance",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Assurances",
+      "bpc_mapping": "R61600",
+      "bfc_mapping": "G616170"
+    },
+    "6170000T": {
+      "libelle_sage": "Etudes et recherche",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Études",
+      "bpc_mapping": "R61800",
+      "bfc_mapping": "G618100"
+    },
+    "6260000T": {
+      "libelle_sage": "Frais postaux et télécom.",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Télécom",
+      "bpc_mapping": "R62600",
+      "bfc_mapping": "G626100"
+    },
+    "6260001T": {
+      "libelle_sage": "FRAIS POSTAUX",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Poste",
+      "bpc_mapping": "R62600",
+      "bfc_mapping": "G626100"
+    },
+    "6260003T": {
+      "libelle_sage": "FRAIS DE TELECOM ORANGE",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Télécom",
+      "bpc_mapping": "R62600",
+      "bfc_mapping": "G626211"
+    },
+    "6260004T": {
+      "libelle_sage": "CONNEXION PHC DZ",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Télécom",
+      "bpc_mapping": "R62600",
+      "bfc_mapping": "G626300"
+    },
+    "6261000T": {
+      "libelle_sage": "IMPRESSION ET DOCUMENTATION",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Documentation",
+      "bpc_mapping": "R61800",
+      "bfc_mapping": "G618100"
+    },
+    "6270000T": {
+      "libelle_sage": "Services bancaires et assimilés",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Services bancaires",
+      "bpc_mapping": "R62700",
+      "bfc_mapping": "G627800"
+    },
+    "6270001T": {
+      "libelle_sage": "COMMISSION BANCAIRE TRAPSA",
+      "agregat_bfc": "Fonctionnement Courant",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Services bancaires",
+      "bpc_mapping": "R62700",
+      "bfc_mapping": "G627800"
+    }
+  },
+
+  "mapping_autres_charges": {
+    "6040001T": {
+      "libelle_sage": "GESTE COMMERCIAL",
+      "agregat_bfc": "Autres Charges",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Gestes commerciaux",
+      "bpc_mapping": "R65800",
+      "bfc_mapping": "G658000"
+    },
+    "6180000T": {
+      "libelle_sage": "Services extérieurs divers",
+      "agregat_bfc": "Autres Charges",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Services divers",
+      "bpc_mapping": "R65800",
+      "bfc_mapping": "G658000"
+    },
+    "6280000T": {
+      "libelle_sage": "VIGNETTE",
+      "agregat_bfc": "Autres Charges",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Taxes véhicules",
+      "bpc_mapping": "R65800",
+      "bfc_mapping": "G658000"
+    },
+    "6300000T": {
+      "libelle_sage": "CHARGE DIVERS",
+      "agregat_bfc": "Autres Charges",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Divers",
+      "bpc_mapping": "R65800",
+      "bfc_mapping": "G658000"
+    },
+    "6530000T": {
+      "libelle_sage": "Jetons de présence",
+      "agregat_bfc": "Autres Charges",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Gouvernance",
+      "bpc_mapping": "R75300",
+      "bfc_mapping": "G658000"
+    }
+  },
+
+  "mapping_produits_exploitation": {
+    "7300000T": {
+      "libelle_sage": "gain divers",
+      "agregat_bfc": "Autres Produits d'Exploitation",
+      "categorie": "PRODUITS",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R75800",
+      "bfc_mapping": "G708260"
+    },
+    "75800T": {
+      "libelle_sage": "Autres produits",
+      "agregat_bfc": "Autres Produits d'Exploitation",
+      "categorie": "PRODUITS",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R75800",
+      "bfc_mapping": "G708260"
+    }
+  },
+
+  "mapping_produits_financiers": {
+    "7600000T": {
+      "libelle_sage": "Produits financiers divers",
+      "agregat_bfc": "Produits Financiers",
+      "categorie": "PRODUITS",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R76100",
+      "bfc_mapping": "G761000"
+    },
+    "7610000T": {
+      "libelle_sage": "Revenus de participations",
+      "agregat_bfc": "Produits Financiers",
+      "categorie": "PRODUITS",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R76100",
+      "bfc_mapping": "G761000"
+    },
+    "7640000T": {
+      "libelle_sage": "Revenus de créances",
+      "agregat_bfc": "Produits Financiers",
+      "categorie": "PRODUITS",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R76400",
+      "bfc_mapping": "G764000"
+    },
+    "661160T": {
+      "libelle_sage": "Intérêt financier C/C",
+      "agregat_bfc": "Produits Financiers",
+      "categorie": "PRODUITS",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R66116",
+      "bfc_mapping": "G661160",
+      "note": "Interco - OHF"
+    }
+  },
+
+  "mapping_charges_financieres": {
+  "6500000T": {
+    "libelle_sage": "Charge Financière",
+    "agregat_bfc": "Charges Financières",
+    "categorie": "COÛTS",
+    "type": "Charge",
+    "sens": "-",
+    "bpc_mapping": "R66820",
+    "bfc_mapping": "G668000"
+  },
+  "6610000T": {
+    "libelle_sage": "Charges d'intérêts",
+    "agregat_bfc": "Charges Financières",
+    "categorie": "COÛTS",
+    "type": "Charge",
+    "sens": "-",
+    "bpc_mapping": "R66100",
+    "bfc_mapping": "G661000"
+  },
+  "6680000T": {
+    "libelle_sage": "Autres charges financières",
+    "agregat_bfc": "Charges Financières",
+    "categorie": "COÛTS",
+    "type": "Charge",
+    "sens": "-",
+    "bpc_mapping": "R66820",
+    "bfc_mapping": "G668000"
+  }
+},
+
+  "mapping_dotations": {
+    "6811100T": {
+      "libelle_sage": "Dot/amort. immob. incorporelles",
+      "agregat_bfc": "Dotations Amortissements & Provisions",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Amortissements incorporels",
+      "bpc_mapping": "R68111",
+      "bfc_mapping": "G681110"
+    },
+    "6811210T": {
+      "libelle_sage": "DOT MATERIEL TRANSPORT",
+      "agregat_bfc": "Dotations Amortissements & Provisions",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Amortissements corporels",
+      "bpc_mapping": "R68112",
+      "bfc_mapping": "G681122"
+    },
+    "6811220T": {
+      "libelle_sage": "DOT MATERIEL INFORMATIQUE",
+      "agregat_bfc": "Dotations Amortissements & Provisions",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Amortissements corporels",
+      "bpc_mapping": "R68112",
+      "bfc_mapping": "G681123"
+    },
+    "6811230T": {
+      "libelle_sage": "DOT A A I",
+      "agregat_bfc": "Dotations Amortissements & Provisions",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Amortissements corporels",
+      "is_principal": true,
+      "bpc_mapping": "R68112",
+      "bfc_mapping": "G681121"
+    },
+    "6811240T": {
+      "libelle_sage": "DOT EQUIP DE BURAU",
+      "agregat_bfc": "Dotations Amortissements & Provisions",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "sous_categorie": "Amortissements corporels",
+      "bpc_mapping": "R68112",
+      "bfc_mapping": "G681124"
+    }
+  },
+
+  "mapping_produits_exceptionnels": {
+    "7710000T": {
+      "libelle_sage": "Produits exceptionnels sur opérations de gestion",
+      "agregat_bfc": "Produits Exceptionnels",
+      "categorie": "RESULTAT",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R77100",
+      "bfc_mapping": "G771000"
+    },
+    "7750000T": {
+      "libelle_sage": "Produits des cessions d'éléments d'actif",
+      "agregat_bfc": "Produits Exceptionnels",
+      "categorie": "RESULTAT",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R77500",
+      "bfc_mapping": "G775000"
+    }
+  },
+
+  "mapping_charges_exceptionnelles": {
+    "6720000T": {
+      "libelle_sage": "Charges /exercices antérieurs",
+      "agregat_bfc": "Charges Exceptionnelles",
+      "categorie": "RESULTAT",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R67200",
+      "bfc_mapping": "G671810"
+    },
+    "6750000T": {
+      "libelle_sage": "Valeurs comptables des éléments cédés",
+      "agregat_bfc": "Charges Exceptionnelles",
+      "categorie": "RESULTAT",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R67500",
+      "bfc_mapping": "G675000"
+    }
+  },
+
+  "mapping_impots_societes": {
+    "6910000T": {
+      "libelle_sage": "IMPOT SUR LES SOCIETE",
+      "agregat_bfc": "Impôt sur les sociétés",
+      "categorie": "RESULTAT",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R69500",
+      "bfc_mapping": "G695100"
+    },
+    "6920000T": {
+      "libelle_sage": "Imputation des résultats déficitaires",
+      "agregat_bfc": "Impôt sur les sociétés",
+      "categorie": "RESULTAT",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R69500",
+      "bfc_mapping": "G695100"
+    },
+    "6930000T": {
+      "libelle_sage": "Variation des deferred tax",
+      "agregat_bfc": "Impôt sur les sociétés",
+      "categorie": "RESULTAT",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R69500",
+      "bfc_mapping": "G695100"
+    },
+    "6940000T": {
+      "libelle_sage": "Dégrèvement d'impôts",
+      "agregat_bfc": "Impôt sur les sociétés",
+      "categorie": "RESULTAT",
+      "type": "Produit",
+      "sens": "+",
+      "bpc_mapping": "R69500",
+      "bfc_mapping": "G695100"
+    }
+  },
+
+  "mapping_capex": {
+    "2111000T": {
+      "libelle_sage": "INVESTISSEMENT DE RECHERCHE & DEVELOPPEMENT",
+      "agregat_bfc": "Intangible assets",
+      "categorie": "CAPEX",
+      "type": "Actif",
+      "bpc_mapping": "A20300",
+      "bfc_mapping": "G203000"
+    },
+    "2130000T": {
+      "libelle_sage": "LOGICIEL",
+      "agregat_bfc": "Software",
+      "categorie": "CAPEX",
+      "type": "Actif",
+      "bpc_mapping": "A20800",
+      "bfc_mapping": "G208000"
+    },
+    "2140001T": {
+      "libelle_sage": "FONDS DE COMMERCE",
+      "agregat_bfc": "Fonds de commerce",
+      "categorie": "CAPEX",
+      "type": "Actif",
+      "bpc_mapping": "A20700",
+      "bfc_mapping": "G207000"
+    },
+    "2150000T": {
+      "libelle_sage": "Installations générales, agencement",
+      "agregat_bfc": "Agencement",
+      "categorie": "CAPEX",
+      "type": "Actif",
+      "bpc_mapping": "A21500",
+      "bfc_mapping": "G215000"
+    },
+    "2160000T": {
+      "libelle_sage": "MATERIEL DE TRANSPORT",
+      "agregat_bfc": "Cars",
+      "categorie": "CAPEX",
+      "type": "Actif",
+      "bpc_mapping": "A21600",
+      "bfc_mapping": "G216000"
+    },
+    "2235000T": {
+      "libelle_sage": "Matériel Informatique",
+      "agregat_bfc": "Hardware",
+      "categorie": "CAPEX",
+      "type": "Actif",
+      "bpc_mapping": "A21700",
+      "bfc_mapping": "G217000"
+    },
+    "2281000T": {
+      "libelle_sage": "Installations générales, agencement (autres)",
+      "agregat_bfc": "Agencement",
+      "categorie": "CAPEX",
+      "type": "Actif",
+      "bpc_mapping": "A21500",
+      "bfc_mapping": "G228100"
+    }
+  },
+
+  "regles_agregation": {
+    "retrocessions": {
+      "formule": "sum(mapping_retrocessions)",
+      "calculee": true,
+      "valeur_par_defaut": 0
+    },
+    "ca_net": {
+      "formule": "CA Brut - Retrocessions",
+      "dependances": ["CA Brut", "Retrocessions"]
+    },
+    "total_produits_exploitation": {
+      "formule": "CA Net + Autres Produits d'Exploitation",
+      "dependances": ["CA Net", "Autres Produits d'Exploitation"]
+    },
+    "total_charges_courantes": {
+      "formule": "Frais de Personnel + Honoraires & Sous-traitance + Frais Commerciaux + Impôts et taxes + Fonctionnement Courant + Autres Charges",
+      "dependances": ["Frais de Personnel", "Honoraires & Sous-traitance", "Frais Commerciaux", "Impôts et taxes", "Fonctionnement Courant", "Autres Charges"]
+    },
+    "ebitda": {
+      "formule": "Total Produits d'Exploitation - Total Charges Courantes",
+      "dependances": ["Total Produits d'Exploitation", "Total Charges Courantes"]
+    },
+    "ebitda_pct": {
+      "formule": "EBITDA / CA Net * 100",
+      "dependances": ["EBITDA", "CA Net"],
+      "format": "pourcentage"
+    },
+    "resultat_financier": {
+      "formule": "Produits Financiers - Charges Financières",
+      "dependances": ["Produits Financiers", "Charges Financières"]
+    },
+    "resultat_exceptionnel": {
+      "formule": "Produits Exceptionnels - Charges Exceptionnelles",
+      "dependances": ["Produits Exceptionnels", "Charges Exceptionnelles"]
+    },
+    "resultat_avant_impot": {
+      "formule": "EBITDA + Résultat Financier - Dotations Amortissements & Provisions + Résultat Exceptionnel",
+      "dependances": ["EBITDA", "Résultat Financier", "Dotations Amortissements & Provisions", "Résultat Exceptionnel"]
+    },
+    "resultat_net": {
+      "formule": "Résultat avant Impôt - Impôt sur les sociétés",
+      "dependances": ["Résultat avant Impôt", "Impôt sur les sociétés"]
+    },
+    "resultat_net_pct": {
+      "formule": "Résultat Net / CA Net * 100",
+      "dependances": ["Résultat Net", "CA Net"],
+      "format": "pourcentage"
+    }
+  },
+
+  "validations_interco": {
+    "brand_fees": {
+      "actif": true,
+      "nom": "Brand Fees (Marque)",
+      "description": "0.83% sur le CA du dernier trimestre",
+      "taux_trimestriel": [0, 0, 0, 0.0083],
+      "base_calculation": "CA Brut du trimestre en cours si T4",
+      "tolerance_absolue": 500,
+      "tolerance_relative": 0.05,
+      "applicable_si": "mois >= 10"
+    },
+    "management_fees": {
+      "actif": false,
+      "nom": "Management Fees",
+      "description": "5% du CA - Actuellement désactivé",
+      "taux": 0.05,
+      "base_calculation": "CA Brut",
+      "raison_desactivation": "Non appliqué selon instructions fichier",
+      "commentaire": "À réactiver si nécessaire"
+    },
+    "it_costs": {
+      "actif": true,
+      "nom": "IT Costs",
+      "description": "3% du CA total",
+      "taux": 0.03,
+      "base_calculation": "CA Brut",
+      "codes_comptes": ["6122000T", "6122100T", "6122200T"],
+      "tolerance_absolue": 1000,
+      "tolerance_relative": 0.02
+    },
+    "rc_pro": {
+      "actif": false,
+      "nom": "RC Pro (Responsabilité Civile Professionnelle)",
+      "description": "1% du CA",
+      "taux": 0.01,
+      "base_calculation": "CA Brut",
+      "raison_desactivation": "Non appliqué selon instructions fichier"
+    }
+  },
+
+  "alertes_metier": {
+    "seuils_ebitda": {
+      "niveau_critique": -0.1,
+      "niveau_attention": 0.05,
+      "unite": "pourcentage_ca"
+    },
+    "variation_mensuelle": {
+      "seuil_alerte": 0.2,
+      "description": "Alerte si variation > 20% vs mois précédent"
+    },
+    "completion_budget": {
+      "seuil_avance": 1.1,
+      "seuil_retard": 0.8,
+      "description": "Alerte si consommation budget > 110% ou < 80% de la prévision temporelle"
+    }
+  },
+
+  "correspondances_bpc_bfc": {
+    "R70601": "G706200",
+    "R70608": "G706200",
+    "R70606": "G706200",
+    "R70602": "G706200",
+    "R70603": "G706200",
+    "R70604": "G706200",
+    "R70605": "G706200",
+    "R70607": "G706200",
+    "G706300": "G708260",
+    "R62204": "G622200",
+    "R62205": "G622200",
+    "R62206": "G622200",
+    "R62207": "G622200",
+    "R62208": "G622200",
+    "R62201": "G622200",
+    "R62202": "G622200",
+    "R62203": "G622200",
+    "R64100": "G641100",
+    "R64110": "G641100",
+    "R64120": "G641100",
+    "R64500": "G641100",
+    "R64510": "G641100",
+    "R64700": "G641100",
+    "R75300": "G641100",
+    "R64800": "G641100",
+    "R63100": "G631100",
+    "R69100": "G631100",
+    "R61100": "G611104",
+    "R62200": "G622620",
+    "R62290": "G622630",
+    "R62100": "G622620",
+    "R62300": "G623101",
+    "R62380": "G623800",
+    "R62400": "G624000",
+    "R62500": "G625700",
+    "R63513": "G635130",
+    "R63515": "G635130",
+    "R63520": "G635200",
+    "R63700": "G637800",
+    "R63514": "G635130",
+    "R63511": "G635130",
+    "R63512": "G635130",
+    "R61800": "G618100",
+    "R61700": "G618100",
+    "R61220": "G613201",
+    "R61300": "G613201",
+    "R61500": "G615200",
+    "R62600": "G626100",
+    "R60600": "G606100",
+    "R60400": "G606100",
+    "R60700": "G606100",
+    "R65800": "G658000",
+    "R70100": "G708260",
+    "R70200": "G708260",
+    "R70400": "G708260",
+    "R70500": "G708260",
+    "R70600": "G708260",
+    "R70700": "G708260",
+    "R70800": "G708260",
+    "R70900": "G708260",
+    "R74820": "G708260",
+    "R75800": "G708260",
+    "R76100": "G761000",
+    "R76400": "G764000",
+    "R66116": "G661160",
+    "R66820": "G668000",
+    "R66100": "G661000",
+    "R68111": "G681110",
+    "R68112": "G681121",
+    "R77100": "G771000",
+    "R77500": "G775000",
+    "R67200": "G671810",
+    "R67500": "G675000",
+    "R69500": "G695100",
+    "A20300": "G203000",
+    "A20700": "G207000",
+    "A20800": "G208000",
+    "A21500": "G215000",
+    "A21600": "G216000",
+    "A21700": "G217000"
+  }
+}
