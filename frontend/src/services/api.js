@@ -29,6 +29,8 @@ class ApiService {
                 // Retry la requête originale
                 return fetch(url, { ...defaultOptions, ...options, headers: { ...defaultOptions.headers, ...options.headers } });
             }
+            // Le refresh a échoué → session révoquée ou expirée → forcer la déconnexion immédiate
+            window.dispatchEvent(new CustomEvent('auth:session-expired'));
         }
 
         return response;
@@ -73,6 +75,17 @@ class ApiService {
             return true;
         } catch {
             return false;
+        }
+    }
+
+    static async sessionCheck() {
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/session-check`, {
+                credentials: 'include',
+            });
+            return response.ok;
+        } catch {
+            return true; // En cas d'erreur réseau, ne pas déconnecter
         }
     }
 
@@ -133,6 +146,28 @@ class ApiService {
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: 'Erreur' }));
             throw new Error(err.detail || 'Erreur lors de la suppression');
+        }
+        return response.json();
+    }
+
+    static async activateUser(userId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/auth/users/${userId}/activate`, {
+            method: 'POST',
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur' }));
+            throw new Error(err.detail || "Erreur lors de l'activation");
+        }
+        return response.json();
+    }
+
+    static async permanentDeleteUser(userId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/auth/users/${userId}/permanent`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur' }));
+            throw new Error(err.detail || 'Erreur lors de la suppression définitive');
         }
         return response.json();
     }

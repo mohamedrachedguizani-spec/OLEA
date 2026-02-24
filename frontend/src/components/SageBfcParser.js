@@ -2,7 +2,6 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ApiService from '../services/api';
 import SageBfcUpload from './sage-bfc/SageBfcUpload';
-import SageBfcKpis from './sage-bfc/SageBfcKpis';
 import SageBfcPnl from './sage-bfc/SageBfcPnl';
 import SageBfcLignes from './sage-bfc/SageBfcLignes';
 import SageBfcValidations from './sage-bfc/SageBfcValidations';
@@ -77,7 +76,7 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
     };
 }
 
-function SageBfcParser() {
+function SageBfcParser({ refreshTrigger }) {
     const [activeStep, setActiveStep] = useState('upload'); // upload | results
     const [activeTab, setActiveTab] = useState('dashboard'); // dashboard | pnl | lignes | validations
     const [loading, setLoading] = useState(false);
@@ -95,10 +94,10 @@ function SageBfcParser() {
         return Object.keys(monthlyData).sort();
     }, [monthlyData]);
 
-    // Sélectionner le dernier mois par défaut
+    // Sélectionner toutes les périodes par défaut
     useEffect(() => {
         if (sortedMonths.length > 0 && !selectedMonth) {
-            setSelectedMonth(sortedMonths[sortedMonths.length - 1]);
+            setSelectedMonth(ALL_PERIODS_KEY);
         }
     }, [sortedMonths, selectedMonth]);
 
@@ -254,6 +253,13 @@ function SageBfcParser() {
         loadMonthlyData();
     }, [loadMonthlyData]);
 
+    // Rechargement temps réel déclenché par WebSocket
+    useEffect(() => {
+        if (refreshTrigger > 0) {
+            loadMonthlyData();
+        }
+    }, [refreshTrigger, loadMonthlyData]);
+
     const handleFileParse = useCallback(async (file, periode) => {
         setLoading(true);
         setError(null);
@@ -354,7 +360,7 @@ function SageBfcParser() {
         <div className="sage-bfc-container fade-in">
             {/* Header du module */}
             <div className="sage-bfc-header">
-                <div className="sage-bfc-header-info">
+                <div>
                     <h2 className="sage-bfc-title">
                         <span className="sage-bfc-title-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -365,52 +371,47 @@ function SageBfcParser() {
                                 <polyline points="10,9 9,9 8,9"/>
                             </svg>
                         </span>
-                        SAGE → BFC Parser
+                        SAGE → BFC
                     </h2>
                     <p className="sage-bfc-subtitle">
-                        Transformation automatique des balances SAGE au format Budget BFC
+                        Transformation des balances SAGE au format Budget BFC
                     </p>
                 </div>
-                <div className="sage-bfc-header-badges">
-                    {/* {mappingStats && (
-                        <div className="sage-bfc-stats-badge">
-                            <span className="stats-badge-icon">⚡</span>
-                            <span>{mappingStats.total_codes_mappes} codes mappés</span>
-                            <span className="stats-badge-sep">•</span>
-                            <span>v{mappingStats.version}</span>
-                        </div>
-                    )} */}
-                    {sortedMonths.length > 0 && (
-                        <div className="sage-bfc-stats-badge months-badge">
-                            <span className="stats-badge-icon">📅</span>
-                            <span>{sortedMonths.length} mois chargé{sortedMonths.length > 1 ? 's' : ''}</span>
-                        </div>
-                    )}
-                </div>
+                {sortedMonths.length > 0 && (
+                    <div className="sage-bfc-stats-badge months-badge">
+                        <span className="stats-badge-icon">📅</span>
+                        <span>{sortedMonths.length} mois chargé{sortedMonths.length > 1 ? 's' : ''}</span>
+                    </div>
+                )}
             </div>
 
-            {/* Stepper visuel */}
-            <div className="sage-bfc-stepper">
-                <div className={`stepper-step ${activeStep === 'upload' ? 'active' : ''} ${sortedMonths.length > 0 ? 'completed' : ''}`}>
-                    <div className="stepper-circle" onClick={() => setActiveStep('upload')} style={{ cursor: 'pointer' }}>
-                        {sortedMonths.length > 0 ? (
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                                <polyline points="20,6 9,17 4,12"/>
-                            </svg>
-                        ) : '1'}
-                    </div>
-                    <span className="stepper-label">Upload & Parsing</span>
-                </div>
-                <div className="stepper-line" />
-                <div className={`stepper-step ${activeStep === 'results' ? 'active' : ''}`}>
-                    <div className="stepper-circle"
-                        onClick={handleViewResults}
-                        style={{ cursor: sortedMonths.length > 0 ? 'pointer' : 'default' }}
-                    >
-                        2
-                    </div>
-                    <span className="stepper-label">Résultats & Analyse</span>
-                </div>
+            {/* Navigation rapide */}
+            <div className="sage-bfc-nav">
+                <button
+                    className={`sage-nav-btn ${activeStep === 'upload' ? 'active' : ''}`}
+                    onClick={() => setActiveStep('upload')}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="17 8 12 3 7 8"/>
+                        <line x1="12" y1="3" x2="12" y2="15"/>
+                    </svg>
+                    Import
+                    {sortedMonths.length > 0 && <span className="nav-check">✓</span>}
+                </button>
+                <button
+                    className={`sage-nav-btn ${activeStep === 'results' ? 'active' : ''}`}
+                    onClick={handleViewResults}
+                    disabled={sortedMonths.length === 0}
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <line x1="18" y1="20" x2="18" y2="10"/>
+                        <line x1="12" y1="20" x2="12" y2="4"/>
+                        <line x1="6" y1="20" x2="6" y2="14"/>
+                    </svg>
+                    Analyse
+                    {sortedMonths.length > 0 && <span className="nav-badge">{sortedMonths.length}</span>}
+                </button>
             </div>
 
             {/* Erreur globale */}
@@ -472,61 +473,48 @@ function SageBfcParser() {
                     {/* Barre d'actions */}
                     <div className="sage-bfc-actions-bar">
                         <div className="actions-left">
-                            <button className="btn-sage-back" onClick={handleNewUpload}>
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <line x1="19" y1="12" x2="5" y2="12"/>
-                                    <polyline points="12,19 5,12 12,5"/>
-                                </svg>
-                                Nouveau fichier
-                            </button>
-
-                            {/* Sélecteur de mois */}
+                            {/* Sélecteur de mois amélioré */}
                             <div className="month-selector">
-                                <label className="month-selector-label">Mois :</label>
+                                <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                    <line x1="16" y1="2" x2="16" y2="6"/>
+                                    <line x1="8" y1="2" x2="8" y2="6"/>
+                                    <line x1="3" y1="10" x2="21" y2="10"/>
+                                </svg>
                                 <select
                                     className="month-selector-select"
                                     value={selectedMonth || ''}
                                     onChange={(e) => setSelectedMonth(e.target.value)}
                                 >
-                                    <option value={ALL_PERIODS_KEY}>Toutes les périodes</option>
+                                    <option value={ALL_PERIODS_KEY}> Toutes les périodes</option>
                                     {sortedMonths.map(m => (
                                         <option key={m} value={m}>{formatMonthLabel(m)}</option>
                                     ))}
                                 </select>
                             </div>
 
-                            {currentResult && (
-                                <div className="actions-file-info">
-                                    <span className="file-name-badge">
-                                        {selectedMonth === ALL_PERIODS_KEY
-                                            ? '🧮 Consolidé toutes périodes'
-                                            : `📄 ${monthlyData[selectedMonth]?.fileName}`}
-                                    </span>
-                                </div>
+                            {currentResult && selectedMonth !== ALL_PERIODS_KEY && (
+                                <span className="file-name-badge">
+                                    📄 {monthlyData[selectedMonth]?.fileName}
+                                </span>
                             )}
                         </div>
                         <div className="actions-right">
-                            <button
-                                className="btn-delete-month"
-                                onClick={() => handleDeleteMonth(selectedMonth)}
-                                title={selectedMonth === ALL_PERIODS_KEY ? 'Sélectionnez un mois pour supprimer' : 'Supprimer ce mois'}
-                                disabled={selectedMonth === ALL_PERIODS_KEY}
-                            >
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <polyline points="3,6 5,6 21,6"/>
-                                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                </svg>
-                            </button>
+                            {selectedMonth !== ALL_PERIODS_KEY && (
+                                <button
+                                    className="btn-delete-month"
+                                    onClick={() => handleDeleteMonth(selectedMonth)}
+                                    title="Supprimer ce mois"
+                                >
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <polyline points="3,6 5,6 21,6"/>
+                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                    Supprimer
+                                </button>
+                            )}
                         </div>
                     </div>
-
-                    {/* KPIs du mois sélectionné */}
-                    {currentResult && (
-                        <SageBfcKpis
-                            resume={currentResult.resume}
-                            previousResume={previousResult?.resume}
-                        />
-                    )}
 
                     {/* Tabs de navigation */}
                     <div className="sage-bfc-tabs">
@@ -540,8 +528,7 @@ function SageBfcParser() {
                                 <rect x="14" y="14" width="7" height="7"/>
                                 <rect x="3" y="14" width="7" height="7"/>
                             </svg>
-                            Dashboard
-                            <span className="tab-count">{sortedMonths.length}</span>
+                            Vue d'ensemble
                         </button>
                         <button
                             className={`sage-tab ${activeTab === 'pnl' ? 'active' : ''}`}
@@ -594,6 +581,9 @@ function SageBfcParser() {
                                 sortedMonths={sortedMonths}
                                 formatMonthLabel={formatMonthLabel}
                                 formatMonthShort={formatMonthShort}
+                                currentResume={currentResult?.resume}
+                                previousResume={previousResult?.resume}
+                                selectedMonth={selectedMonth}
                             />
                         )}
                         {activeTab === 'pnl' && currentResult && (

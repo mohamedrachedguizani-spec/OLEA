@@ -166,13 +166,38 @@ function UserManagement() {
         }
     };
 
-    // ─── Delete (désactiver) ───
-    const handleDelete = async (user) => {
-        if (!window.confirm(`Désactiver l'utilisateur "${user.full_name}" ? Il ne pourra plus se connecter.`)) return;
+    // ─── Toggle Activer / Désactiver ───
+    const handleToggleActive = async (user) => {
+        if (user.is_active) {
+            if (!window.confirm(`Désactiver l'utilisateur "${user.full_name}" ? Il ne pourra plus se connecter.`)) return;
+            clearMessages();
+            try {
+                await ApiService.deleteUser(user.id);
+                setSuccess(`${user.full_name} a été désactivé`);
+                loadUsers();
+            } catch (err) {
+                setError(err.message);
+            }
+        } else {
+            if (!window.confirm(`Réactiver l'utilisateur "${user.full_name}" ? Il pourra se reconnecter.`)) return;
+            clearMessages();
+            try {
+                await ApiService.activateUser(user.id);
+                setSuccess(`${user.full_name} a été réactivé`);
+                loadUsers();
+            } catch (err) {
+                setError(err.message);
+            }
+        }
+    };
+
+    // ─── Supprimer définitivement ───
+    const handlePermanentDelete = async (user) => {
+        if (!window.confirm(`⚠️ ATTENTION : Supprimer définitivement l'utilisateur "${user.full_name}" ?\n\nCette action est IRRÉVERSIBLE. Toutes ses données seront perdues.`)) return;
         clearMessages();
         try {
-            await ApiService.deleteUser(user.id);
-            setSuccess(`${user.full_name} a été désactivé`);
+            await ApiService.permanentDeleteUser(user.id);
+            setSuccess(`${user.full_name} a été supprimé définitivement`);
             loadUsers();
         } catch (err) {
             setError(err.message);
@@ -246,6 +271,7 @@ function UserManagement() {
                             <th>Email</th>
                             <th>Rôle</th>
                             <th>Statut</th>
+                            <th>Sessions</th>
                             <th>Permissions</th>
                             <th>Actions</th>
                         </tr>
@@ -270,6 +296,16 @@ function UserManagement() {
                                     <span className={`um-status-badge ${u.is_active ? 'um-status-active' : 'um-status-inactive'}`}>
                                         {u.is_active ? 'Actif' : 'Inactif'}
                                     </span>
+                                </td>
+                                <td>
+                                    {(u.active_sessions || 0) > 0 ? (
+                                        <span className="um-sessions-badge">
+                                            <span className="um-sessions-dot"></span>
+                                            {u.active_sessions} session{u.active_sessions > 1 ? 's' : ''}
+                                        </span>
+                                    ) : (
+                                        <span className="um-text-muted">—</span>
+                                    )}
                                 </td>
                                 <td>
                                     {u.role === 'superadmin' ? (
@@ -314,9 +350,24 @@ function UserManagement() {
                                                         <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                                                     </svg>
                                                 </button>
-                                                <button className="um-action-btn um-action-delete" onClick={() => handleDelete(u)} title="Désactiver">
+                                                <button
+                                                    className={`um-action-btn ${u.is_active ? 'um-action-delete' : 'um-action-activate'}`}
+                                                    onClick={() => handleToggleActive(u)}
+                                                    title={u.is_active ? 'Désactiver' : 'Activer'}
+                                                >
+                                                    {u.is_active ? (
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="23" y1="18" x2="17" y2="12"/><line x1="17" y1="18" x2="23" y2="12"/>
+                                                        </svg>
+                                                    ) : (
+                                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
+                                                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
+                                                        </svg>
+                                                    )}
+                                                </button>
+                                                <button className="um-action-btn um-action-permanent-delete" onClick={() => handlePermanentDelete(u)} title="Supprimer définitivement">
                                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
-                                                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
                                                     </svg>
                                                 </button>
                                             </>

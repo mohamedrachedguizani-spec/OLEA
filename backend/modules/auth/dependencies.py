@@ -7,6 +7,11 @@ Stratégie de sécurité :
   - Aucun token dans le localStorage (protection XSS)
   - Vérification du token_version pour permettre la révocation
   - Le superadmin a toutes les permissions automatiquement
+
+Performance :
+  - Vérification JWT (cryptographique) sans DB = chemin rapide
+  - Requête DB uniquement pour vérifier is_active et token_version
+  - Le pool de connexions évite le coût d'ouverture/fermeture à chaque appel
 """
 
 from fastapi import Request, HTTPException, status
@@ -20,11 +25,15 @@ from .models import RoleEnum
 def get_current_user(request: Request) -> dict:
     """
     Extrait et valide l'utilisateur depuis le cookie access token.
-    Vérifie que :
-      1. Le cookie existe
-      2. Le JWT est valide et non expiré
-      3. L'utilisateur existe en base et est actif
-      4. Le token_version correspond (pas de session révoquée)
+    
+    Chemin rapide (pas de DB) :
+      1. Cookie présent
+      2. Signature JWT valide
+      3. Token non expiré
+    
+    Chemin DB (1 SELECT léger sur index PRIMARY KEY) :
+      4. L'utilisateur est actif
+      5. Le token_version correspond (session non révoquée)
     """
     token = request.cookies.get("olea_access_token")
     if not token:
@@ -33,6 +42,7 @@ def get_current_user(request: Request) -> dict:
             detail="Non authentifié — veuillez vous connecter",
         )
 
+    # ─ Étape 1 : vérification cryptographique pure (0 DB) ─
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(
@@ -47,6 +57,8 @@ def get_current_user(request: Request) -> dict:
             detail="Token malformé",
         )
 
+    # ─ Étape 2 : vérification DB (1 SELECT sur PRIMARY KEY = très rapide) ─
+    # Nécessaire pour détecter : révocation, désactivation, suppression
     with db.get_cursor() as cursor:
         cursor.execute(
             "SELECT id, username, email, full_name, role, is_active, token_version "

@@ -24,6 +24,28 @@ export function AuthProvider({ children }) {
         checkSession();
     }, [checkSession]);
 
+    // Écouter l'événement de session expirée/révoquée pour déconnexion immédiate
+    useEffect(() => {
+        const handleSessionExpired = () => {
+            setUser(null);
+        };
+        window.addEventListener('auth:session-expired', handleSessionExpired);
+        return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
+    }, []);
+
+    // Heartbeat : vérifier la session toutes les 15 secondes
+    // Détecte en temps réel les révocations, désactivations et suppressions
+    useEffect(() => {
+        if (!user) return;
+        const heartbeat = setInterval(async () => {
+            const valid = await ApiService.sessionCheck();
+            if (!valid) {
+                setUser(null);
+            }
+        }, 10 * 1000); // 15 secondes
+        return () => clearInterval(heartbeat);
+    }, [user]);
+
     // Refresh automatique du token toutes les 13 minutes
     useEffect(() => {
         if (!user) return;

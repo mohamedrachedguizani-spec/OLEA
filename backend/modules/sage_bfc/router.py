@@ -8,6 +8,7 @@ from fastapi import APIRouter, File, UploadFile, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
 
 from database import db
+from ws_manager import manager as ws_manager
 from .config import get_mapping_config
 from .mapper import SageBFCMapper
 from .parser import SageBalanceParser
@@ -90,7 +91,9 @@ async def parse_balance(
         
         # Sauvegarde automatique en base de données
         _save_monthly_data(resultat, file.filename)
-        
+
+        ws_manager.broadcast("sage_bfc", "upload", {"periode": str(resultat.periode)})
+
         return resultat
         
     except ValueError as e:
@@ -379,7 +382,9 @@ async def delete_monthly(periode: str):
             raise HTTPException(status_code=404, detail=f"Aucune donnée pour la période {periode}")
         
         cursor.execute("DELETE FROM sage_bfc_monthly WHERE periode = %s", (periode,))
-    
+
+    ws_manager.broadcast("sage_bfc", "delete", {"periode": str(periode)})
+
     return {"status": "supprimé", "periode": str(periode)}
 
 
@@ -392,5 +397,7 @@ async def delete_all_monthly():
         cursor.execute("SELECT COUNT(*) as cnt FROM sage_bfc_monthly")
         count = cursor.fetchone()['cnt']
         cursor.execute("DELETE FROM sage_bfc_monthly")
-    
+
+    ws_manager.broadcast("sage_bfc", "delete_all", {"count": count})
+
     return {"status": "supprimé", "count": count}

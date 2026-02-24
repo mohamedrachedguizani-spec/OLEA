@@ -60,6 +60,23 @@ def init_auth_tables():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            # ─── Table user_sessions ───
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    user_id INT NOT NULL,
+                    token_version INT NOT NULL,
+                    ip_address VARCHAR(45) DEFAULT NULL,
+                    user_agent VARCHAR(500) DEFAULT NULL,
+                    session_key CHAR(64) NOT NULL,
+                    last_seen_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY unique_session_key (session_key),
+                    INDEX idx_user_active (user_id, token_version, last_seen_at),
+                    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """)
+
             # ─── Seed superadmin par défaut ───
             cursor.execute("SELECT id FROM users WHERE role = 'superadmin' LIMIT 1")
             if not cursor.fetchone():

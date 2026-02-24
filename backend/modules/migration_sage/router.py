@@ -4,6 +4,7 @@ from datetime import date
 from typing import List, Optional
 
 from database import db
+from ws_manager import manager as ws_manager
 from .models import (
     EcritureSage,
     EcritureSageCreate,
@@ -95,6 +96,10 @@ def migrer_ecriture(migration: MigrationRequest):
             WHERE id = %s
         """, (ecriture_caisse['id'],))
 
+        ws_manager.broadcast("migration", "migrate", {"id": ecriture_caisse['id']})
+        # Notifier aussi la caisse (l'écriture est passée en migrée)
+        ws_manager.broadcast("caisse", "update", {"id": ecriture_caisse['id']})
+
         return {
             "message": "Écriture migrée avec succès",
             "ecriture_caisse_id": ecriture_caisse['id'],
@@ -118,6 +123,10 @@ def migrer_tout(migrations: List[MigrationRequest]):
                 "ecriture_caisse_id": migration.ecriture_caisse_id,
                 "erreur": str(e),
             })
+
+    if resultats:
+        ws_manager.broadcast("migration", "migrate_all", {"count": len(resultats)})
+        ws_manager.broadcast("caisse", "update", {"bulk": True})
 
     return {
         "message": f"{len(resultats)} écritures migrées avec succès",

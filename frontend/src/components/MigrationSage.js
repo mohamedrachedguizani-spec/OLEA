@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import ApiService from '../services/api';
 
-function MigrationSage({ onMigrationComplete }) {
+function MigrationSage({ onMigrationComplete, refreshTrigger }) {
     const [ecrituresAMigrer, setEcrituresAMigrer] = useState([]);
     const [migrationForm, setMigrationForm] = useState({});
     const [loading, setLoading] = useState(false);
@@ -16,7 +16,7 @@ function MigrationSage({ onMigrationComplete }) {
     useEffect(() => {
         loadEcrituresAMigrer();
         loadComptes();
-    }, []);
+    }, [refreshTrigger]);
 
     const loadEcrituresAMigrer = async () => {
         try {

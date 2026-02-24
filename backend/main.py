@@ -1,8 +1,9 @@
 # main.py
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
 from database import init_sage_bfc_tables
+from ws_manager import manager
 
 # ─── Import des routers modulaires ───
 from modules.auth import router as auth_router, init_auth_tables
@@ -33,6 +34,25 @@ app.include_router(saisie_caisse_router)
 app.include_router(migration_sage_router)
 app.include_router(export_csv_router)
 app.include_router(sage_bfc_router)
+
+
+# ─── Enregistrer la boucle asyncio au démarrage ───
+@app.on_event("startup")
+async def on_startup():
+    import asyncio
+    manager.set_loop(asyncio.get_running_loop())
+
+
+# ─── WebSocket temps réel ───
+@app.websocket("/ws/live")
+async def websocket_live(ws: WebSocket):
+    await manager.connect(ws)
+    try:
+        while True:
+            # Garder la connexion vivante ; ignorer les messages entrants
+            await ws.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(ws)
 
 
 if __name__ == "__main__":

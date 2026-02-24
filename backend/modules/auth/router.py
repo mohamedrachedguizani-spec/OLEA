@@ -11,6 +11,7 @@ Sécurité :
 """
 
 import os
+import hashlib
 from typing import List
 
 from fastapi import APIRouter, HTTPException, Request, Response, Depends, status
@@ -89,7 +90,7 @@ def _fetch_user_permissions(cursor, user_id: int) -> List[PermissionResponse]:
     return [PermissionResponse(**row) for row in cursor.fetchall()]
 
 
-def _build_user_response(user: dict, permissions: list = None) -> UserResponse:
+def _build_user_response(user: dict, permissions: list = None, active_sessions: int = None) -> UserResponse:
     """Construit un UserResponse à partir d'un row dict."""
     return UserResponse(
         id=user["id"],
@@ -100,7 +101,27 @@ def _build_user_response(user: dict, permissions: list = None) -> UserResponse:
         is_active=bool(user["is_active"]),
         created_at=user["created_at"],
         permissions=permissions,
+        active_sessions=active_sessions,
     )
+
+
+def _make_session_key(user_id: int, token_version: int, ip: str, ua: str) -> str:
+    """Génère une clé unique de 64 caractères pour identifier une session (user + appareil)."""
+    raw = f"{user_id}:{token_version}:{ip}:{ua[:200]}"
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def _count_active_sessions(cursor, user_id: int) -> int:
+    """Compte les sessions actives d'un utilisateur (visibles dans les 45 dernières secondes)."""
+    cursor.execute(
+        "SELECT COUNT(*) as cnt FROM user_sessions us "
+        "JOIN users u ON u.id = us.user_id "
+        "WHERE us.user_id = %s AND us.token_version = u.token_version "
+        "AND us.last_seen_at > NOW() - INTERVAL 45 SECOND",
+        (user_id,),
+    )
+    row = cursor.fetchone()
+    return row["cnt"] if row else 0
 
 
 # ════════════════════════════════════════════════════════════
@@ -108,7 +129,7 @@ def _build_user_response(user: dict, permissions: list = None) -> UserResponse:
 # ════════════════════════════════════════════════════════════
 
 @router.post("/login", response_model=TokenResponse)
-async def login(body: LoginRequest, response: Response):
+def login(body: LoginRequest, request: Request, response: Response):
     """
     Authentifie un utilisateur et place les tokens dans des cookies httpOnly.
     Aucun token n'est renvoyé dans le corps de la réponse.
@@ -142,9 +163,20 @@ async def login(body: LoginRequest, response: Response):
     # Les placer dans les cookies httpOnly
     _set_auth_cookies(response, access, refresh)
 
-    # Charger les permissions
-    with db.get_cursor() as cursor:
-        permissions = _fetch_user_permissions(cursor, user["id"])
+    # Charger les permissions et enregistrer la session
+    ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "")[:500]
+    session_key = _make_session_key(user["id"], user["token_version"], ip, ua)
+    with db.get_connection() as conn:
+        with db.get_cursor(conn) as cursor:
+            permissions = _fetch_user_permissions(cursor, user["id"])
+            cursor.execute(
+                "INSERT INTO user_sessions (user_id, token_version, ip_address, user_agent, session_key) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE last_seen_at = NOW()",
+                (user["id"], user["token_version"], ip, ua, session_key),
+            )
+            conn.commit()
 
     return TokenResponse(
         message="Connexion réussie",
@@ -152,15 +184,55 @@ async def login(body: LoginRequest, response: Response):
     )
 
 
+@router.get("/session-check")
+def session_check(request: Request):
+    """
+    Vérification légère de la validité de la session.
+    Utilisé par le heartbeat frontend pour détecter en temps réel
+    les révocations, désactivations et suppressions.
+    Retourne 200 si la session est valide, 401/403 sinon.
+    Met à jour last_seen_at pour le tracking des sessions actives.
+    """
+    user = get_current_user(request)
+    ip = request.client.host if request.client else "unknown"
+    ua = request.headers.get("user-agent", "")[:500]
+    session_key = _make_session_key(user["id"], user["token_version"], ip, ua)
+    with db.get_connection() as conn:
+        with db.get_cursor(conn) as cursor:
+            cursor.execute(
+                "INSERT INTO user_sessions (user_id, token_version, ip_address, user_agent, session_key) "
+                "VALUES (%s, %s, %s, %s, %s) "
+                "ON DUPLICATE KEY UPDATE last_seen_at = NOW()",
+                (user["id"], user["token_version"], ip, ua, session_key),
+            )
+            conn.commit()
+    return {"valid": True}
+
+
 @router.post("/logout")
-async def logout(response: Response):
-    """Déconnexion : supprime les cookies d'authentification."""
+def logout(request: Request, response: Response):
+    """Déconnexion : supprime les cookies d'authentification et ferme la session."""
+    try:
+        user = get_current_user(request)
+        ip = request.client.host if request.client else "unknown"
+        ua = request.headers.get("user-agent", "")[:500]
+        session_key = _make_session_key(user["id"], user["token_version"], ip, ua)
+        with db.get_connection() as conn:
+            with db.get_cursor(conn) as cursor:
+                cursor.execute(
+                    "UPDATE user_sessions SET last_seen_at = '2000-01-01 00:00:00' "
+                    "WHERE session_key = %s",
+                    (session_key,),
+                )
+                conn.commit()
+    except Exception:
+        pass  # Token déjà expiré ou invalide — on supprime quand même les cookies
     _clear_auth_cookies(response)
     return {"message": "Déconnexion réussie"}
 
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_tokens(request: Request, response: Response):
+def refresh_tokens(request: Request, response: Response):
     """
     Rafraîchit la paire access/refresh token.
 
@@ -233,7 +305,7 @@ async def refresh_tokens(request: Request, response: Response):
 # ════════════════════════════════════════════════════════════
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(request: Request):
+def get_me(request: Request):
     """Retourne les infos de l'utilisateur connecté avec ses permissions."""
     user = get_current_user(request)
 
@@ -251,7 +323,7 @@ async def get_me(request: Request):
 
 
 @router.put("/me/password")
-async def change_my_password(body: ChangePasswordRequest, request: Request, response: Response):
+def change_my_password(body: ChangePasswordRequest, request: Request, response: Response):
     """
     Change le mot de passe de l'utilisateur connecté.
     Incrémente le token_version pour invalider toutes les autres sessions.
@@ -294,7 +366,7 @@ async def change_my_password(body: ChangePasswordRequest, request: Request, resp
 # ════════════════════════════════════════════════════════════
 
 @router.get("/users", response_model=List[UserResponse])
-async def list_users(
+def list_users(
     request: Request,
     admin: dict = Depends(require_role(RoleEnum.superadmin)),
 ):
@@ -310,13 +382,14 @@ async def list_users(
             result = []
             for u in users:
                 permissions = _fetch_user_permissions(cursor, u["id"])
-                result.append(_build_user_response(u, permissions))
+                active_sessions = _count_active_sessions(cursor, u["id"])
+                result.append(_build_user_response(u, permissions, active_sessions))
 
     return result
 
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-async def create_user(
+def create_user(
     body: UserCreate,
     request: Request,
     admin: dict = Depends(require_role(RoleEnum.superadmin)),
@@ -355,7 +428,7 @@ async def create_user(
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
-async def get_user(
+def get_user(
     user_id: int,
     request: Request,
     admin: dict = Depends(require_role(RoleEnum.superadmin)),
@@ -378,7 +451,7 @@ async def get_user(
 
 
 @router.put("/users/{user_id}", response_model=UserResponse)
-async def update_user(
+def update_user(
     user_id: int,
     body: UserUpdate,
     request: Request,
@@ -436,7 +509,7 @@ async def update_user(
 
 
 @router.delete("/users/{user_id}")
-async def delete_user(
+def delete_user(
     user_id: int,
     request: Request,
     admin: dict = Depends(require_role(RoleEnum.superadmin)),
@@ -468,8 +541,82 @@ async def delete_user(
     return {"message": "Utilisateur désactivé avec succès"}
 
 
+@router.post("/users/{user_id}/activate")
+def activate_user(
+    user_id: int,
+    request: Request,
+    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+):
+    """
+    Réactive un utilisateur précédemment désactivé.
+    """
+    with db.get_connection() as conn:
+        with db.get_cursor(conn) as cursor:
+            cursor.execute(
+                "SELECT id, is_active FROM users WHERE id = %s", (user_id,)
+            )
+            user = cursor.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+
+            if user["is_active"]:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Cet utilisateur est déjà actif",
+                )
+
+            cursor.execute(
+                "UPDATE users SET is_active = TRUE WHERE id = %s",
+                (user_id,),
+            )
+            conn.commit()
+
+    return {"message": "Utilisateur activé avec succès"}
+
+
+@router.delete("/users/{user_id}/permanent")
+def permanent_delete_user(
+    user_id: int,
+    request: Request,
+    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+):
+    """
+    Supprime définitivement un utilisateur et toutes ses données associées.
+    Le superadmin ne peut pas se supprimer lui-même.
+    Cette action est irréversible.
+    """
+    if admin["id"] == user_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Vous ne pouvez pas supprimer votre propre compte",
+        )
+
+    with db.get_connection() as conn:
+        with db.get_cursor(conn) as cursor:
+            cursor.execute("SELECT id, role FROM users WHERE id = %s", (user_id,))
+            user = cursor.fetchone()
+            if not user:
+                raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+
+            if user["role"] == "superadmin":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Impossible de supprimer un superadmin",
+                )
+
+            # Supprimer les permissions associées
+            cursor.execute(
+                "DELETE FROM user_permissions WHERE user_id = %s", (user_id,)
+            )
+            # Supprimer l'utilisateur
+            cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            conn.commit()
+
+    return {"message": "Utilisateur supprimé définitivement"}
+
+
 @router.post("/users/{user_id}/revoke")
-async def revoke_user_sessions(
+def revoke_user_sessions(
     user_id: int,
     request: Request,
     admin: dict = Depends(require_role(RoleEnum.superadmin)),
@@ -494,7 +641,7 @@ async def revoke_user_sessions(
 
 
 @router.put("/users/{user_id}/reset-password")
-async def reset_user_password(
+def reset_user_password(
     user_id: int,
     body: ResetPasswordRequest,
     request: Request,
@@ -526,7 +673,7 @@ async def reset_user_password(
 # ════════════════════════════════════════════════════════════
 
 @router.get("/users/{user_id}/permissions", response_model=List[PermissionResponse])
-async def get_user_permissions(
+def get_user_permissions(
     user_id: int,
     request: Request,
     admin: dict = Depends(require_role(RoleEnum.superadmin)),
@@ -541,7 +688,7 @@ async def get_user_permissions(
 
 
 @router.put("/users/{user_id}/permissions", response_model=List[PermissionResponse])
-async def set_user_permissions(
+def set_user_permissions(
     user_id: int,
     body: UserPermissionsUpdate,
     request: Request,

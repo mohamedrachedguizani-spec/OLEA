@@ -90,6 +90,7 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
     permissions: Optional[List["PermissionResponse"]] = None
+    active_sessions: Optional[int] = None
 
 
 class ChangePasswordRequest(BaseModel):

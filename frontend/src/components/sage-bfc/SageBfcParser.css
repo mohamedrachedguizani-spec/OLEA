@@ -76,77 +76,80 @@
     color: var(--text-muted);
 }
 
-/* ==================== Stepper ==================== */
-.sage-bfc-stepper {
+/* ==================== Compact Navigation ==================== */
+.sage-bfc-nav {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 0;
-    margin-bottom: 2rem;
-    padding: 1rem;
-}
-
-.stepper-step {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-    opacity: 0.5;
-    transition: all var(--transition-base);
-}
-
-.stepper-step.active,
-.stepper-step.completed {
-    opacity: 1;
-}
-
-.stepper-circle {
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.875rem;
-    font-weight: 700;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0.35rem;
     background: var(--bg-muted);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    width: fit-content;
+}
+
+.sage-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1.25rem;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.85rem;
+    font-weight: 600;
     color: var(--text-muted);
-    border: 2px solid var(--border-light);
-    transition: all var(--transition-base);
+    cursor: pointer;
+    transition: all var(--transition-fast);
 }
 
-.stepper-step.active .stepper-circle {
-    background: var(--gradient-primary);
-    color: white;
-    border-color: var(--primary-500);
-    box-shadow: 0 0 0 4px rgba(45, 139, 78, 0.15);
+.sage-nav-btn svg {
+    width: 16px;
+    height: 16px;
 }
 
-.stepper-step.completed .stepper-circle {
-    background: var(--success);
-    color: white;
-    border-color: var(--success);
+.sage-nav-btn:hover:not(:disabled) {
+    color: var(--text-secondary);
+    background: var(--bg-card);
 }
 
-.stepper-step.completed .stepper-circle svg {
+.sage-nav-btn.active {
+    background: var(--bg-card);
+    color: var(--primary-500);
+    box-shadow: var(--shadow-sm);
+}
+
+.sage-nav-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.nav-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     width: 18px;
     height: 18px;
+    background: var(--success);
+    color: white;
+    border-radius: 50%;
+    font-size: 0.65rem;
+    font-weight: 700;
 }
 
-.stepper-label {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--text-secondary);
-}
-
-.stepper-step.active .stepper-label {
+.nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 0.35rem;
+    background: rgba(45, 139, 78, 0.1);
     color: var(--primary-500);
-}
-
-.stepper-line {
-    flex: 0 0 80px;
-    height: 2px;
-    background: var(--border-light);
-    margin: 0 1rem;
+    border-radius: var(--radius-full);
+    font-size: 0.7rem;
+    font-weight: 700;
 }
 
 /* ==================== Error Banner ==================== */
@@ -894,6 +897,10 @@
     grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
     margin-bottom: 1.5rem;
+}
+
+.pnl-hero-grid-2 {
+    grid-template-columns: repeat(2, 1fr);
 }
 
 .pnl-hero-card {
@@ -2247,7 +2254,8 @@
 
 /* ==================== Responsive ==================== */
 @media (max-width: 1024px) {
-    .sage-kpis-grid {
+    .sage-kpis-grid,
+    .dash-kpis-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 
@@ -2265,11 +2273,13 @@
         flex-direction: column;
     }
 
-    .sage-kpis-grid {
+    .sage-kpis-grid,
+    .dash-kpis-grid {
         grid-template-columns: 1fr;
     }
 
-    .pnl-hero-grid {
+    .pnl-hero-grid,
+    .pnl-hero-grid-2 {
         grid-template-columns: 1fr;
     }
 
@@ -2335,53 +2345,70 @@
     display: flex;
     align-items: center;
     gap: 0.5rem;
+    padding: 0.4rem 0.6rem 0.4rem 0.75rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    transition: all var(--transition-fast);
 }
 
-.month-selector-label {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: var(--text-muted);
+.month-selector:hover,
+.month-selector:focus-within {
+    border-color: var(--primary-400);
+    box-shadow: 0 0 0 3px rgba(45, 139, 78, 0.08);
+}
+
+.month-selector-icon {
+    width: 18px;
+    height: 18px;
+    color: var(--primary-500);
+    flex-shrink: 0;
 }
 
 .month-selector-select {
-    padding: 0.5rem 0.875rem;
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    font-size: 0.85rem;
-    font-weight: 500;
-    background: var(--bg-card);
+    padding: 0.35rem 0.5rem;
+    border: none;
+    background: transparent;
+    font-size: 0.875rem;
+    font-weight: 600;
     color: var(--text-primary);
     cursor: pointer;
-    transition: border-color var(--transition-fast);
+    appearance: none;
+    -webkit-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23999' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.25rem center;
+    padding-right: 1.5rem;
+    min-width: 180px;
 }
 
 .month-selector-select:focus {
     outline: none;
-    border-color: var(--primary-500);
-    box-shadow: 0 0 0 3px rgba(45, 139, 78, 0.1);
 }
 
 .btn-delete-month {
     display: flex;
     align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    background: rgba(239, 68, 68, 0.06);
-    border: 1px solid rgba(239, 68, 68, 0.15);
+    gap: 0.4rem;
+    padding: 0.45rem 0.85rem;
+    background: transparent;
+    border: 1px solid rgba(239, 68, 68, 0.2);
     border-radius: var(--radius-sm);
     cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: var(--error);
     transition: all var(--transition-fast);
 }
 
 .btn-delete-month svg {
-    width: 16px;
-    height: 16px;
+    width: 14px;
+    height: 14px;
     color: var(--error);
 }
 
 .btn-delete-month:hover {
-    background: rgba(239, 68, 68, 0.15);
+    background: rgba(239, 68, 68, 0.08);
     border-color: var(--error);
 }
 
@@ -2522,6 +2549,158 @@
 /* ==================== Dashboard ==================== */
 .sage-dashboard-container {
     animation: fadeIn 0.3s ease-out;
+}
+
+/* Dashboard KPIs (integrated from SageBfcKpis) */
+.dash-kpis-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.dash-kpi-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    transition: all var(--transition-fast);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.dash-kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.dash-kpi-card.kpi-theme-primary::before { background: var(--gradient-primary); }
+.dash-kpi-card.kpi-theme-success::before { background: var(--success); }
+.dash-kpi-card.kpi-theme-warning::before { background: var(--warning); }
+.dash-kpi-card.kpi-theme-danger::before { background: var(--error); }
+
+.dash-kpi-card:hover {
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.dash-kpi-card .kpi-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.dash-kpi-card .kpi-icon-wrap {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    flex-shrink: 0;
+}
+
+.dash-kpi-card .kpi-icon-wrap svg {
+    width: 20px;
+    height: 20px;
+}
+
+.dash-kpi-card.kpi-theme-primary .kpi-icon-wrap { background: rgba(45, 139, 78, 0.1); color: var(--primary-500); }
+.dash-kpi-card.kpi-theme-success .kpi-icon-wrap { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+.dash-kpi-card.kpi-theme-warning .kpi-icon-wrap { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+.dash-kpi-card.kpi-theme-danger .kpi-icon-wrap { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+
+.dash-kpi-card .kpi-badge-pill {
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-full);
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+}
+
+.dash-kpi-card.kpi-theme-primary .kpi-badge-pill { background: rgba(45, 139, 78, 0.1); color: var(--primary-500); }
+.dash-kpi-card.kpi-theme-success .kpi-badge-pill { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+.dash-kpi-card.kpi-theme-warning .kpi-badge-pill { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+.dash-kpi-card.kpi-theme-danger .kpi-badge-pill { background: rgba(239, 68, 68, 0.1); color: var(--error); }
+
+.dash-kpi-card .kpi-body {
+    display: flex;
+    align-items: baseline;
+    gap: 0.35rem;
+}
+
+.dash-kpi-card .kpi-value {
+    font-size: 1.4rem;
+    font-weight: 800;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.5px;
+}
+
+.dash-kpi-card .kpi-value.negative {
+    color: var(--error);
+}
+
+.dash-kpi-card .kpi-unit {
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dash-kpi-card .kpi-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-light);
+}
+
+.dash-kpi-card .kpi-label {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.dash-kpi-card .kpi-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-full);
+}
+
+.dash-kpi-card .kpi-indicator.up {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.dash-kpi-card .kpi-indicator.down {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error);
+}
+
+.kpi-sub-info {
+    font-size: 0.7rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    padding-top: 0.35rem;
+    border-top: 1px dashed var(--border-light);
+    font-variant-numeric: tabular-nums;
 }
 
 .dashboard-empty {
@@ -2937,7 +3116,8 @@
 
 /* ==================== Dashboard Responsive ==================== */
 @media (max-width: 1024px) {
-    .dashboard-summary-grid {
+    .dashboard-summary-grid,
+    .dash-kpis-grid {
         grid-template-columns: repeat(2, 1fr);
     }
 
@@ -2947,7 +3127,8 @@
 }
 
 @media (max-width: 768px) {
-    .dashboard-summary-grid {
+    .dashboard-summary-grid,
+    .dash-kpis-grid {
         grid-template-columns: 1fr;
     }
 

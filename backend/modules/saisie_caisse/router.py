@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from database import db
+from ws_manager import manager as ws_manager
 from .models import (
     EcritureCaisse,
     EcritureCaisseCreate,
@@ -74,6 +75,8 @@ def create_ecriture_caisse(ecriture: EcritureCaisseCreate):
         result = cursor.fetchone()
 
         update_libelle_frequent(ecriture.libelle_ecriture)
+
+        ws_manager.broadcast("caisse", "create", {"id": ecriture_id})
 
         return result
 
@@ -146,7 +149,11 @@ def update_ecriture_caisse(ecriture_id: int, ecriture: EcritureCaisseCreate):
         recalculate_all_soldes(cursor)
 
         cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
-        return cursor.fetchone()
+        result = cursor.fetchone()
+
+        ws_manager.broadcast("caisse", "update", {"id": ecriture_id})
+
+        return result
 
 
 @router.delete("/ecritures-caisse/{ecriture_id}")
@@ -165,6 +172,8 @@ def delete_ecriture_caisse(ecriture_id: int):
         cursor.execute("DELETE FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
 
         recalculate_all_soldes(cursor)
+
+        ws_manager.broadcast("caisse", "delete", {"id": ecriture_id})
 
         return {"message": "Écriture supprimée avec succès"}
 
@@ -356,6 +365,8 @@ def nettoyer_historique_migre():
             ))
         elif remaining > 0:
             recalculate_all_soldes(cursor)
+
+        ws_manager.broadcast("caisse", "cleanup", {"count": count_migrees})
 
         return {
             "message": f"Historique nettoyé: {count_migrees} écritures supprimées",

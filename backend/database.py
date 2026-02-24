@@ -1,40 +1,89 @@
 # database.py
+#
+# Pool mysql-connector-python :
+#   ─ pool_size     : connexions permanentes maintenues ouvertes
+#   ─ REMARQUE      : max_overflow n'existe PAS dans mysql-connector-python,
+#                     c'est un paramètre SQLAlchemy uniquement.
+#                     Ici on dimensionne pool_size pour couvrir le pic de charge.
+#   ─ Calcul pour 40 requêtes simultanées :
+#       • Chaque requête tient une connexion ~1–5 ms (SELECT sur PRIMARY KEY)
+#       • pool_size = 32 → largement suffisant (marge x2 sur le pic réel)
+#       • connection_timeout = 5 s → erreur propre si le pool est saturé
+#
+# Attention async/sync :
+#   FastAPI exécute les endpoints `async def` dans l'event loop :
+#   un appel DB synchrone bloquant dans un `async def` GEL l'event loop entier.
+#   → Les routes DB-intensive sont déclarées en `def` (synchrone) :
+#     FastAPI les exécute automatiquement dans un thread pool (anyio).
+
 import mysql.connector
 from mysql.connector import Error
+from mysql.connector.pooling import MySQLConnectionPool
+from mysql.connector.errors import PoolError
 from contextlib import contextmanager
+from fastapi import HTTPException, status
 from typing import Optional
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
+# Taille du pool : couvre 40 req simultanées avec marge
+_POOL_SIZE = int(os.getenv("DB_POOL_SIZE", "32"))
+# Délai max (s) pour obtenir une connexion libre avant d'échouer
+_POOL_TIMEOUT = int(os.getenv("DB_POOL_TIMEOUT", "5"))
+
+
 class Database:
     def __init__(self):
-        self.host = os.getenv("DB_HOST", "localhost")
-        self.user = os.getenv("DB_USER", "root")
+        self.host     = os.getenv("DB_HOST",     "localhost")
+        self.user     = os.getenv("DB_USER",     "root")
         self.password = os.getenv("DB_PASSWORD", "")
-        self.database = os.getenv("DB_NAME", "gestion_caisse")
-        self.port = os.getenv("DB_PORT", 3306)
-    
-    @contextmanager
-    def get_connection(self):
-        connection = None
-        try:
-            connection = mysql.connector.connect(
+        self.database = os.getenv("DB_NAME",     "gestion_caisse")
+        self.port     = int(os.getenv("DB_PORT", 3306))
+        self._pool: Optional[MySQLConnectionPool] = None
+
+    def _get_pool(self) -> MySQLConnectionPool:
+        """Initialise le pool de connexions (lazy, thread-safe au démarrage)."""
+        if self._pool is None:
+            self._pool = MySQLConnectionPool(
+                pool_name="olea_pool",
+                pool_size=_POOL_SIZE,
+                pool_reset_session=True,
+                connection_timeout=_POOL_TIMEOUT,
                 host=self.host,
                 user=self.user,
                 password=self.password,
                 database=self.database,
-                port=self.port
+                port=self.port,
+                charset="utf8mb4",
+                collation="utf8mb4_unicode_ci",
             )
-            yield connection
+            print(f"✅ Pool DB initialisé — pool_size={_POOL_SIZE}, timeout={_POOL_TIMEOUT}s")
+        return self._pool
+
+    @contextmanager
+    def get_connection(self):
+        conn = None
+        try:
+            conn = self._get_pool().get_connection()
+            yield conn
+        except PoolError:
+            # Pool épuisé (pic > pool_size requêtes simultanées)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Serveur surchargé — réessayez dans quelques secondes",
+            )
         except Error as e:
-            print(f"Erreur de connexion à la base de données: {e}")
-            raise
+            print(f"Erreur DB : {e}")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Erreur de connexion à la base de données",
+            )
         finally:
-            if connection and connection.is_connected():
-                connection.close()
-    
+            if conn and conn.is_connected():
+                conn.close()  # Retourne la connexion au pool (non fermée réellement)
+
     @contextmanager
     def get_cursor(self, connection=None):
         if connection:

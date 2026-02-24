@@ -117,7 +117,7 @@ function SageBfcPnl({ resume, previousResume }) {
     return (
         <div className="sage-pnl-container">
             {/* EBITDA & RN Hero Cards */}
-            <div className="pnl-hero-grid">
+            <div className="pnl-hero-grid pnl-hero-grid-2">
                 <div className={`pnl-hero-card ${resume.ebitda >= 0 ? 'hero-positive' : 'hero-negative'}`}>
                     <div className="hero-icon-wrap">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -154,7 +154,7 @@ function SageBfcPnl({ resume, previousResume }) {
                         <span className="hero-label">Résultat Net</span>
                         <span className="hero-value">{fmt(resume.resultat_net)} <small>TND</small></span>
                         <div className="hero-meta">
-                            <span className="hero-pct">Marge: {fmtPct(resume.resultat_net_pct)}%</span>
+                            <span className="hero-pct">Marge: {fmtPct(resume.resultat_net_pct)}%  ·  Ratio C/P: {chargesRatio.toFixed(1)}%</span>
                             {hasPrevious && (
                                 <span className={`hero-delta ${resume.resultat_net >= previousResume.resultat_net ? 'up' : 'down'}`}>
                                     {resume.resultat_net >= previousResume.resultat_net ? '↑' : '↓'} {fmt(Math.abs(resume.resultat_net - previousResume.resultat_net))}
@@ -165,28 +165,6 @@ function SageBfcPnl({ resume, previousResume }) {
                     <div className="hero-gauge">
                         <div className="hero-gauge-track">
                             <div className="hero-gauge-fill" style={{ width: `${Math.min(Math.abs(resume.resultat_net_pct), 100)}%` }} />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="pnl-hero-card hero-neutral">
-                    <div className="hero-icon-wrap hero-icon-ratio">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <line x1="18" y1="20" x2="18" y2="10"/>
-                            <line x1="12" y1="20" x2="12" y2="4"/>
-                            <line x1="6" y1="20" x2="6" y2="14"/>
-                        </svg>
-                    </div>
-                    <div className="hero-content">
-                        <span className="hero-label">Ratio Charges/Produits</span>
-                        <span className="hero-value">{chargesRatio.toFixed(1)}<small>%</small></span>
-                        <div className="hero-meta">
-                            <span className="hero-pct">Produits: {fmt(resume.total_produits)}</span>
-                        </div>
-                    </div>
-                    <div className="hero-gauge">
-                        <div className="hero-gauge-track">
-                            <div className="hero-gauge-fill hero-gauge-ratio" style={{ width: `${Math.min(chargesRatio, 100)}%` }} />
                         </div>
                     </div>
                 </div>

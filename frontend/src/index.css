@@ -4992,6 +4992,39 @@ body {
     border-color: rgba(239, 68, 68, 0.3);
 }
 
+/* Sessions badge */
+.um-sessions-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: #ecfdf5;
+    color: #059669;
+    border: 1px solid #a7f3d0;
+    padding: 0.2rem 0.6rem;
+    border-radius: var(--radius-full);
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+.um-sessions-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #10b981;
+    animation: um-pulse 2s infinite;
+}
+
+@keyframes um-pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+.dark-mode .um-sessions-badge {
+    background: rgba(16, 185, 129, 0.1);
+    border-color: rgba(16, 185, 129, 0.3);
+    color: #34d399;
+}
+
 /* Permission pills */
 .um-perm-pills {
     display: flex;
@@ -5045,12 +5078,16 @@ body {
 .um-action-password:hover { color: #8b5cf6; border-color: #c4b5fd; background: #f5f3ff; }
 .um-action-revoke:hover { color: #f59e0b; border-color: #fde68a; background: #fffbeb; }
 .um-action-delete:hover { color: #ef4444; border-color: #fecaca; background: #fef2f2; }
+.um-action-activate:hover { color: #10b981; border-color: #6ee7b7; background: #ecfdf5; }
+.um-action-permanent-delete:hover { color: #dc2626; border-color: #fca5a5; background: #fef2f2; }
 
 .dark-mode .um-action-perms:hover { background: rgba(59,130,246,0.1); }
 .dark-mode .um-action-edit:hover { background: rgba(230,126,34,0.1); }
 .dark-mode .um-action-password:hover { background: rgba(139,92,246,0.1); }
 .dark-mode .um-action-revoke:hover { background: rgba(245,158,11,0.1); }
 .dark-mode .um-action-delete:hover { background: rgba(239,68,68,0.1); }
+.dark-mode .um-action-activate:hover { background: rgba(16,185,129,0.1); }
+.dark-mode .um-action-permanent-delete:hover { background: rgba(220,38,38,0.15); }
 
 /* Loading */
 .um-loading {
