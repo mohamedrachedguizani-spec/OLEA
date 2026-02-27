@@ -4,7 +4,6 @@ import ApiService from '../services/api';
 import SageBfcUpload from './sage-bfc/SageBfcUpload';
 import SageBfcPnl from './sage-bfc/SageBfcPnl';
 import SageBfcLignes from './sage-bfc/SageBfcLignes';
-import SageBfcValidations from './sage-bfc/SageBfcValidations';
 import SageBfcDashboard from './sage-bfc/SageBfcDashboard';
 import './sage-bfc/SageBfcParser.css';
 
@@ -22,6 +21,9 @@ const RESUME_SUM_KEYS = [
     'impots_taxes',
     'fonctionnement',
     'autres_charges',
+    'brand_fees',
+    'management_fees',
+    'interco_charges',
     'total_charges',
     'ebitda',
     'produits_financiers',
@@ -42,8 +44,6 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
     }, {});
 
     const lignes = [];
-    const validations = [];
-    const alertesSet = new Set();
 
     sortedMonths.forEach((monthKey) => {
         const monthResult = monthlyData[monthKey]?.result;
@@ -56,12 +56,6 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
         (monthResult?.lignes || []).forEach((l) => {
             lignes.push({ ...l, mois: monthKey });
         });
-
-        (monthResult?.validations || []).forEach((v) => {
-            validations.push({ ...v, periode: monthKey });
-        });
-
-        (monthResult?.alertes_globales || []).forEach((a) => alertesSet.add(a));
     });
 
     resume.ebitda_pct = resume.ca_net ? (resume.ebitda / resume.ca_net) * 100 : 0;
@@ -70,9 +64,7 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
     return {
         periode: ALL_PERIODS_KEY,
         resume,
-        lignes,
-        validations,
-        alertes_globales: [...alertesSet]
+        lignes
     };
 }
 
@@ -556,21 +548,6 @@ function SageBfcParser({ refreshTrigger }) {
                             Lignes Mappées
                             <span className="tab-count">{allLignes.length}</span>
                         </button>
-                        <button
-                            className={`sage-tab ${activeTab === 'validations' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('validations')}
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                                <polyline points="22,4 12,14.01 9,11.01"/>
-                            </svg>
-                            Validations
-                            {currentResult && currentResult.validations.length > 0 && (
-                                <span className={`tab-count ${currentResult.validations.some(v => v.statut === 'ALERTE') ? 'alert' : 'ok'}`}>
-                                    {currentResult.validations.length}
-                                </span>
-                            )}
-                        </button>
                     </div>
 
                     {/* Contenu des tabs */}
@@ -597,12 +574,6 @@ function SageBfcParser({ refreshTrigger }) {
                                 lignes={allLignes}
                                 sortedMonths={sortedMonths}
                                 formatMonthShort={formatMonthShort}
-                            />
-                        )}
-                        {activeTab === 'validations' && currentResult && (
-                            <SageBfcValidations
-                                validations={currentResult.validations}
-                                alertes={currentResult.alertes_globales}
                             />
                         )}
                     </div>

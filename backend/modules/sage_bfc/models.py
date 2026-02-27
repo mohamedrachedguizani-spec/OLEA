@@ -31,18 +31,8 @@ class LigneBudgetBFC(BaseModel):
     bpc_mapping: Optional[str] = None
     bfc_mapping: Optional[str] = None
     validation_interco: Optional[Dict] = None
-    alertes: List[str] = Field(default_factory=list)
     periode: Optional[date] = None
     source_fichier: Optional[str] = None
-
-class ValidationResult(BaseModel):
-    """Résultat d'une validation interco"""
-    nom: str
-    montant_reel: float
-    montant_attendu: float
-    ecart: float
-    statut: str  # OK, ALERTE, INFO
-    description: Optional[str] = None
 
 class TableauBFCSummary(BaseModel):
     """Résumé du tableau BFC"""
@@ -58,6 +48,9 @@ class TableauBFCSummary(BaseModel):
     impots_taxes: float
     fonctionnement: float
     autres_charges: float
+    brand_fees: float = 0.0
+    management_fees: float = 0.0
+    interco_charges: float = 0.0
     total_charges: float
     ebitda: float
     ebitda_pct: float
@@ -75,8 +68,6 @@ class TableauBFCResponse(BaseModel):
     periode: date
     lignes: List[LigneBudgetBFC]
     resume: TableauBFCSummary
-    validations: List[ValidationResult]
-    alertes_globales: List[str] = Field(default_factory=list)
 
 class ParseRequest(BaseModel):
     """Requête de parsing"""
@@ -98,8 +89,6 @@ class MonthlyDataFull(BaseModel):
     lignes_count: int = 0
     resume: TableauBFCSummary
     lignes: List[LigneBudgetBFC] = Field(default_factory=list)
-    validations: List[ValidationResult] = Field(default_factory=list)
-    alertes_globales: List[str] = Field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

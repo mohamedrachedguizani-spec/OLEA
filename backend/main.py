@@ -11,6 +11,7 @@ from modules.saisie_caisse import router as saisie_caisse_router
 from modules.migration_sage import router as migration_sage_router
 from modules.export_csv import router as export_csv_router
 from modules.sage_bfc import router as sage_bfc_router
+from modules.dashboard import router as dashboard_router
 
 
 app = FastAPI(title="Olea – Gestion de Caisse & BFC")
@@ -34,6 +35,7 @@ app.include_router(saisie_caisse_router)
 app.include_router(migration_sage_router)
 app.include_router(export_csv_router)
 app.include_router(sage_bfc_router)
+app.include_router(dashboard_router)
 
 
 # ─── Enregistrer la boucle asyncio au démarrage ───

@@ -115,11 +115,6 @@ function SageBfcLignes({ lignes, sortedMonths, formatMonthShort }) {
 
     const hasActiveFilters = searchTerm || filterType !== 'all' || filterCategorie !== 'all' || filterAgregat !== 'all' || filterMois !== 'all';
 
-    // Stats for the mini-cards
-    const alerteCount = useMemo(() => {
-        return filteredLignes.filter(l => l.alertes.length > 0).length;
-    }, [filteredLignes]);
-
     return (
         <div className="sage-lignes-container">
             {/* ─── Mini KPI Strip ─── */}
@@ -163,19 +158,6 @@ function SageBfcLignes({ lignes, sortedMonths, formatMonthShort }) {
                     <div className="lignes-kpi-content">
                         <span className="lignes-kpi-value">{fmt(totaux.charges)}</span>
                         <span className="lignes-kpi-label">Charges</span>
-                    </div>
-                </div>
-                <div className="lignes-kpi lignes-kpi-alertes">
-                    <div className="lignes-kpi-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                            <line x1="12" y1="9" x2="12" y2="13"/>
-                            <line x1="12" y1="17" x2="12.01" y2="17"/>
-                        </svg>
-                    </div>
-                    <div className="lignes-kpi-content">
-                        <span className="lignes-kpi-value">{alerteCount}</span>
-                        <span className="lignes-kpi-label">Alerte{alerteCount > 1 ? 's' : ''}</span>
                     </div>
                 </div>
             </div>
@@ -289,12 +271,11 @@ function SageBfcLignes({ lignes, sortedMonths, formatMonthShort }) {
                             <th onClick={() => handleSort('montant_absolu')} className="sortable th-right">
                                 |Montant| <SortIcon field="montant_absolu" />
                             </th>
-                            <th className="th-center">Alertes</th>
                         </tr>
                     </thead>
                     <tbody>
                         {paginatedLignes.map((ligne, idx) => (
-                            <tr key={idx} className={`${ligne.is_principal ? 'row-principal' : ''} ${ligne.alertes.length > 0 ? 'row-alerte' : ''}`}>
+                            <tr key={idx} className={`${ligne.is_principal ? 'row-principal' : ''}`}>
                                 {sortedMonths && sortedMonths.length > 1 && (
                                     <td className="cell-center">
                                         <span className="month-mini-badge">
@@ -328,24 +309,6 @@ function SageBfcLignes({ lignes, sortedMonths, formatMonthShort }) {
                                 </td>
                                 <td className="cell-montant">
                                     {fmt(ligne.montant_absolu)}
-                                </td>
-                                <td className="cell-center">
-                                    {ligne.alertes.length > 0 ? (
-                                        <span className="alerte-indicator" title={ligne.alertes.join('\n')}>
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '14px', height: '14px', verticalAlign: 'middle'}}>
-                                                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
-                                                <line x1="12" y1="9" x2="12" y2="13"/>
-                                                <line x1="12" y1="17" x2="12.01" y2="17"/>
-                                            </svg>
-                                            {' '}{ligne.alertes.length}
-                                        </span>
-                                    ) : (
-                                        <span className="no-alerte">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{width: '14px', height: '14px', opacity: 0.3}}>
-                                                <polyline points="20 6 9 17 4 12"/>
-                                            </svg>
-                                        </span>
-                                    )}
                                 </td>
                             </tr>
                         ))}

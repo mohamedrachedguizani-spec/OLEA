@@ -49,9 +49,6 @@ class SageBalanceParser:
         # Calculs agrégats
         agregats = self.mapper.calculer_agregats(lignes_bfc)
         
-        # Validations
-        validations = self.mapper.executer_validations(lignes_bfc, agregats, periode)
-        
         # Construction réponse
         resume = TableauBFCSummary(
             periode=periode,
@@ -66,6 +63,9 @@ class SageBalanceParser:
             impots_taxes=float(agregats['impots_taxes']),
             fonctionnement=float(agregats['fonctionnement']),
             autres_charges=float(agregats['autres_charges']),
+            brand_fees=float(agregats['brand_fees']),
+            management_fees=float(agregats['management_fees']),
+            interco_charges=float(agregats['interco_charges']),
             total_charges=float(agregats['total_charges']),
             ebitda=float(agregats['ebitda']),
             ebitda_pct=float(agregats['ebitda_pct']),
@@ -82,9 +82,7 @@ class SageBalanceParser:
         return TableauBFCResponse(
             periode=periode,
             lignes=lignes_bfc,
-            resume=resume,
-            validations=validations,
-            alertes_globales=[]
+            resume=resume
         )
     
     def _read_excel(self, content: bytes) -> pd.DataFrame:
@@ -115,27 +113,57 @@ class SageBalanceParser:
         cols = {str(c).lower().strip(): c for c in df.columns}
         detected = {}
         
-        # Code compte
-        patterns_code = ['compte', 'code', 'n° compte', 'numéro', 'numero', 'account']
-        for pattern in patterns_code:
-            for col_lower, col_orig in cols.items():
-                if pattern in col_lower:
-                    detected['code'] = col_orig
-                    break
-            if 'code' in detected:
+        # Code compte — priorité aux colonnes contenant "code" (exclure "libellé")
+        for col_lower, col_orig in cols.items():
+            if 'code' in col_lower and 'libellé' not in col_lower and 'libelle' not in col_lower:
+                detected['code'] = col_orig
                 break
+        if 'code' not in detected:
+            patterns_code = ['n° compte', 'numéro', 'numero', 'compte', 'account']
+            for pattern in patterns_code:
+                for col_lower, col_orig in cols.items():
+                    if pattern in col_lower and 'libellé' not in col_lower and 'libelle' not in col_lower:
+                        detected['code'] = col_orig
+                        break
+                if 'code' in detected:
+                    break
         
-        # Libellé
+        # Libellé — exclure la colonne déjà utilisée pour le code
+        code_col_lower = str(detected.get('code', '')).lower().strip()
         patterns_lib = ['libellé', 'intitulé', 'nom', 'description', 'libelle', 'intitule']
         for pattern in patterns_lib:
             for col_lower, col_orig in cols.items():
-                if pattern in col_lower:
+                if pattern in col_lower and col_lower != code_col_lower:
                     detected['libelle'] = col_orig
                     break
             if 'libelle' in detected:
                 break
         
-        # Montant/Solde
+        # ── Débit / Crédit (priorité aux colonnes "cumulé") ──
+        debit_candidates = []
+        credit_candidates = []
+        for col_lower, col_orig in cols.items():
+            if any(x in col_lower for x in ['débit', 'debit']):
+                debit_candidates.append((col_lower, col_orig))
+            if any(x in col_lower for x in ['crédit', 'credit']):
+                credit_candidates.append((col_lower, col_orig))
+        
+        # Privilégier "cumulé", sinon "période", sinon le premier trouvé
+        def _pick_best(candidates, priority_keywords=('cumulé', 'cumule', 'cumul')):
+            for kw in priority_keywords:
+                for cl, co in candidates:
+                    if kw in cl:
+                        return co
+            return candidates[0][1] if candidates else None
+        
+        best_debit = _pick_best(debit_candidates)
+        best_credit = _pick_best(credit_candidates)
+        if best_debit:
+            detected['debit'] = best_debit
+        if best_credit:
+            detected['credit'] = best_credit
+        
+        # ── Montant / Solde (optionnel si débit+crédit trouvés) ──
         patterns_montant = ['solde', 'balance', 'montant', 'total', 'amount', 'value']
         for pattern in patterns_montant:
             for col_lower, col_orig in cols.items():
@@ -145,21 +173,21 @@ class SageBalanceParser:
             if 'montant' in detected:
                 break
         
-        # Débit/Crédit optionnels
-        for col_lower, col_orig in cols.items():
-            if any(x in col_lower for x in ['débit', 'debit']):
-                detected['debit'] = col_orig
-            if any(x in col_lower for x in ['crédit', 'credit']):
-                detected['credit'] = col_orig
-        
         return detected
     
     def _parse_dataframe(self, df: pd.DataFrame) -> List[LigneComptableSage]:
         """Parse le DataFrame en objets LigneComptableSage"""
         columns = self._detect_columns(df)
         
-        if 'code' not in columns or 'montant' not in columns:
-            raise ValueError(f"Colonnes essentielles non détectées. Colonnes trouvées: {list(df.columns)}")
+        has_montant = 'montant' in columns
+        has_debit_credit = 'debit' in columns and 'credit' in columns
+        
+        if 'code' not in columns or (not has_montant and not has_debit_credit):
+            raise ValueError(
+                f"Colonnes essentielles non détectées. "
+                f"Il faut au minimum 'Code compte' + ('Solde/Montant' OU 'Débit'+'Crédit'). "
+                f"Colonnes trouvées: {list(df.columns)}"
+            )
         
         lignes = []
         
@@ -179,18 +207,16 @@ class SageBalanceParser:
                     libelle = ''
                 
                 # Montants
-                montant = self._parse_montant(row[columns['montant']])
                 debit = Decimal('0')
                 credit = Decimal('0')
+                montant = Decimal('0')
                 
-                if 'debit' in columns:
+                if has_debit_credit:
                     debit = self._parse_montant(row.get(columns['debit'], 0))
-                if 'credit' in columns:
                     credit = self._parse_montant(row.get(columns['credit'], 0))
-                
-                # Recalcule solde si débit/crédit présents
-                if debit != 0 or credit != 0:
                     montant = credit - debit
+                elif has_montant:
+                    montant = self._parse_montant(row[columns['montant']])
                 
                 lignes.append(LigneComptableSage(
                     code_compte=code,
@@ -206,10 +232,10 @@ class SageBalanceParser:
         return lignes
     
     def _is_valid_code_compte(self, code: str) -> bool:
-        """Valide le format du code compte SAGE"""
+        """Valide le format du code compte SAGE (5 à 7 chiffres + suffixe optionnel)"""
         if not code:
             return False
-        return bool(re.match(r'^\d{6,7}[A-Z]?$', str(code).strip()))
+        return bool(re.match(r'^\d{5,7}[A-Z]?$', str(code).strip()))
     
     def _parse_montant(self, valeur) -> Decimal:
         """Parse un montant avec nettoyage"""

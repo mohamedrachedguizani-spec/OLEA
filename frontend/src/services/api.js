@@ -308,14 +308,14 @@ class ApiService {
         return response.json();
     }
 
-    // Dashboard statistiques
-    static async getDashboardStats(dateDebut = null, dateFin = null) {
+    // Dashboard global — agrège tous les modules
+    static async getGlobalDashboard(dateDebut = null, dateFin = null) {
         const params = {};
         if (dateDebut) params.date_debut = dateDebut;
         if (dateFin) params.date_fin = dateFin;
         
         const queryParams = new URLSearchParams(params).toString();
-        const response = await ApiService._fetch(`${API_BASE_URL}/dashboard-stats/?${queryParams}`);
+        const response = await ApiService._fetch(`${API_BASE_URL}/global-dashboard/?${queryParams}`);
         return response.json();
     }
 

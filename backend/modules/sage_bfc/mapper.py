@@ -3,7 +3,7 @@ from typing import Dict, Any, List
 from datetime import date
 import re
 
-from .models import LigneComptableSage, LigneBudgetBFC, ValidationResult
+from .models import LigneComptableSage, LigneBudgetBFC
 
 class SageBFCMapper:
     """
@@ -51,17 +51,13 @@ class SageBFCMapper:
         if not config:
             return None
         
-        # Ajustement montant selon sens
+        # Ajustement montant selon sens (défaut: "+")
+        sens = config.get('sens', '+')
         montant = ligne_sage.solde
-        if config['sens'] == '-' and montant > 0:
+        if sens == '-' and montant > 0:
             montant = -montant
-        elif config['sens'] == '+' and montant < 0:
+        elif sens == '+' and montant < 0:
             montant = abs(montant)
-        
-        # Alertes spécifiques
-        alertes = []
-        if config.get('validation_interco'):
-            alertes.append(f"Validation interco requise: {config['validation_interco'].get('type', 'N/A')}")
         
         return LigneBudgetBFC(
             code_sage=ligne_sage.code_compte,
@@ -69,7 +65,7 @@ class SageBFCMapper:
             agregat_bfc=config['agregat_bfc'],
             categorie=config['categorie'],
             type_ligne=config['type'],
-            sens=config['sens'],
+            sens=sens,
             montant=montant,
             montant_absolu=abs(montant),
             sous_categorie=config.get('sous_categorie'),
@@ -77,7 +73,6 @@ class SageBFCMapper:
             bpc_mapping=config.get('bpc_mapping'),
             bfc_mapping=config.get('bfc_mapping'),
             validation_interco=config.get('validation_interco'),
-            alertes=alertes,
             periode=periode,
             source_fichier=source
         )
@@ -113,11 +108,18 @@ class SageBFCMapper:
         charges_except = abs(sum_by_agregat('Charges Exceptionnelles'))
         impot_societes = abs(sum_by_agregat('Impôt sur les sociétés'))
         
+        # Charges interco (Brand Fees + Management Fees)
+        brand_fees = abs(sum_by_agregat('Brand Fees'))
+        management_fees = abs(sum_by_agregat('Management Fees'))
+        interco_charges = brand_fees + management_fees
+        
         # Calculs P&L
         ca_net = ca_brut - retrocessions
         total_produits = ca_net + autres_produits
         
-        total_charges = frais_personnel + honoraires + frais_commerciaux + impots_taxes + fonctionnement + autres_charges
+        total_charges = (frais_personnel + honoraires + frais_commerciaux 
+                        + impots_taxes + fonctionnement + autres_charges 
+                        + interco_charges)
         
         ebitda = total_produits - total_charges
         ebitda_pct = (ebitda / ca_net * 100) if ca_net else Decimal('0')
@@ -141,6 +143,9 @@ class SageBFCMapper:
             'impots_taxes': impots_taxes,
             'fonctionnement': fonctionnement,
             'autres_charges': autres_charges,
+            'brand_fees': brand_fees,
+            'management_fees': management_fees,
+            'interco_charges': interco_charges,
             'total_charges': total_charges,
             'ebitda': ebitda,
             'ebitda_pct': ebitda_pct,
@@ -154,53 +159,6 @@ class SageBFCMapper:
             'resultat_net_pct': resultat_net_pct
         }
     
-    def executer_validations(self, lignes: List[LigneBudgetBFC], 
-                           agregats: Dict[str, Decimal], 
-                           periode: date) -> List[ValidationResult]:
-        """Exécute les validations interco"""
-        validations = []
-        validations_config = self.mapping.get('validations_interco', {})
-        
-        # Validation IT Costs (3%)
-        if validations_config.get('it_costs', {}).get('actif'):
-            it_montant = sum(
-                l.montant_absolu for l in lignes 
-                if l.sous_categorie == 'IT Costs'
-            )
-            ca = agregats['ca_brut']
-            attendu = ca * Decimal('0.03')
-            ecart = abs(it_montant - attendu)
-            tolerance = validations_config['it_costs'].get('tolerance_absolue', 500)
-            
-            validations.append(ValidationResult(
-                nom='IT Costs vs CA (3%)',
-                montant_reel=float(it_montant),
-                montant_attendu=float(attendu),
-                ecart=float(ecart),
-                statut='OK' if ecart <= tolerance else 'ALERTE',
-                description=f'IT Costs: {it_montant:,.2f} vs Attendu: {attendu:,.2f} (3% du CA)'
-            ))
-        
-        # Validation Brand Fees (0.83% sur T4)
-        if validations_config.get('brand_fees', {}).get('actif') and periode.month >= 10:
-            brand_montant = sum(
-                l.montant_absolu for l in lignes 
-                if l.sous_categorie == 'Frais de marque' or 'brand' in l.libelle_sage.lower()
-            )
-            ca_trimestre = agregats['ca_brut']
-            attendu = ca_trimestre * Decimal('0.0083')
-            
-            validations.append(ValidationResult(
-                nom='Brand Fees T4 (0.83%)',
-                montant_reel=float(brand_montant),
-                montant_attendu=float(attendu),
-                ecart=float(abs(brand_montant - attendu)),
-                statut='INFO',
-                description='Validation T4 uniquement - 0.83% du CA'
-            ))
-        
-        return validations
-    
     def get_stats(self) -> Dict[str, Any]:
         """Retourne les statistiques du mapping"""
         categories = {}
@@ -208,16 +166,11 @@ class SageBFCMapper:
             cat = v.get('categorie', 'N/A')
             categories[cat] = categories.get(cat, 0) + 1
         
-        validations_actives = [
-            k for k, v in self.mapping.get('validations_interco', {}).items() 
-            if v.get('actif')
-        ]
-        
         return {
             'version': self.mapping.get('version', 'unknown'),
             'description': self.mapping.get('description', ''),
             'total_codes_mappes': len(self.flat_mapping),
             'categories': list(categories.keys()),
             'codes_par_categorie': categories,
-            'validations_actives': validations_actives
+            'validations_actives': []
         }

@@ -16,7 +16,6 @@ from .models import (
     TableauBFCResponse, 
     MappingStats, 
     ParseRequest,
-    ValidationResult,
     MonthlyDataSummary,
     MonthlyDataFull
 )
@@ -148,7 +147,8 @@ async def export_excel(tableau_id: str):
                     'CA BRUT', 'Rétrocessions', 'CA NET',
                     'Autres Produits', 'TOTAL PRODUITS',
                     '', 'Frais Personnel', 'Honoraires', 'Frais Commerciaux',
-                    'Impôts', 'Fonctionnement', 'Autres Charges', 'TOTAL CHARGES',
+                    'Impôts', 'Fonctionnement', 'Autres Charges',
+                    'Brand Fees', 'Management Fees', 'TOTAL CHARGES',
                     '', 'EBITDA', 'EBITDA %',
                     'Produits Financiers', 'Charges Financières', 'Résultat Financier',
                     'Dotations', 'Résultat avant Impôt', 'Impôt', 'RÉSULTAT NET', 'RN %'
@@ -160,6 +160,7 @@ async def export_excel(tableau_id: str):
                     tableau.resume.frais_personnel, tableau.resume.honoraires,
                     tableau.resume.frais_commerciaux, tableau.resume.impots_taxes,
                     tableau.resume.fonctionnement, tableau.resume.autres_charges,
+                    tableau.resume.brand_fees, tableau.resume.management_fees,
                     tableau.resume.total_charges,
                     '',
                     tableau.resume.ebitda, f"{tableau.resume.ebitda_pct:.2f}%",
@@ -174,11 +175,6 @@ async def export_excel(tableau_id: str):
             df_resume.to_excel(writer, sheet_name='Résumé P&L', index=False)
             worksheet2 = writer.sheets['Résumé P&L']
             worksheet2.set_column('B:B', 20, money_format)
-            
-            # Feuille 3: Validations
-            if tableau.validations:
-                df_val = pd.DataFrame([v.dict() for v in tableau.validations])
-                df_val.to_excel(writer, sheet_name='Validations', index=False)
         
         output.seek(0)
         
@@ -193,23 +189,6 @@ async def export_excel(tableau_id: str):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur d'export: {str(e)}")
-
-@router.get("/validations/config")
-async def get_validations_config():
-    """
-    Récupère la configuration des validations interco
-    """
-    config = get_mapping_config()
-    return config.get('validations_interco', {})
-
-@router.post("/validations/verifier")
-async def verifier_validations(
-    validations: list[ValidationResult]
-):
-    """
-    Vérifie manuellement des validations spécifiques
-    """
-    return {"status": "validé", "count": len(validations)}
 
 
 # ===================== Helper: Sauvegarder en BDD =====================
@@ -249,35 +228,19 @@ def _serialize_resume(resume):
         d = result
     return json.dumps(d, default=str)
 
-def _serialize_validations(validations):
-    """Sérialise les validations en JSON"""
-    serialized = []
-    for v in validations:
-        if hasattr(v, 'model_dump'):
-            serialized.append(v.model_dump(mode='json'))
-        elif hasattr(v, 'dict'):
-            serialized.append(v.dict())
-        else:
-            serialized.append(v)
-    return json.dumps(serialized, default=str)
-
 def _save_monthly_data(resultat: TableauBFCResponse, file_name: str):
     """Sauvegarde ou met à jour les données mensuelles en BDD"""
     resume_json = _serialize_resume(resultat.resume)
     lignes_json = _serialize_lignes(resultat.lignes)
-    validations_json = _serialize_validations(resultat.validations)
-    alertes_json = json.dumps(resultat.alertes_globales, default=str)
     
     with db.get_cursor() as cursor:
         cursor.execute("""
             INSERT INTO sage_bfc_monthly 
-                (periode, resume, lignes, validations, alertes_globales, file_name, lignes_count)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                (periode, resume, lignes, file_name, lignes_count)
+            VALUES (%s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
                 resume = VALUES(resume),
                 lignes = VALUES(lignes),
-                validations = VALUES(validations),
-                alertes_globales = VALUES(alertes_globales),
                 file_name = VALUES(file_name),
                 lignes_count = VALUES(lignes_count),
                 updated_at = CURRENT_TIMESTAMP
@@ -285,8 +248,6 @@ def _save_monthly_data(resultat: TableauBFCResponse, file_name: str):
             resultat.periode,
             resume_json,
             lignes_json,
-            validations_json,
-            alertes_json,
             file_name,
             len(resultat.lignes)
         ))
@@ -337,7 +298,7 @@ async def get_monthly_detail(periode: str):
     with db.get_cursor() as cursor:
         cursor.execute("""
             SELECT periode, file_name, lignes_count, resume, lignes, 
-                   validations, alertes_globales, created_at, updated_at
+                   created_at, updated_at
             FROM sage_bfc_monthly
             WHERE periode = %s
         """, (periode,))
@@ -348,8 +309,6 @@ async def get_monthly_detail(periode: str):
     
     resume_data = row['resume'] if isinstance(row['resume'], dict) else json.loads(row['resume'])
     lignes_data = row['lignes'] if isinstance(row['lignes'], list) else json.loads(row['lignes'])
-    validations_data = row['validations'] if isinstance(row['validations'], list) else json.loads(row['validations']) if row['validations'] else []
-    alertes_data = row['alertes_globales'] if isinstance(row['alertes_globales'], list) else json.loads(row['alertes_globales']) if row['alertes_globales'] else []
     
     return MonthlyDataFull(
         periode=row['periode'],
@@ -357,8 +316,6 @@ async def get_monthly_detail(periode: str):
         lignes_count=row['lignes_count'],
         resume=resume_data,
         lignes=lignes_data,
-        validations=validations_data,
-        alertes_globales=alertes_data,
         created_at=str(row['created_at']) if row['created_at'] else None,
         updated_at=str(row['updated_at']) if row['updated_at'] else None
     )

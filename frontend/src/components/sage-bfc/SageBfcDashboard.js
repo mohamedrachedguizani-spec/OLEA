@@ -36,8 +36,6 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
             fullLabel: formatMonthLabel(m),
             resume: monthlyData[m]?.result?.resume || {},
             lignesCount: monthlyData[m]?.result?.lignes?.length || monthlyData[m]?.lignesCount || 0,
-            validationsCount: monthlyData[m]?.result?.validations?.length || 0,
-            alertesCount: (monthlyData[m]?.result?.validations || []).filter(v => v.statut === 'ALERTE').length,
             uploadDate: monthlyData[m]?.uploadDate
         }));
     }, [sortedMonths, monthlyData, formatMonthShort, formatMonthLabel]);
@@ -55,6 +53,8 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
         { key: 'impots_taxes', label: 'Impôts & Taxes', section: 'charges', bold: false },
         { key: 'fonctionnement', label: 'Fonctionnement', section: 'charges', bold: false },
         { key: 'autres_charges', label: 'Autres Charges', section: 'charges', bold: false },
+        { key: 'brand_fees', label: 'Brand Fees', section: 'charges', bold: false },
+        { key: 'management_fees', label: 'Management Fees', section: 'charges', bold: false },
         { key: 'total_charges', label: 'Total Charges', section: 'charges', bold: true, isTotal: true },
         { key: 'ebitda', label: 'EBITDA', section: 'ebitda', bold: true, highlight: true },
         { key: 'ebitda_pct', label: 'Marge EBITDA %', section: 'ebitda', bold: false, isPct: true },

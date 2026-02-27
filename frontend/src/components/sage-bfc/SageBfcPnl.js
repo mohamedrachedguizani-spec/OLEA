@@ -70,6 +70,8 @@ function SageBfcPnl({ resume, previousResume }) {
                 { label: 'Impôts et Taxes', value: resume.impots_taxes, prevValue: previousResume?.impots_taxes },
                 { label: 'Fonctionnement Courant', value: resume.fonctionnement, prevValue: previousResume?.fonctionnement },
                 { label: 'Autres Charges', value: resume.autres_charges, prevValue: previousResume?.autres_charges },
+                { label: 'Brand Fees', value: resume.brand_fees, prevValue: previousResume?.brand_fees },
+                { label: 'Management Fees', value: resume.management_fees, prevValue: previousResume?.management_fees },
                 { label: 'TOTAL CHARGES', value: resume.total_charges, prevValue: previousResume?.total_charges, bold: true, isTotal: true }
             ]
         },
