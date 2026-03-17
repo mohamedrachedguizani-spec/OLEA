@@ -12,3 +12,7 @@ pandas
 python-jose[cryptography]
 passlib[bcrypt]
 bcrypt==4.0.1
+statsmodels
+scikit-learn
+numpy
+scipy

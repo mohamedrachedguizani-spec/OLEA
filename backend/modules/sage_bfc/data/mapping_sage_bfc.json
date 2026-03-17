@@ -259,11 +259,11 @@
   "mapping_interco_frais": {
     "61104T": {
       "libelle_sage": "BRAND FEES OLEA HOLDING",
-      "agregat_bfc": "Brand Fees",
-      "categorie": "COÛTS INTERCO",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
       "type": "Charge",
       "sens": "-",
-      "sous_categorie": "Frais de marque",
+      "sous_categorie": "Brand Fees",
       "bpc_mapping": "R61100",
       "bfc_mapping": "G611104",
       "validation_interco": {
@@ -276,11 +276,11 @@
     },
       "6311000T": {
       "libelle_sage": "REDEVANCE / CONCESSION, MARQUE, LICENCE, PROCEDE, DROITS ET VALEURS SIMILAIRES",
-      "agregat_bfc": "Brand Fees",
-      "categorie": "COÛTS INTERCO",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
       "type": "Charge",
       "sens": "-",
-      "sous_categorie": "Frais de marque",
+      "sous_categorie": "Brand Fees",
       "bpc_mapping": "R63110",
       "bfc_mapping": "G611104",
       "validation_interco": {
@@ -293,11 +293,11 @@
     },
     "61104T-MGT": {
       "libelle_sage": "MGMT FEES OLEA HOLDING",
-      "agregat_bfc": "Management Fees",
-      "categorie": "COÛTS INTERCO",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "categorie": "COÛTS",
       "type": "Charge",
       "sens": "-",
-      "sous_categorie": "Frais de gestion",
+      "sous_categorie": "Management Fees",
       "bpc_mapping": "R61100",
       "bfc_mapping": "G611104",
       "validation_interco": {
@@ -1069,8 +1069,8 @@
       "dependances": ["CA Net", "Autres Produits d'Exploitation"]
     },
     "total_charges_courantes": {
-      "formule": "Frais de Personnel + Honoraires & Sous-traitance + Frais Commerciaux + Impôts et taxes + Fonctionnement Courant + Autres Charges + Brand Fees + Management Fees",
-      "dependances": ["Frais de Personnel", "Honoraires & Sous-traitance", "Frais Commerciaux", "Impôts et taxes", "Fonctionnement Courant", "Autres Charges", "Brand Fees", "Management Fees"]
+      "formule": "Frais de Personnel + Honoraires & Sous-traitance (incl. Brand Fees + Management Fees) + Frais Commerciaux + Impôts et taxes + Fonctionnement Courant + Autres Charges",
+      "dependances": ["Frais de Personnel", "Honoraires & Sous-traitance", "Frais Commerciaux", "Impôts et taxes", "Fonctionnement Courant", "Autres Charges"]
     },
     "ebitda": {
       "formule": "Total Produits d'Exploitation - Total Charges Courantes",

@@ -217,12 +217,18 @@ function SageBfcParser({ refreshTrigger }) {
         }
     }, [selectedMonth, loadMonthDetail]);
 
-    // Charger tous les détails quand on accède aux lignes (besoin de toutes les lignes)
+    // Charger tous les détails quand on accède aux lignes ou au P&L (besoin des lignes pour le détail)
     useEffect(() => {
-        if (activeTab === 'lignes' && sortedMonths.length > 0) {
-            loadAllMonthDetails();
+        if ((activeTab === 'lignes' || activeTab === 'pnl') && sortedMonths.length > 0) {
+            if (activeTab === 'lignes') {
+                loadAllMonthDetails();
+            } else if (activeTab === 'pnl' && selectedMonth && selectedMonth !== ALL_PERIODS_KEY) {
+                loadMonthDetail(selectedMonth);
+            } else if (activeTab === 'pnl' && selectedMonth === ALL_PERIODS_KEY) {
+                loadAllMonthDetails();
+            }
         }
-    }, [activeTab, sortedMonths.length, loadAllMonthDetails]);
+    }, [activeTab, sortedMonths.length, selectedMonth, loadAllMonthDetails, loadMonthDetail]);
 
     // Charger tous les détails quand on sélectionne la vue consolidée
     useEffect(() => {
@@ -567,6 +573,7 @@ function SageBfcParser({ refreshTrigger }) {
                             <SageBfcPnl
                                 resume={currentResult.resume}
                                 previousResume={previousResult?.resume}
+                                lignes={currentResult.lignes || []}
                             />
                         )}
                         {activeTab === 'lignes' && (

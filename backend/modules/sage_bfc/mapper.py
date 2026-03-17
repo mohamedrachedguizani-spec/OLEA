@@ -98,7 +98,7 @@ class SageBFCMapper:
         # Charges: abs() car le mapper les a déjà négativées via sens="-"
         retrocessions = abs(sum_by_agregat('Retrocessions'))
         frais_personnel = abs(sum_by_agregat('Frais de Personnel'))
-        honoraires = abs(sum_by_agregat('Honoraires & Sous-traitance'))
+        honoraires = abs(sum_by_agregat('Honoraires & Sous-traitance'))  # inclut Brand Fees + Management Fees
         frais_commerciaux = abs(sum_by_agregat('Frais Commerciaux'))
         impots_taxes = abs(sum_by_agregat('Impôts et taxes'))
         fonctionnement = abs(sum_by_agregat('Fonctionnement Courant'))
@@ -108,18 +108,21 @@ class SageBFCMapper:
         charges_except = abs(sum_by_agregat('Charges Exceptionnelles'))
         impot_societes = abs(sum_by_agregat('Impôt sur les sociétés'))
         
-        # Charges interco (Brand Fees + Management Fees)
-        brand_fees = abs(sum_by_agregat('Brand Fees'))
-        management_fees = abs(sum_by_agregat('Management Fees'))
-        interco_charges = brand_fees + management_fees
+        # Sous-totaux Brand Fees et Management Fees (sous-éléments de Honoraires)
+        def sum_by_sous_cat(nom: str) -> Decimal:
+            return sum((l.montant for l in lignes if l.sous_categorie == nom), Decimal('0'))
+        
+        brand_fees = abs(sum_by_sous_cat('Brand Fees'))
+        management_fees = abs(sum_by_sous_cat('Management Fees'))
+        interco_charges = brand_fees + management_fees  # sous-total interco dans Honoraires
         
         # Calculs P&L
         ca_net = ca_brut - retrocessions
         total_produits = ca_net + autres_produits
         
+        # honoraires inclut désormais brand_fees + management_fees
         total_charges = (frais_personnel + honoraires + frais_commerciaux 
-                        + impots_taxes + fonctionnement + autres_charges 
-                        + interco_charges)
+                        + impots_taxes + fonctionnement + autres_charges)
         
         ebitda = total_produits - total_charges
         ebitda_pct = (ebitda / ca_net * 100) if ca_net else Decimal('0')

@@ -1,6 +1,22 @@
 // src/components/sage-bfc/SageBfcLignes.js
 import React, { useState, useMemo } from 'react';
 
+// Normalisation pour les anciennes données stockées avant la migration
+const AGREGAT_ALIASES = {
+    'Brand Fees': 'Honoraires & Sous-traitance',
+    'Management Fees': 'Honoraires & Sous-traitance'
+};
+const CATEGORIE_ALIASES = {
+    'COÛTS INTERCO': 'COÛTS'
+};
+
+function normalizeLigne(l) {
+    const agregat = AGREGAT_ALIASES[l.agregat_bfc] || l.agregat_bfc;
+    const categorie = CATEGORIE_ALIASES[l.categorie] || l.categorie;
+    if (agregat === l.agregat_bfc && categorie === l.categorie) return l;
+    return { ...l, agregat_bfc: agregat, categorie };
+}
+
 function SageBfcLignes({ lignes, sortedMonths, formatMonthShort }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterType, setFilterType] = useState('all'); // all | Produit | Charge
@@ -12,18 +28,21 @@ function SageBfcLignes({ lignes, sortedMonths, formatMonthShort }) {
     const [currentPage, setCurrentPage] = useState(1);
     const pageSize = 25;
 
+    // Normaliser les lignes (pour compatibilité avec anciennes données en base)
+    const normalizedLignes = useMemo(() => lignes.map(normalizeLigne), [lignes]);
+
     // Extraire les catégories et agrégats uniques
     const categories = useMemo(() => {
-        return [...new Set(lignes.map(l => l.categorie))].sort();
-    }, [lignes]);
+        return [...new Set(normalizedLignes.map(l => l.categorie))].sort();
+    }, [normalizedLignes]);
 
     const agregats = useMemo(() => {
-        return [...new Set(lignes.map(l => l.agregat_bfc))].sort();
-    }, [lignes]);
+        return [...new Set(normalizedLignes.map(l => l.agregat_bfc))].sort();
+    }, [normalizedLignes]);
 
     // Filtrage et tri
     const filteredLignes = useMemo(() => {
-        let result = [...lignes];
+        let result = [...normalizedLignes];
 
         // Filtre mois
         if (filterMois !== 'all') {

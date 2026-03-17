@@ -48,13 +48,13 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
         { key: 'autres_produits', label: 'Autres Produits', section: 'produits', bold: false },
         { key: 'total_produits', label: 'Total Produits', section: 'produits', bold: true, isTotal: true },
         { key: 'frais_personnel', label: 'Frais Personnel', section: 'charges', bold: false },
-        { key: 'honoraires', label: 'Honoraires', section: 'charges', bold: false },
+        { key: 'honoraires', label: 'Honoraires & Sous-trait.', section: 'charges', bold: false },
+        /* { key: 'brand_fees', label: '↳ dont Brand Fees', section: 'charges', bold: false, isSubItem: true },
+        { key: 'management_fees', label: '↳ dont Mgmt Fees', section: 'charges', bold: false, isSubItem: true }, */
         { key: 'frais_commerciaux', label: 'Frais Commerciaux', section: 'charges', bold: false },
         { key: 'impots_taxes', label: 'Impôts & Taxes', section: 'charges', bold: false },
         { key: 'fonctionnement', label: 'Fonctionnement', section: 'charges', bold: false },
         { key: 'autres_charges', label: 'Autres Charges', section: 'charges', bold: false },
-        { key: 'brand_fees', label: 'Brand Fees', section: 'charges', bold: false },
-        { key: 'management_fees', label: 'Management Fees', section: 'charges', bold: false },
         { key: 'total_charges', label: 'Total Charges', section: 'charges', bold: true, isTotal: true },
         { key: 'ebitda', label: 'EBITDA', section: 'ebitda', bold: true, highlight: true },
         { key: 'ebitda_pct', label: 'Marge EBITDA %', section: 'ebitda', bold: false, isPct: true },
@@ -208,7 +208,7 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
                                     return (
                                         <tr
                                             key={row.key}
-                                            className={`comparison-row ${row.bold ? 'bold' : ''} ${row.isTotal ? 'total-row' : ''} ${row.highlight ? 'highlight-row' : ''} section-${row.section}`}
+                                            className={`comparison-row ${row.bold ? 'bold' : ''} ${row.isTotal ? 'total-row' : ''} ${row.highlight ? 'highlight-row' : ''} ${row.isSubItem ? 'sub-item-row' : ''} section-${row.section}`}
                                         >
                                             <td className="comparison-label">{row.label}</td>
                                             {monthsData.map(m => {

@@ -1,16 +1,27 @@
 // src/components/sage-bfc/SageBfcPnl.js
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 
-function SageBfcPnl({ resume, previousResume }) {
+// Normalisation pour données stockées avant la migration du mapping
+const AGREGAT_ALIASES = {
+    'Brand Fees': 'Honoraires & Sous-traitance',
+    'Management Fees': 'Honoraires & Sous-traitance'
+};
+
+function SageBfcPnl({ resume, previousResume, lignes = [] }) {
     const [expandedSections, setExpandedSections] = useState({
         produits: true,
         charges: true,
         financier: false,
         resultat: true
     });
+    const [expandedAgregat, setExpandedAgregat] = useState(null);
 
     const toggleSection = (section) => {
         setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+    };
+
+    const toggleAgregat = (agregat) => {
+        setExpandedAgregat(prev => prev === agregat ? null : agregat);
     };
 
     const fmt = (val) => {
@@ -34,6 +45,30 @@ function SageBfcPnl({ resume, previousResume }) {
         return ((currentVal - prevVal) / Math.abs(prevVal)) * 100;
     };
 
+    // Grouper les lignes par agrégat pour le détail des codes
+    // AGREGAT_ALIASES est défini au niveau module pour compatibilité anciennes données
+    const lignesByAgregat = useMemo(() => {
+        const map = {};
+        lignes.forEach(l => {
+            const key = AGREGAT_ALIASES[l.agregat_bfc] || l.agregat_bfc;
+            if (!map[key]) map[key] = [];
+            map[key].push(l);
+        });
+        return map;
+    }, [lignes]);
+
+    // Compatibilité rétro : avant la migration, honoraires ne contenait pas brand_fees/management_fees.
+    // Détecter les anciennes données via les lignes (agrégat 'Brand Fees' ou 'Management Fees' encore présent).
+    const hasLegacyAgregats = useMemo(
+        () => lignes.some(l => l.agregat_bfc === 'Brand Fees' || l.agregat_bfc === 'Management Fees'),
+        [lignes]
+    );
+    const effectiveHonoraires = r => r
+        ? hasLegacyAgregats
+            ? (r.honoraires || 0) + (r.brand_fees || 0) + (r.management_fees || 0)
+            : (r.honoraires || 0)
+        : 0;
+
     const pnlSections = [
         {
             key: 'produits',
@@ -46,10 +81,10 @@ function SageBfcPnl({ resume, previousResume }) {
             ),
             color: 'green',
             lines: [
-                { label: 'Chiffre d\'Affaires Brut', value: resume.ca_brut, prevValue: previousResume?.ca_brut },
-                { label: 'Rétrocessions', value: -resume.retrocessions, prevValue: previousResume ? -previousResume.retrocessions : null },
+                { label: 'Chiffre d\'Affaires Brut', value: resume.ca_brut, prevValue: previousResume?.ca_brut, agregat: 'CA Brut' },
+                { label: 'Rétrocessions', value: -resume.retrocessions, prevValue: previousResume ? -previousResume.retrocessions : null, agregat: 'Retrocessions' },
                 { label: 'Chiffre d\'Affaires Net', value: resume.ca_net, prevValue: previousResume?.ca_net, bold: true, isSubtotal: true },
-                { label: 'Autres Produits d\'Exploitation', value: resume.autres_produits, prevValue: previousResume?.autres_produits },
+                { label: 'Autres Produits d\'Exploitation', value: resume.autres_produits, prevValue: previousResume?.autres_produits, agregat: 'Autres Produits d\'Exploitation' },
                 { label: 'TOTAL PRODUITS', value: resume.total_produits, prevValue: previousResume?.total_produits, bold: true, isTotal: true }
             ]
         },
@@ -64,14 +99,12 @@ function SageBfcPnl({ resume, previousResume }) {
             ),
             color: 'red',
             lines: [
-                { label: 'Frais de Personnel', value: resume.frais_personnel, prevValue: previousResume?.frais_personnel },
-                { label: 'Honoraires & Sous-traitance', value: resume.honoraires, prevValue: previousResume?.honoraires },
-                { label: 'Frais Commerciaux', value: resume.frais_commerciaux, prevValue: previousResume?.frais_commerciaux },
-                { label: 'Impôts et Taxes', value: resume.impots_taxes, prevValue: previousResume?.impots_taxes },
-                { label: 'Fonctionnement Courant', value: resume.fonctionnement, prevValue: previousResume?.fonctionnement },
-                { label: 'Autres Charges', value: resume.autres_charges, prevValue: previousResume?.autres_charges },
-                { label: 'Brand Fees', value: resume.brand_fees, prevValue: previousResume?.brand_fees },
-                { label: 'Management Fees', value: resume.management_fees, prevValue: previousResume?.management_fees },
+                { label: 'Frais de Personnel', value: resume.frais_personnel, prevValue: previousResume?.frais_personnel, agregat: 'Frais de Personnel' },
+                { label: 'Honoraires & Sous-traitance', value: effectiveHonoraires(resume), prevValue: effectiveHonoraires(previousResume), agregat: 'Honoraires & Sous-traitance' },
+                { label: 'Frais Commerciaux', value: resume.frais_commerciaux, prevValue: previousResume?.frais_commerciaux, agregat: 'Frais Commerciaux' },
+                { label: 'Impôts et Taxes', value: resume.impots_taxes, prevValue: previousResume?.impots_taxes, agregat: 'Impôts et taxes' },
+                { label: 'Fonctionnement Courant', value: resume.fonctionnement, prevValue: previousResume?.fonctionnement, agregat: 'Fonctionnement Courant' },
+                { label: 'Autres Charges', value: resume.autres_charges, prevValue: previousResume?.autres_charges, agregat: 'Autres Charges' },
                 { label: 'TOTAL CHARGES', value: resume.total_charges, prevValue: previousResume?.total_charges, bold: true, isTotal: true }
             ]
         },
@@ -87,10 +120,10 @@ function SageBfcPnl({ resume, previousResume }) {
             ),
             color: 'blue',
             lines: [
-                { label: 'Produits Financiers', value: resume.produits_financiers, prevValue: previousResume?.produits_financiers },
-                { label: 'Charges Financières', value: resume.charges_financieres, prevValue: previousResume?.charges_financieres },
+                { label: 'Produits Financiers', value: resume.produits_financiers, prevValue: previousResume?.produits_financiers, agregat: 'Produits Financiers' },
+                { label: 'Charges Financières', value: resume.charges_financieres, prevValue: previousResume?.charges_financieres, agregat: 'Charges Financières' },
                 { label: 'Résultat Financier', value: resume.resultat_financier, prevValue: previousResume?.resultat_financier, bold: true, isSubtotal: true },
-                { label: 'Dotations Amort. & Provisions', value: resume.dotations, prevValue: previousResume?.dotations }
+                { label: 'Dotations Amort. & Provisions', value: resume.dotations, prevValue: previousResume?.dotations, agregat: 'Dotations Amortissements & Provisions' }
             ]
         },
         {
@@ -105,7 +138,7 @@ function SageBfcPnl({ resume, previousResume }) {
             color: 'purple',
             lines: [
                 { label: 'Résultat avant Impôt', value: resume.resultat_avant_impot, prevValue: previousResume?.resultat_avant_impot, bold: true },
-                { label: 'Impôt sur les Sociétés', value: resume.impot_societes, prevValue: previousResume?.impot_societes },
+                { label: 'Impôt sur les Sociétés', value: resume.impot_societes, prevValue: previousResume?.impot_societes, agregat: 'Impôt sur les sociétés' },
                 { label: 'RÉSULTAT NET', value: resume.resultat_net, prevValue: previousResume?.resultat_net, bold: true, isTotal: true }
             ]
         }
@@ -209,34 +242,72 @@ function SageBfcPnl({ resume, previousResume }) {
                                     const delta = hasPrevious && line.prevValue != null
                                         ? getDelta(line.value, line.prevValue)
                                         : null;
+                                    const agregat = line.agregat;
+                                    const isExpanded = agregat && expandedAgregat === agregat;
+                                    const detailLignes = agregat ? (lignesByAgregat[agregat] || []) : [];
+                                    const hasDetail = detailLignes.length > 0;
+
                                     return (
-                                        <div
-                                            key={idx}
-                                            className={`pnl-row ${line.bold ? 'bold' : ''} ${line.isTotal ? 'total-row' : ''} ${line.isSubtotal ? 'subtotal-row' : ''} ${hasPrevious ? 'with-comparison' : ''}`}
-                                        >
-                                            <span className="pnl-label">
-                                                {line.isTotal && <span className="pnl-total-marker" />}
-                                                {line.label}
-                                            </span>
-                                            <span className={`pnl-value ${line.value < 0 ? 'negative' : ''}`}>
-                                                {fmt(line.value)}
-                                            </span>
-                                            {hasPrevious && (
-                                                <>
-                                                    <span className={`pnl-value pnl-prev-value ${line.prevValue < 0 ? 'negative' : ''}`}>
-                                                        {fmt(line.prevValue)}
-                                                    </span>
-                                                    <span className={`pnl-delta ${delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : ''}`}>
-                                                        {delta != null ? (
-                                                            <>
-                                                                <span className="pnl-delta-arrow">{delta > 0 ? '↑' : '↓'}</span>
-                                                                {Math.abs(delta).toFixed(1)}%
-                                                            </>
-                                                        ) : '—'}
-                                                    </span>
-                                                </>
+                                        <React.Fragment key={idx}>
+                                            {/* Ligne principale de l'agrégat */}
+                                            <div
+                                                className={`pnl-row ${line.bold ? 'bold' : ''} ${line.isTotal ? 'total-row' : ''} ${line.isSubtotal ? 'subtotal-row' : ''} ${hasPrevious ? 'with-comparison' : ''} ${hasDetail ? 'pnl-row-clickable' : ''} ${isExpanded ? 'pnl-row-expanded' : ''}`}
+                                                onClick={() => hasDetail && toggleAgregat(agregat)}
+                                            >
+                                                <span className="pnl-label">
+                                                    {line.isTotal && <span className="pnl-total-marker" />}
+                                                    {line.label}
+                                                    {hasDetail && (
+                                                        <span className="pnl-expand-icon">
+                                                            {isExpanded ? '▾' : '▸'}
+                                                        </span>
+                                                    )}
+                                                </span>
+                                                <span className={`pnl-value ${line.value < 0 ? 'negative' : ''}`}>
+                                                    {fmt(line.value)}
+                                                </span>
+                                                {hasPrevious && (
+                                                    <>
+                                                        <span className={`pnl-value pnl-prev-value ${line.prevValue < 0 ? 'negative' : ''}`}>
+                                                            {fmt(line.prevValue)}
+                                                        </span>
+                                                        <span className={`pnl-delta ${delta > 0 ? 'delta-up' : delta < 0 ? 'delta-down' : ''}`}>
+                                                            {delta != null ? (
+                                                                <>
+                                                                    <span className="pnl-delta-arrow">{delta > 0 ? '↑' : '↓'}</span>
+                                                                    {Math.abs(delta).toFixed(1)}%
+                                                                </>
+                                                            ) : '—'}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {/* Détail des codes comptables (affiché au clic) */}
+                                            {isExpanded && detailLignes.length > 0 && (
+                                                <div className="pnl-detail-codes">
+                                                    <div className="pnl-detail-codes-header">
+                                                        <span>Code</span>
+                                                        <span className="pnl-detail-libelle-col">Libellé</span>
+                                                        <span>Montant (TND)</span>
+                                                    </div>
+                                                    {detailLignes.map((l, di) => (
+                                                        <div key={di} className="pnl-detail-code-row">
+                                                            <span className="pnl-detail-code">{l.code_sage}</span>
+                                                            <span className="pnl-detail-libelle">{l.libelle_sage}</span>
+                                                            <span className="pnl-detail-amount">{fmt(l.montant_absolu)}</span>
+                                                        </div>
+                                                    ))}
+                                                    <div className="pnl-detail-code-row pnl-detail-total">
+                                                        <span className="pnl-detail-code"></span>
+                                                        <span className="pnl-detail-libelle">Total {line.label}</span>
+                                                        <span className="pnl-detail-amount pnl-detail-amount-total">
+                                                            {fmt(detailLignes.reduce((s, l) => s + parseFloat(l.montant_absolu || 0), 0))}
+                                                        </span>
+                                                    </div>
+                                                </div>
                                             )}
-                                        </div>
+                                        </React.Fragment>
                                     );
                                 })}
                             </div>
