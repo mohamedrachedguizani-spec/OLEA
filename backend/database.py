@@ -124,3 +124,80 @@ def init_sage_bfc_tables():
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
+
+        # Stockage des valeurs cumulées brutes (pour calcul du réel mensuel = cumulé M - cumulé M-1)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sage_bfc_monthly_cumule (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                periode DATE NOT NULL UNIQUE,
+                resume JSON NOT NULL,
+                lignes LONGTEXT NOT NULL,
+                file_name VARCHAR(255),
+                lignes_count INT DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
+
+def init_forecast_tables():
+    """Créer les tables de prévision BFC"""
+    with db.get_cursor() as cursor:
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bfc_budget_history (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                year INT NOT NULL,
+                month TINYINT NOT NULL,
+                agregat_key VARCHAR(64) NOT NULL,
+                agregat_label VARCHAR(255) NOT NULL,
+                value DOUBLE NOT NULL DEFAULT 0,
+                source_file VARCHAR(255),
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_bfc_budget_history (year, month, agregat_key),
+                INDEX idx_bfc_budget_history_year_month (year, month),
+                INDEX idx_bfc_budget_history_agregat (agregat_key)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bfc_forecast_runs (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                forecast_year INT NOT NULL,
+                cycle_code VARCHAR(32) NOT NULL,
+                cycle_month TINYINT NULL,
+                status VARCHAR(32) NOT NULL DEFAULT 'done',
+                metadata JSON NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_bfc_forecast_runs_year_cycle (forecast_year, cycle_code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bfc_forecast_values (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                run_id INT NOT NULL,
+                forecast_year INT NOT NULL,
+                cycle_code VARCHAR(32) NOT NULL,
+                agregat_key VARCHAR(64) NOT NULL,
+                agregat_label VARCHAR(255) NOT NULL,
+                nature VARCHAR(32) NOT NULL,
+                is_derived BOOLEAN NOT NULL DEFAULT FALSE,
+                month TINYINT NOT NULL,
+                forecast_value DOUBLE NOT NULL DEFAULT 0,
+                lower_value DOUBLE NULL,
+                upper_value DOUBLE NULL,
+                actual_value DOUBLE NULL,
+                ecart_value DOUBLE NULL,
+                ecart_pct DOUBLE NULL,
+                alert_level VARCHAR(32) NULL,
+                model_name VARCHAR(64) NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_bfc_forecast_values (forecast_year, cycle_code, agregat_key, month),
+                INDEX idx_bfc_forecast_values_lookup (forecast_year, cycle_code, month),
+                CONSTRAINT fk_bfc_forecast_values_run
+                    FOREIGN KEY (run_id) REFERENCES bfc_forecast_runs(id)
+                    ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)

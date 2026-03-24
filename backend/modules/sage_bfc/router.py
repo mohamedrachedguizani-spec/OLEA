@@ -1,6 +1,7 @@
 import io
 import json
 import uuid
+from decimal import Decimal
 from datetime import date
 from typing import Optional
 
@@ -9,11 +10,14 @@ from fastapi.responses import StreamingResponse
 
 from database import db
 from ws_manager import manager as ws_manager
+from modules.forecast.engine import sync_actuals_from_resume, clear_actuals_for_month, clear_all_actuals
 from .config import get_mapping_config
 from .mapper import SageBFCMapper
 from .parser import SageBalanceParser
 from .models import (
-    TableauBFCResponse, 
+    TableauBFCResponse,
+    TableauBFCSummary,
+    LigneBudgetBFC,
     MappingStats, 
     ParseRequest,
     MonthlyDataSummary,
@@ -28,6 +32,59 @@ router = APIRouter(
 
 # Stockage temporaire des tableaux générés (en production, utiliser Redis/DB)
 _tableaux_cache = {}
+
+_AGREGAT_ALIASES = {
+    # clés internes
+    "ca_brut": "ca_brut",
+    "retrocessions": "retrocessions",
+    "ca_net": "ca_net",
+    "autres_produits": "autres_produits",
+    "total_produits": "total_produits",
+    "frais_personnel": "frais_personnel",
+    "honoraires": "honoraires",
+    "frais_commerciaux": "frais_commerciaux",
+    "impots_taxes": "impots_taxes",
+    "fonctionnement": "fonctionnement",
+    "autres_charges": "autres_charges",
+    "produits_financiers": "produits_financiers",
+    "charges_financieres": "charges_financieres",
+    "dotations": "dotations",
+    "impot_societes": "impot_societes",
+    "produits_exceptionnels": "produits_exceptionnels",
+    "charges_exceptionnelles": "charges_exceptionnelles",
+    "resultat_financier": "resultat_financier",
+    "resultat_exceptionnel": "resultat_exceptionnel",
+    "resultat_avant_impot": "resultat_avant_impot",
+    "resultat_net": "resultat_net",
+    # libellés courants
+    "ca brut": "ca_brut",
+    "retrocessions": "retrocessions",
+    "ca net": "ca_net",
+    "autres produits exploitation": "autres_produits",
+    "frais personnel": "frais_personnel",
+    "honoraires sous traitance": "honoraires",
+    "frais commerciaux": "frais_commerciaux",
+    "impots taxes": "impots_taxes",
+    "fonctionnement courant": "fonctionnement",
+    "autres charges": "autres_charges",
+    "produits financiers": "produits_financiers",
+    "charges financieres": "charges_financieres",
+    "dotations amortissements": "dotations",
+    "impot societes": "impot_societes",
+    "produits exceptionnels": "produits_exceptionnels",
+    "charges exceptionnelles": "charges_exceptionnelles",
+}
+
+
+def _normalize_agregat_name(value: str) -> str:
+    key = " ".join(str(value).strip().lower().replace("_", " ").replace("-", " ").split())
+    mapped = _AGREGAT_ALIASES.get(key)
+    if not mapped:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Agrégat inconnu: '{value}'. Exemple: ca_brut, frais_personnel, resultat_net"
+        )
+    return mapped
 
 def get_mapper():
     """Dependency pour obtenir le mapper"""
@@ -78,22 +135,34 @@ async def parse_balance(
         content = await file.read()
         
         # Parsing avec la période obligatoire
-        resultat = parser.parse_file(
+        resultat_cumule = parser.parse_file(
             file_content=content,
             filename=file.filename,
             periode=periode_date
         )
+
+        # Conversion cumulé -> réel mensuel (M réel = M cumulé - M-1 cumulé)
+        resultat_reel = _convert_cumulative_to_real(resultat_cumule, parser)
         
         # Stockage en cache pour export ultérieur
         tableau_id = str(uuid.uuid4())
-        _tableaux_cache[tableau_id] = resultat
+        _tableaux_cache[tableau_id] = resultat_reel
         
         # Sauvegarde automatique en base de données
-        _save_monthly_data(resultat, file.filename)
+        _save_monthly_data(resultat_reel, file.filename)
+        _save_monthly_cumulative_data(resultat_cumule, file.filename)
 
-        ws_manager.broadcast("sage_bfc", "upload", {"periode": str(resultat.periode)})
+        # Synchronisation temps réel des écarts forecast vs réalisé
+        resume_payload = (
+            resultat_reel.resume.model_dump(mode="json")
+            if hasattr(resultat_reel.resume, "model_dump")
+            else resultat_reel.resume.dict()
+        )
+        sync_actuals_from_resume(resultat_reel.periode, resume_payload)
 
-        return resultat
+        ws_manager.broadcast("sage_bfc", "upload", {"periode": str(resultat_reel.periode)})
+
+        return resultat_reel
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -253,6 +322,163 @@ def _save_monthly_data(resultat: TableauBFCResponse, file_name: str):
         ))
 
 
+def _save_monthly_cumulative_data(resultat: TableauBFCResponse, file_name: str):
+    """Sauvegarde ou met à jour les données cumulées brutes en BDD"""
+    resume_json = _serialize_resume(resultat.resume)
+    lignes_json = _serialize_lignes(resultat.lignes)
+
+    with db.get_cursor() as cursor:
+        cursor.execute("""
+            INSERT INTO sage_bfc_monthly_cumule
+                (periode, resume, lignes, file_name, lignes_count)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                resume = VALUES(resume),
+                lignes = VALUES(lignes),
+                file_name = VALUES(file_name),
+                lignes_count = VALUES(lignes_count),
+                updated_at = CURRENT_TIMESTAMP
+        """, (
+            resultat.periode,
+            resume_json,
+            lignes_json,
+            file_name,
+            len(resultat.lignes)
+        ))
+
+
+def _build_ligne_key(ligne: LigneBudgetBFC) -> str:
+    return "|".join([
+        str(ligne.code_sage or ""),
+        str(ligne.agregat_bfc or ""),
+        str(ligne.sous_categorie or ""),
+        str(ligne.type_ligne or ""),
+        str(ligne.sens or ""),
+    ])
+
+
+def _group_lignes_by_key(lignes: list[LigneBudgetBFC]) -> dict[str, dict]:
+    """
+    Regroupe les lignes par clé technique pour éviter les doubles soustractions
+    quand plusieurs lignes partagent le même code/aggrégat.
+    """
+    grouped: dict[str, dict] = {}
+    for l in lignes:
+        k = _build_ligne_key(l)
+        if k not in grouped:
+            grouped[k] = {
+                "template": l,
+                "total": Decimal('0'),
+            }
+        grouped[k]["total"] += Decimal(str(l.montant))
+    return grouped
+
+
+def _load_previous_cumulative_lignes(periode: date) -> list[LigneBudgetBFC]:
+    """
+    Charge les lignes cumulées du mois précédent disponible.
+    Priorité: table cumulative; fallback: table monthly (rétrocompatibilité).
+    """
+    with db.get_cursor() as cursor:
+        cursor.execute("""
+            SELECT lignes
+            FROM sage_bfc_monthly_cumule
+            WHERE periode < %s
+              AND YEAR(periode) = YEAR(%s)
+            ORDER BY periode DESC
+            LIMIT 1
+        """, (periode, periode))
+        row = cursor.fetchone()
+
+    if not row:
+        with db.get_cursor() as cursor:
+            cursor.execute("""
+                SELECT lignes
+                FROM sage_bfc_monthly
+                WHERE periode < %s
+                  AND YEAR(periode) = YEAR(%s)
+                ORDER BY periode DESC
+                LIMIT 1
+            """, (periode, periode))
+            row = cursor.fetchone()
+
+    if not row:
+        return []
+
+    raw = row['lignes'] if isinstance(row['lignes'], list) else json.loads(row['lignes'])
+    lignes = []
+    for item in raw:
+        try:
+            lignes.append(LigneBudgetBFC(**item))
+        except Exception:
+            continue
+    return lignes
+
+
+def _convert_cumulative_to_real(resultat_cumule: TableauBFCResponse, parser: SageBalanceParser) -> TableauBFCResponse:
+    """Convertit un résultat cumulé en réel mensuel via delta au cumul précédent."""
+    previous_lignes = _load_previous_cumulative_lignes(resultat_cumule.periode)
+    if not previous_lignes:
+        # Premier mois disponible: réel = cumulé
+        return resultat_cumule
+
+    previous_grouped = _group_lignes_by_key(previous_lignes)
+    current_grouped = _group_lignes_by_key(resultat_cumule.lignes)
+
+    lignes_reelles: list[LigneBudgetBFC] = []
+    for k, current_info in current_grouped.items():
+        template = current_info["template"]
+        current_amount = current_info["total"]
+        prev_amount = previous_grouped.get(k, {}).get("total", Decimal('0'))
+        real_amount = current_amount - prev_amount
+
+        lignes_reelles.append(
+            template.model_copy(update={
+                "montant": real_amount,
+                "montant_absolu": abs(real_amount),
+            })
+        )
+
+    agregats = parser.mapper.calculer_agregats(lignes_reelles)
+    resume_reel = TableauBFCSummary(
+        periode=resultat_cumule.periode,
+        ca_brut=float(agregats['ca_brut']),
+        retrocessions=float(agregats['retrocessions']),
+        ca_net=float(agregats['ca_net']),
+        autres_produits=float(agregats['autres_produits']),
+        total_produits=float(agregats['total_produits']),
+        frais_personnel=float(agregats['frais_personnel']),
+        honoraires=float(agregats['honoraires']),
+        frais_commerciaux=float(agregats['frais_commerciaux']),
+        impots_taxes=float(agregats['impots_taxes']),
+        fonctionnement=float(agregats['fonctionnement']),
+        autres_charges=float(agregats['autres_charges']),
+        brand_fees=float(agregats['brand_fees']),
+        management_fees=float(agregats['management_fees']),
+        interco_charges=float(agregats['interco_charges']),
+        total_charges=float(agregats['total_charges']),
+        ebitda=float(agregats['ebitda']),
+        ebitda_pct=float(agregats['ebitda_pct']),
+        produits_financiers=float(agregats['produits_financiers']),
+        charges_financieres=float(agregats['charges_financieres']),
+        resultat_financier=float(agregats['resultat_financier']),
+        dotations=float(agregats['dotations']),
+        produits_exceptionnels=float(agregats['produits_exceptionnels']),
+        charges_exceptionnelles=float(agregats['charges_exceptionnelles']),
+        resultat_exceptionnel=float(agregats['resultat_exceptionnel']),
+        resultat_avant_impot=float(agregats['resultat_avant_impot']),
+        impot_societes=float(agregats['impot_societes']),
+        resultat_net=float(agregats['resultat_net']),
+        resultat_net_pct=float(agregats['resultat_net_pct']),
+    )
+
+    return TableauBFCResponse(
+        periode=resultat_cumule.periode,
+        lignes=lignes_reelles,
+        resume=resume_reel,
+    )
+
+
 # ===================== CRUD: Données mensuelles =====================
 
 @router.get("/monthly", response_model=list[MonthlyDataSummary])
@@ -339,8 +565,13 @@ async def delete_monthly(periode: str):
             raise HTTPException(status_code=404, detail=f"Aucune donnée pour la période {periode}")
         
         cursor.execute("DELETE FROM sage_bfc_monthly WHERE periode = %s", (periode,))
+        cursor.execute("DELETE FROM sage_bfc_monthly_cumule WHERE periode = %s", (periode,))
+
+    # Synchroniser le module forecast: suppression des réels/écarts pour ce mois
+    clear_actuals_for_month(periode.year, periode.month)
 
     ws_manager.broadcast("sage_bfc", "delete", {"periode": str(periode)})
+    ws_manager.broadcast("forecast", "actuals_cleared", {"year": periode.year, "month": periode.month})
 
     return {"status": "supprimé", "periode": str(periode)}
 
@@ -354,7 +585,180 @@ async def delete_all_monthly():
         cursor.execute("SELECT COUNT(*) as cnt FROM sage_bfc_monthly")
         count = cursor.fetchone()['cnt']
         cursor.execute("DELETE FROM sage_bfc_monthly")
+        cursor.execute("DELETE FROM sage_bfc_monthly_cumule")
+
+    # Synchroniser le module forecast: suppression globale des réels/écarts
+    clear_all_actuals()
 
     ws_manager.broadcast("sage_bfc", "delete_all", {"count": count})
+    ws_manager.broadcast("forecast", "actuals_cleared_all", {"count": count})
 
     return {"status": "supprimé", "count": count}
+
+
+@router.get("/audit/cumulative-delta")
+async def get_audit_cumulative_delta(
+    year: int = Query(..., ge=2000, le=2100, description="Année fiscale"),
+    agregat: str = Query(..., description="Agrégat (ex: ca_brut, frais_personnel, resultat_net)"),
+):
+    """
+    Renvoie la table d'audit comptable mensuelle pour un agrégat:
+    - Cn   : cumul courant
+    - Cn-1 : cumul précédent (même année)
+    - Vn   : valeur mensuelle réelle = Cn - Cn-1
+    """
+    agregat_key = _normalize_agregat_name(agregat)
+
+    with db.get_cursor() as cursor:
+        cursor.execute("""
+            SELECT MONTH(periode) AS mois, resume
+            FROM sage_bfc_monthly_cumule
+            WHERE YEAR(periode) = %s
+            ORDER BY periode ASC
+        """, (year,))
+        rows = cursor.fetchall()
+
+    if not rows:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Aucune donnée cumulée trouvée pour l'année {year}."
+        )
+
+    table = []
+    previous_cumul = Decimal('0')
+
+    for row in rows:
+        mois = int(row['mois'])
+        resume = row['resume'] if isinstance(row['resume'], dict) else json.loads(row['resume'])
+        current_cumul = Decimal(str(resume.get(agregat_key, 0) or 0))
+        valeur_periode = current_cumul - previous_cumul
+
+        table.append({
+            "mois": mois,
+            "Cn": float(current_cumul),
+            "Cn_1": float(previous_cumul),
+            "Vn": float(valeur_periode),
+            "equation_check": float(previous_cumul + valeur_periode),
+            "equation_ok": bool((previous_cumul + valeur_periode) == current_cumul),
+        })
+
+        previous_cumul = current_cumul
+
+    return {
+        "year": year,
+        "agregat": agregat_key,
+        "formula": "Cn = Cn-1 + Vn",
+        "rows": table,
+    }
+
+
+@router.post("/monthly/recompute-real")
+async def recompute_monthly_real_values(mapper: SageBFCMapper = Depends(get_mapper)):
+    """
+    Recalcule les mois stockés en réel mensuel (delta cumulé M - cumulé M-1)
+    à partir des données déjà présentes dans sage_bfc_monthly.
+    Utile après migration/activation de la logique cumulée.
+    """
+    with db.get_cursor() as cursor:
+        cursor.execute("""
+            SELECT periode, resume, lignes, file_name, lignes_count
+            FROM sage_bfc_monthly
+            ORDER BY periode ASC
+        """)
+        rows = cursor.fetchall()
+
+    if not rows:
+        return {"status": "ok", "updated_months": 0, "message": "Aucune donnée à recalculer"}
+
+    prev_cum_by_key: dict[str, Decimal] = {}
+    prev_year: Optional[int] = None
+    updated = 0
+
+    for row in rows:
+        periode = row['periode']
+        current_year = int(periode.year)
+
+        # Réinitialisation annuelle: en janvier (ou changement d'année), Cn-1 = 0
+        if prev_year is None or current_year != prev_year:
+            prev_cum_by_key = {}
+
+        raw_lignes = row['lignes'] if isinstance(row['lignes'], list) else json.loads(row['lignes'])
+
+        cum_lignes: list[LigneBudgetBFC] = []
+        for item in raw_lignes:
+            try:
+                cum_lignes.append(LigneBudgetBFC(**item))
+            except Exception:
+                continue
+
+        # Sauvegarder le cumul brut pour usage futur
+        cum_result = TableauBFCResponse(
+            periode=periode,
+            lignes=cum_lignes,
+            resume=TableauBFCSummary(**(row['resume'] if isinstance(row['resume'], dict) else json.loads(row['resume'])))
+        )
+        _save_monthly_cumulative_data(cum_result, row.get('file_name'))
+
+        # Calcul réel par delta (sur montants agrégés par clé)
+        real_lignes: list[LigneBudgetBFC] = []
+        current_grouped = _group_lignes_by_key(cum_lignes)
+        current_cum_by_key: dict[str, Decimal] = {}
+
+        for key, info in current_grouped.items():
+            template = info["template"]
+            current_amount = info["total"]
+            current_cum_by_key[key] = current_amount
+
+            prev_amount = prev_cum_by_key.get(key, Decimal('0'))
+            real_amount = current_amount - prev_amount
+            real_lignes.append(
+                template.model_copy(update={
+                    "montant": real_amount,
+                    "montant_absolu": abs(real_amount),
+                })
+            )
+
+        agregats = mapper.calculer_agregats(real_lignes)
+        resume_reel = TableauBFCSummary(
+            periode=periode,
+            ca_brut=float(agregats['ca_brut']),
+            retrocessions=float(agregats['retrocessions']),
+            ca_net=float(agregats['ca_net']),
+            autres_produits=float(agregats['autres_produits']),
+            total_produits=float(agregats['total_produits']),
+            frais_personnel=float(agregats['frais_personnel']),
+            honoraires=float(agregats['honoraires']),
+            frais_commerciaux=float(agregats['frais_commerciaux']),
+            impots_taxes=float(agregats['impots_taxes']),
+            fonctionnement=float(agregats['fonctionnement']),
+            autres_charges=float(agregats['autres_charges']),
+            brand_fees=float(agregats['brand_fees']),
+            management_fees=float(agregats['management_fees']),
+            interco_charges=float(agregats['interco_charges']),
+            total_charges=float(agregats['total_charges']),
+            ebitda=float(agregats['ebitda']),
+            ebitda_pct=float(agregats['ebitda_pct']),
+            produits_financiers=float(agregats['produits_financiers']),
+            charges_financieres=float(agregats['charges_financieres']),
+            resultat_financier=float(agregats['resultat_financier']),
+            dotations=float(agregats['dotations']),
+            produits_exceptionnels=float(agregats['produits_exceptionnels']),
+            charges_exceptionnelles=float(agregats['charges_exceptionnelles']),
+            resultat_exceptionnel=float(agregats['resultat_exceptionnel']),
+            resultat_avant_impot=float(agregats['resultat_avant_impot']),
+            impot_societes=float(agregats['impot_societes']),
+            resultat_net=float(agregats['resultat_net']),
+            resultat_net_pct=float(agregats['resultat_net_pct']),
+        )
+
+        real_result = TableauBFCResponse(periode=periode, lignes=real_lignes, resume=resume_reel)
+        _save_monthly_data(real_result, row.get('file_name'))
+
+        prev_cum_by_key = current_cum_by_key
+        prev_year = current_year
+        updated += 1
+
+    ws_manager.broadcast("sage_bfc", "recompute_real", {"updated_months": updated})
+    ws_manager.broadcast("forecast", "recompute_real", {"updated_months": updated})
+
+    return {"status": "ok", "updated_months": updated}

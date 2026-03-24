@@ -420,6 +420,77 @@ class ApiService {
         if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
         return response.json();
     }
+
+    // ===================== Forecast Budget BFC =====================
+
+    static async importForecastHistorical() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/historical/import`, {
+            method: 'POST',
+        });
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async generateForecast(targetYear, cycleCode = 'INITIAL', cycleMonth = null) {
+        const params = new URLSearchParams();
+        params.append('target_year', String(targetYear));
+        params.append('cycle_code', cycleCode);
+        if (cycleMonth != null) params.append('cycle_month', String(cycleMonth));
+
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/generate?${params.toString()}`, {
+            method: 'POST',
+        });
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async getForecastCatalog() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/catalog`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async getForecastComparison(targetYear, cycleCode, month) {
+        const params = new URLSearchParams({
+            target_year: String(targetYear),
+            cycle_code: String(cycleCode),
+            month: String(month),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/comparison?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async getForecastYearValues(targetYear, cycleCode, agregatKey) {
+        const params = new URLSearchParams({
+            target_year: String(targetYear),
+            cycle_code: String(cycleCode),
+            agregat_key: String(agregatKey),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/year-values?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async getForecastCyclesStatus(targetYear) {
+        const params = new URLSearchParams({ target_year: String(targetYear) });
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/cycles/status?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async runForecastCycle(targetYear, cycleCode, force = false) {
+        const params = new URLSearchParams({
+            target_year: String(targetYear),
+            cycle_code: String(cycleCode),
+            force: String(force),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/cycles/run?${params.toString()}`, {
+            method: 'POST',
+        });
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
 }
 
 export default ApiService;

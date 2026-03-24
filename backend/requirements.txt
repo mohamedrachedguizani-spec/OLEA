@@ -16,3 +16,4 @@ statsmodels
 scikit-learn
 numpy
 scipy
+prophet

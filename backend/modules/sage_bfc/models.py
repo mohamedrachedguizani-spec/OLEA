@@ -58,6 +58,9 @@ class TableauBFCSummary(BaseModel):
     charges_financieres: float
     resultat_financier: float
     dotations: float
+    produits_exceptionnels: float = 0.0
+    charges_exceptionnelles: float = 0.0
+    resultat_exceptionnel: float = 0.0
     resultat_avant_impot: float
     impot_societes: float
     resultat_net: float
