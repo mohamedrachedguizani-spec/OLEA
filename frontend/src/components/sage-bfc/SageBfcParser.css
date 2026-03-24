@@ -3548,6 +3548,103 @@
     gap: 1rem;
 }
 
+.forecast-section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.forecast-section-head h3 {
+    margin: 0;
+    font-size: 0.96rem;
+    color: var(--text-primary);
+    font-weight: 800;
+}
+
+.forecast-section-head span {
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.forecast-view-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    background: var(--bg-muted);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    padding: 0.25rem;
+    width: fit-content;
+}
+
+.forecast-view-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 0.8rem;
+    font-weight: 700;
+    padding: 0.45rem 0.75rem;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+
+.forecast-view-tab.active {
+    background: var(--bg-card);
+    color: var(--primary-500);
+    box-shadow: var(--shadow-sm);
+}
+
+.dark-mode .forecast-view-tab.active {
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+}
+
+.forecast-dashboard-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+}
+
+.forecast-kpi-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-card);
+    padding: 0.8rem 0.85rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.forecast-kpi-title {
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    font-weight: 700;
+}
+
+.forecast-kpi-value {
+    font-size: 1.35rem;
+    color: var(--text-primary);
+    font-weight: 800;
+    line-height: 1;
+}
+
+.forecast-kpi-card.negative {
+    border-left: 3px solid var(--error);
+}
+
+.forecast-kpi-card.positive {
+    border-left: 3px solid var(--success);
+}
+
+.forecast-kpi-card.info {
+    border-left: 3px solid var(--info);
+}
+
 .forecast-toolbar {
     display: flex;
     justify-content: space-between;
@@ -3718,6 +3815,10 @@
     padding: 0.9rem;
 }
 
+.annual-comparison-panel {
+    border-left: 3px solid var(--primary-500);
+}
+
 .forecast-chart-panel {
     border: 1px solid var(--border-light);
     border-radius: var(--radius-sm);
@@ -3783,6 +3884,60 @@
     gap: 0.75rem;
     font-size: 0.78rem;
     color: var(--text-secondary);
+}
+
+.comparison-totals.annual-totals {
+    row-gap: 0.35rem;
+    flex-wrap: wrap;
+}
+
+.comparison-totals.annual-totals span {
+    border: 1px solid var(--border-light);
+    background: var(--bg-muted);
+    color: var(--text-secondary);
+    border-radius: var(--radius-full);
+    padding: 0.18rem 0.55rem;
+}
+
+.annual-table-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+    border: 1px solid var(--border-light);
+    background: var(--bg-muted);
+    border-radius: var(--radius-sm);
+    padding: 0.65rem 0.75rem;
+    margin-bottom: 0.7rem;
+}
+
+.annual-search-field {
+    min-width: 280px;
+    flex: 1;
+}
+
+.annual-alerts-only {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.annual-alerts-only input {
+    accent-color: var(--primary-500);
+}
+
+.annual-rows-count {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    font-weight: 700;
+    padding: 0.3rem 0.55rem;
+    border-radius: var(--radius-full);
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
 }
 
 .forecast-loading {
@@ -3860,4 +4015,24 @@
 .forecast-table td.neg {
     color: var(--error);
     font-weight: 600;
+}
+
+.annual-indicator-cell {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+
+.annual-indicator-text {
+    font-size: 0.74rem;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.dark-mode .forecast-kpi-card,
+.dark-mode .annual-table-controls,
+.dark-mode .comparison-totals.annual-totals span,
+.dark-mode .forecast-chart-panel {
+    box-shadow: none;
 }

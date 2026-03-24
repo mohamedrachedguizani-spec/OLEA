@@ -105,3 +105,28 @@ class ForecastCycleRunResponse(BaseModel):
     run_id: int
     rows_written: int
     status: str
+
+
+class ForecastAnnualComparisonRow(BaseModel):
+    agregat_key: str
+    agregat_label: str
+    nature: str
+    forecast_annual: float
+    forecast_to_date: float
+    actual_total: float
+    ecart_to_date_value: Optional[float] = None
+    ecart_to_date_pct: Optional[float] = None
+    taux_realisation_annuel_pct: Optional[float] = None
+    remaining_budget: Optional[float] = None
+    alert_level: Optional[str] = None
+    indicator_label: Optional[str] = None
+    indicator_value: Optional[float] = None
+
+
+class ForecastAnnualComparisonResponse(BaseModel):
+    target_year: int
+    cycle_code: str
+    cycle_phase: str
+    uploaded_months: List[int]
+    cycle_cutoff_month: Optional[int] = None
+    rows: List[ForecastAnnualComparisonRow]

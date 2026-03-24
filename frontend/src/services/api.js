@@ -461,6 +461,16 @@ class ApiService {
         return response.json();
     }
 
+    static async getForecastAnnualComparison(targetYear, cycleCode) {
+        const params = new URLSearchParams({
+            target_year: String(targetYear),
+            cycle_code: String(cycleCode),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/annual-comparison?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
     static async getForecastYearValues(targetYear, cycleCode, agregatKey) {
         const params = new URLSearchParams({
             target_year: String(targetYear),

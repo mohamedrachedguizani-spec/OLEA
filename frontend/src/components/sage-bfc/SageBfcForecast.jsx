@@ -42,11 +42,20 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
 
     const [cycleStatus, setCycleStatus] = useState([]);
     const [comparisonRows, setComparisonRows] = useState([]);
+    const [annualRows, setAnnualRows] = useState([]);
+    const [annualMeta, setAnnualMeta] = useState({
+        cycle_phase: 'INITIAL',
+        uploaded_months: [],
+        cycle_cutoff_month: null,
+    });
     const [catalogItems, setCatalogItems] = useState([]);
     const [chartCatalogMode, setChartCatalogMode] = useState('base'); // base | derived
     const [chartAgregatKey, setChartAgregatKey] = useState('ca_brut');
+    const [activeView, setActiveView] = useState('annual'); // annual | monthly
     const [chartData, setChartData] = useState([]);
     const [chartLoading, setChartLoading] = useState(false);
+    const [annualSearch, setAnnualSearch] = useState('');
+    const [alertsOnly, setAlertsOnly] = useState(false);
 
     useEffect(() => {
         setTargetYear(inferredYear);
@@ -92,17 +101,27 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         setComparisonRows(res.rows || []);
     }, [targetYear, compareCycle, compareMonth]);
 
+    const loadAnnualComparison = useCallback(async () => {
+        const res = await ApiService.getForecastAnnualComparison(targetYear, compareCycle);
+        setAnnualRows(res.rows || []);
+        setAnnualMeta({
+            cycle_phase: res.cycle_phase || 'INITIAL',
+            uploaded_months: res.uploaded_months || [],
+            cycle_cutoff_month: res.cycle_cutoff_month ?? null,
+        });
+    }, [targetYear, compareCycle]);
+
     const reloadAll = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            await Promise.all([loadStatus(), loadComparison(), loadCatalog()]);
+            await Promise.all([loadStatus(), loadComparison(), loadAnnualComparison(), loadCatalog()]);
         } catch (e) {
             setError(e.message || 'Erreur chargement forecast');
         } finally {
             setLoading(false);
         }
-    }, [loadStatus, loadComparison, loadCatalog]);
+    }, [loadStatus, loadComparison, loadAnnualComparison, loadCatalog]);
 
     useEffect(() => {
         reloadAll();
@@ -164,21 +183,45 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         loadChartData();
     }, [loadChartData]);
 
-    const totals = useMemo(() => {
-        return comparisonRows.reduce(
-            (acc, row) => {
-                acc.forecast += Number(row.forecast_value || 0);
-                acc.actual += Number(row.actual_value || 0);
-                return acc;
-            },
-            { forecast: 0, actual: 0 }
-        );
-    }, [comparisonRows]);
+    useEffect(() => {
+        if (refreshTrigger > 0) {
+            loadChartData();
+        }
+    }, [refreshTrigger, loadChartData]);
 
     const selectedChartLabel = useMemo(() => {
         const item = catalogItems.find((c) => c.agregat_key === chartAgregatKey);
         return item?.agregat_label || chartAgregatKey;
     }, [catalogItems, chartAgregatKey]);
+
+    const annualFilteredRows = useMemo(() => {
+        const q = annualSearch.trim().toLowerCase();
+        return annualRows.filter((row) => {
+            const byText =
+                !q ||
+                String(row.agregat_label || '').toLowerCase().includes(q) ||
+                String(row.agregat_key || '').toLowerCase().includes(q) ||
+                String(row.indicator_label || '').toLowerCase().includes(q);
+            const byAlert = !alertsOnly || row.alert_level === 'negative';
+            return byText && byAlert;
+        });
+    }, [annualRows, annualSearch, alertsOnly]);
+
+    const dashboardKpis = useMemo(() => {
+        const negativeAlerts = annualRows.filter((r) => r.alert_level === 'negative').length;
+        const positiveAlerts = annualRows.filter((r) => r.alert_level === 'positive').length;
+        const onTrack = annualRows.filter((r) => Number(r.taux_realisation_annuel_pct || 0) >= 100).length;
+        return {
+            total: annualRows.length,
+            negativeAlerts,
+            positiveAlerts,
+            onTrack,
+        };
+    }, [annualRows]);
+
+    const selectedCycleMeta = useMemo(() => {
+        return cycleStatus.find((c) => c.cycle_code === compareCycle) || null;
+    }, [cycleStatus, compareCycle]);
 
     const chartSelectableItems = useMemo(() => {
         if (chartCatalogMode === 'derived') {
@@ -254,6 +297,30 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 </div>
             )}
 
+            <div className="forecast-dashboard-grid">
+                <div className="forecast-kpi-card">
+                    <div className="forecast-kpi-title">Agrégats suivis</div>
+                    <div className="forecast-kpi-value">{dashboardKpis.total}</div>
+                </div>
+                <div className="forecast-kpi-card negative">
+                    <div className="forecast-kpi-title">Alertes défavorables</div>
+                    <div className="forecast-kpi-value">{dashboardKpis.negativeAlerts}</div>
+                </div>
+                <div className="forecast-kpi-card positive">
+                    <div className="forecast-kpi-title">Indicateurs favorables</div>
+                    <div className="forecast-kpi-value">{dashboardKpis.positiveAlerts}</div>
+                </div>
+                <div className="forecast-kpi-card info">
+                    <div className="forecast-kpi-title">Réalisé ≥ 100%</div>
+                    <div className="forecast-kpi-value">{dashboardKpis.onTrack}</div>
+                </div>
+            </div>
+
+            <div className="forecast-section-head">
+                <h3>Pilotage des cycles d'ajustement</h3>
+                <span>{selectedCycleMeta?.cycle_label || 'Cycle non disponible'}</span>
+            </div>
+
             <div className="forecast-cycles-grid">
                 {cycleStatus.map((c) => (
                     <div key={c.cycle_code} className="forecast-cycle-card">
@@ -296,114 +363,211 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 ))}
             </div>
 
-            <div className="forecast-comparison-panel">
-                <div className="forecast-chart-panel">
+            <div className="forecast-section-head">
+                <h3>Vue de comparaison</h3>
+                <span>Basculez entre l'analyse annuelle et mensuelle</span>
+            </div>
+
+            <div className="forecast-view-tabs">
+                <button
+                    className={`forecast-view-tab ${activeView === 'annual' ? 'active' : ''}`}
+                    onClick={() => setActiveView('annual')}
+                >
+                    Comparaison annuelle
+                </button>
+                <button
+                    className={`forecast-view-tab ${activeView === 'monthly' ? 'active' : ''}`}
+                    onClick={() => setActiveView('monthly')}
+                >
+                    Comparaison mensuelle
+                </button>
+            </div>
+
+            {activeView === 'annual' && (
+                <div className="forecast-comparison-panel annual-comparison-panel">
                     <div className="comparison-header">
-                        <h4>Graphe mensuel Prévision vs Réel — {selectedChartLabel}</h4>
-                        <div className="forecast-chart-controls">
-                                <div className="forecast-toggle-group">
-                                    <button
-                                        className={`forecast-toggle-btn ${chartCatalogMode === 'base' ? 'active' : ''}`}
-                                        onClick={() => setChartCatalogMode('base')}
-                                    >
-                                        Base agrégats
-                                    </button>
-                                    <button
-                                        className={`forecast-toggle-btn ${chartCatalogMode === 'derived' ? 'active' : ''}`}
-                                        onClick={() => setChartCatalogMode('derived')}
-                                    >
-                                        P&L dérivés
-                                    </button>
-                                </div>
-                            <label className="forecast-field">
-                                <span>Agrégat</span>
-                                <select value={chartAgregatKey} onChange={(e) => setChartAgregatKey(e.target.value)}>
-                                        {chartSelectableItems.map((it) => (
-                                        <option key={it.agregat_key} value={it.agregat_key}>
-                                            {it.agregat_label}
-                                        </option>
-                                    ))}
-                                </select>
-                            </label>
+                        <h4>Comparaison globale annuelle — Prévision vs Réalisé ({targetYear} / {compareCycle})</h4>
+                        <div className="comparison-totals annual-totals">
+                            <span>Phase cycle: {annualMeta.cycle_phase || 'INITIAL'}</span>
+                            <span>Mois réels: {(annualMeta.uploaded_months || []).join(', ') || '—'}</span>
+                            {annualMeta.cycle_cutoff_month != null && (
+                                <span>Palier cycle: M{String(annualMeta.cycle_cutoff_month).padStart(2, '0')}</span>
+                            )}
                         </div>
                     </div>
+                    <div className="annual-table-controls">
+                        <label className="forecast-field annual-search-field">
+                            <span>Recherche agrégat / indice</span>
+                            <input
+                                type="text"
+                                placeholder="Ex: frais personnel"
+                                value={annualSearch}
+                                onChange={(e) => setAnnualSearch(e.target.value)}
+                            />
+                        </label>
+                        <label className="annual-alerts-only">
+                            <input
+                                type="checkbox"
+                                checked={alertsOnly}
+                                onChange={(e) => setAlertsOnly(e.target.checked)}
+                            />
+                            <span>Afficher uniquement les alertes défavorables</span>
+                        </label>
+                        <div className="annual-rows-count">{annualFilteredRows.length} ligne(s)</div>
+                    </div>
 
-                    {chartLoading ? (
-                        <div className="forecast-loading">Chargement graphe...</div>
+                    {loading ? (
+                        <div className="forecast-loading">Chargement...</div>
                     ) : (
-                        <div className="forecast-linechart-wrap">
-                            <ResponsiveContainer width="100%" height={320}>
-                                <LineChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
-                                    <CartesianGrid strokeDasharray="3 3" />
-                                    <XAxis dataKey="monthLabel" />
-                                    <YAxis />
-                                    <Tooltip
-                                        formatter={(value, name) => {
-                                            if (value == null) return ['—', name];
-                                            return [fmt(value, 2), name];
-                                        }}
-                                    />
-                                    <Legend />
-                                    <Line type="monotone" dataKey="forecast" name="Prévision" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 2 }} />
-                                    <Line type="monotone" dataKey="actual" name="Réalisé" stroke="#16a34a" strokeWidth={2.5} dot={{ r: 2 }} connectNulls />
-                                    <Line type="monotone" dataKey="ecart" name="Écart" stroke="#ea580c" strokeWidth={2} dot={false} connectNulls />
-                                </LineChart>
-                            </ResponsiveContainer>
+                        <div className="forecast-table-wrap">
+                            <table className="forecast-table annual-forecast-table">
+                                <thead>
+                                    <tr>
+                                        <th>Agrégat</th>
+                                        <th>Nature</th>
+                                        <th>Prévision annuelle</th>
+                                        <th>Réalisé cumulé</th>
+                                        <th>Taux réalisation annuel</th>
+                                        <th>Reste budget</th>
+                                        <th>Indice / alerte</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {annualFilteredRows.map((row) => (
+                                        <tr key={`annual-${row.agregat_key}`}>
+                                            <td>{row.agregat_label}</td>
+                                            <td>
+                                                <span className={`nature-pill ${row.nature}`}>
+                                                    {row.nature}
+                                                </span>
+                                            </td>
+                                            <td>{fmt(row.forecast_annual, 2)}</td>
+                                            <td>{fmt(row.actual_total, 2)}</td>
+                                            <td className={Number(row.taux_realisation_annuel_pct || 0) < 100 ? 'neg' : 'pos'}>{fmtPct(row.taux_realisation_annuel_pct)}</td>
+                                            <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.remaining_budget, 2)}</td>
+                                            <td>
+                                                <div className="annual-indicator-cell">
+                                                    <span className={`alert-pill ${row.alert_level || 'none'}`}>
+                                                        {alertLabel(row.alert_level)}
+                                                    </span>
+                                                    <span className="annual-indicator-text">{row.indicator_label || '—'}</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
                     )}
                 </div>
+            )}
 
-                <div className="comparison-header">
-                    <h4>Comparaison Prévision vs Réalisé — {targetYear} / {compareCycle} / M{String(compareMonth).padStart(2, '0')}</h4>
-                    <div className="comparison-totals">
-                        <span>Prévision (somme): {fmt(totals.forecast, 0)}</span>
-                        <span>Réalisé (somme): {fmt(totals.actual, 0)}</span>
+            {activeView === 'monthly' && (
+                <div className="forecast-comparison-panel">
+                    <div className="forecast-chart-panel">
+                        <div className="comparison-header">
+                            <h4>Graphe mensuel Prévision vs Réel — {selectedChartLabel}</h4>
+                            <div className="forecast-chart-controls">
+                                    <div className="forecast-toggle-group">
+                                        <button
+                                            className={`forecast-toggle-btn ${chartCatalogMode === 'base' ? 'active' : ''}`}
+                                            onClick={() => setChartCatalogMode('base')}
+                                        >
+                                            Base agrégats
+                                        </button>
+                                        <button
+                                            className={`forecast-toggle-btn ${chartCatalogMode === 'derived' ? 'active' : ''}`}
+                                            onClick={() => setChartCatalogMode('derived')}
+                                        >
+                                            P&L dérivés
+                                        </button>
+                                    </div>
+                                <label className="forecast-field">
+                                    <span>Agrégat</span>
+                                    <select value={chartAgregatKey} onChange={(e) => setChartAgregatKey(e.target.value)}>
+                                            {chartSelectableItems.map((it) => (
+                                            <option key={it.agregat_key} value={it.agregat_key}>
+                                                {it.agregat_label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </label>
+                            </div>
+                        </div>
+
+                        {chartLoading ? (
+                            <div className="forecast-loading">Chargement graphe...</div>
+                        ) : (
+                            <div className="forecast-linechart-wrap">
+                                <ResponsiveContainer width="100%" height={320}>
+                                    <LineChart data={chartData} margin={{ top: 8, right: 20, left: 0, bottom: 8 }}>
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis dataKey="monthLabel" />
+                                        <YAxis />
+                                        <Tooltip
+                                            formatter={(value, name) => {
+                                                if (value == null) return ['—', name];
+                                                return [fmt(value, 2), name];
+                                            }}
+                                        />
+                                        <Legend />
+                                        <Line type="monotone" dataKey="forecast" name="Prévision" stroke="#2563eb" strokeWidth={2.5} dot={{ r: 2 }} />
+                                        <Line type="monotone" dataKey="actual" name="Réalisé" stroke="#16a34a" strokeWidth={2.5} dot={{ r: 2 }} connectNulls />
+                                        <Line type="monotone" dataKey="ecart" name="Écart" stroke="#ea580c" strokeWidth={2} dot={false} connectNulls />
+                                    </LineChart>
+                                </ResponsiveContainer>
+                            </div>
+                        )}
                     </div>
-                </div>
 
-                {loading ? (
-                    <div className="forecast-loading">Chargement...</div>
-                ) : (
-                    <div className="forecast-table-wrap">
-                        <table className="forecast-table">
-                            <thead>
-                                <tr>
-                                    <th>Agrégat</th>
-                                    <th>Nature</th>
-                                    <th>Prévision</th>
-                                    <th>Réalisé</th>
-                                    <th>Écart</th>
-                                    <th>Écart %</th>
-                                    <th>Alerte</th>
-                                    <th>Modèle</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {comparisonRows.map((row) => (
-                                    <tr key={row.agregat_key}>
-                                        <td>{row.agregat_label}</td>
-                                        <td>
-                                            <span className={`nature-pill ${row.nature}`}>
-                                                {row.nature}
-                                            </span>
-                                        </td>
-                                        <td>{fmt(row.forecast_value, 2)}</td>
-                                        <td>{fmt(row.actual_value, 2)}</td>
-                                        <td className={Number(row.ecart_value || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.ecart_value, 2)}</td>
-                                        <td className={Number(row.ecart_pct || 0) < 0 ? 'neg' : 'pos'}>{fmtPct(row.ecart_pct)}</td>
-                                        <td>
-                                            <span className={`alert-pill ${row.alert_level || 'none'}`}>
-                                                {alertLabel(row.alert_level)}
-                                            </span>
-                                        </td>
-                                        <td>{row.model_name || '—'}</td>
+                    <div className="comparison-header">
+                        <h4>Comparaison Prévision vs Réalisé — {targetYear} / {compareCycle} / M{String(compareMonth).padStart(2, '0')}</h4>
+                    </div>
+
+                    {loading ? (
+                        <div className="forecast-loading">Chargement...</div>
+                    ) : (
+                        <div className="forecast-table-wrap">
+                            <table className="forecast-table">
+                                <thead>
+                                    <tr>
+                                        <th>Agrégat</th>
+                                        <th>Nature</th>
+                                        <th>Prévision</th>
+                                        <th>Réalisé</th>
+                                        <th>Écart</th>
+                                        <th>Écart %</th>
+                                        <th>Alerte</th>
+                                        <th>Modèle</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                )}
-            </div>
+                                </thead>
+                                <tbody>
+                                    {comparisonRows.map((row) => (
+                                        <tr key={row.agregat_key}>
+                                            <td>{row.agregat_label}</td>
+                                            <td>
+                                                <span className={`nature-pill ${row.nature}`}>
+                                                    {row.nature}
+                                                </span>
+                                            </td>
+                                            <td>{fmt(row.forecast_value, 2)}</td>
+                                            <td>{fmt(row.actual_value, 2)}</td>
+                                            <td className={Number(row.ecart_value || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.ecart_value, 2)}</td>
+                                            <td className={Number(row.ecart_pct || 0) < 0 ? 'neg' : 'pos'}>{fmtPct(row.ecart_pct)}</td>
+                                            <td>
+                                                <span className={`alert-pill ${row.alert_level || 'none'}`}>
+                                                    {alertLabel(row.alert_level)}
+                                                </span>
+                                            </td>
+                                            <td>{row.model_name || '—'}</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

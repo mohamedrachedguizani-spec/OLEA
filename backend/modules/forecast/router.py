@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query
 from ws_manager import manager as ws_manager
 from .engine import (
     generate_forecast,
+    get_annual_comparison,
     get_catalog_items,
     get_comparison,
     get_cycle_status,
@@ -15,6 +16,8 @@ from .engine import (
 )
 from database import db
 from .models import (
+    ForecastAnnualComparisonResponse,
+    ForecastAnnualComparisonRow,
     ForecastCatalogResponse,
     ForecastComparisonResponse,
     ForecastComparisonRow,
@@ -142,6 +145,23 @@ def get_forecast_comparison(
         cycle_code=cycle_code,
         mois=month,
         rows=mapped,
+    )
+
+
+@router.get("/annual-comparison", response_model=ForecastAnnualComparisonResponse)
+def get_forecast_annual_comparison(
+    target_year: int = Query(..., ge=2000, le=2100),
+    cycle_code: str = Query("INITIAL"),
+):
+    payload = get_annual_comparison(target_year=target_year, cycle_code=cycle_code)
+    mapped_rows = [ForecastAnnualComparisonRow(**r) for r in payload.get("rows", [])]
+    return ForecastAnnualComparisonResponse(
+        target_year=payload["target_year"],
+        cycle_code=payload["cycle_code"],
+        cycle_phase=payload["cycle_phase"],
+        uploaded_months=payload["uploaded_months"],
+        cycle_cutoff_month=payload.get("cycle_cutoff_month"),
+        rows=mapped_rows,
     )
 
 

@@ -161,6 +161,11 @@ async def parse_balance(
         sync_actuals_from_resume(resultat_reel.periode, resume_payload)
 
         ws_manager.broadcast("sage_bfc", "upload", {"periode": str(resultat_reel.periode)})
+        ws_manager.broadcast(
+            "forecast",
+            "annual_comparison_updated",
+            {"year": resultat_reel.periode.year, "month": resultat_reel.periode.month},
+        )
 
         return resultat_reel
         

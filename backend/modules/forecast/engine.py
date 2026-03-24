@@ -785,6 +785,167 @@ def get_comparison(target_year: int, cycle_code: str, month: int):
         return cursor.fetchall()
 
 
+def _resolve_cycle_phase(uploaded_months: List[int]) -> str:
+    if not uploaded_months:
+        return "INITIAL"
+    max_month = max(uploaded_months)
+    if max_month >= 8:
+        return "M08"
+    if max_month >= 6:
+        return "M06"
+    if max_month >= 3:
+        return "M03"
+    return "INITIAL"
+
+
+def _get_cycle_cutoff_month(cycle_code: str) -> Optional[int]:
+    code = (cycle_code or "").upper().strip()
+    if code == "INITIAL":
+        return None
+    meta = CYCLE_CONFIG.get(code)
+    if not meta:
+        return None
+    return int(meta["cycle_month"])
+
+
+def _annual_indicator(
+    agregat_key: str,
+    nature: str,
+    forecast_annual: float,
+    actual_total: float,
+    ecart_to_date_pct: Optional[float],
+) -> Tuple[Optional[str], Optional[float], Optional[str]]:
+    if abs(forecast_annual) < 1e-9:
+        return None, None, None
+
+    remaining_budget = float(forecast_annual - actual_total)
+
+    if nature == "charge":
+        vigilance_ratio = 0.15 if agregat_key == "frais_personnel" else 0.10
+        vigilance_floor = abs(forecast_annual) * vigilance_ratio
+
+        if remaining_budget < 0:
+            return "Surplus de budget fixé", remaining_budget, "negative"
+        if remaining_budget <= vigilance_floor:
+            return "Reste à consommer (vigilance)", remaining_budget, "neutral"
+        return "Reste à consommer", remaining_budget, "positive"
+
+    # Produits
+    if remaining_budget <= 0:
+        return "Objectif atteint / dépassé", remaining_budget, "positive"
+    if ecart_to_date_pct is not None and ecart_to_date_pct < -5.0:
+        return "Retard de réalisation", remaining_budget, "negative"
+    return "Reste à réaliser", remaining_budget, "neutral"
+
+
+def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object]:
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT agregat_key, agregat_label, nature, is_derived, month, forecast_value, actual_value
+            FROM bfc_forecast_values
+            WHERE forecast_year = %s AND cycle_code = %s
+            ORDER BY is_derived ASC, agregat_label ASC, month ASC
+            """,
+            (target_year, cycle_code),
+        )
+        rows = cursor.fetchall()
+
+    grouped: Dict[str, Dict[str, object]] = {}
+    uploaded_months_set = set()
+
+    for row in rows:
+        key = str(row["agregat_key"])
+        item = grouped.setdefault(
+            key,
+            {
+                "agregat_key": key,
+                "agregat_label": str(row["agregat_label"]),
+                "nature": str(row["nature"]),
+                "is_derived": bool(row.get("is_derived", False)),
+                "monthly": [],
+            },
+        )
+        month = int(row["month"])
+        forecast_val = _to_float(row.get("forecast_value"))
+        actual_raw = row.get("actual_value")
+        actual_val = None if actual_raw is None else _to_float(actual_raw)
+        if actual_val is not None:
+            uploaded_months_set.add(month)
+
+        item["monthly"].append(
+            {
+                "month": month,
+                "forecast_value": forecast_val,
+                "actual_value": actual_val,
+            }
+        )
+
+    uploaded_months = sorted(uploaded_months_set)
+    uploaded_set = set(uploaded_months)
+
+    response_rows: List[Dict[str, object]] = []
+    for key, item in grouped.items():
+        monthly = sorted(item["monthly"], key=lambda x: int(x["month"]))
+        forecast_annual = float(sum(_to_float(m["forecast_value"]) for m in monthly))
+        actual_total = float(sum(_to_float(m["actual_value"]) for m in monthly if m["actual_value"] is not None))
+        forecast_to_date = float(
+            sum(_to_float(m["forecast_value"]) for m in monthly if int(m["month"]) in uploaded_set)
+        )
+
+        ecart_to_date_value, ecart_to_date_pct, alert_level = _compute_alert(
+            str(item["nature"]),
+            actual_total if uploaded_months else None,
+            forecast_to_date if uploaded_months else None,
+        )
+
+        taux_realisation_annuel_pct = (
+            (actual_total / forecast_annual * 100.0) if abs(forecast_annual) > 1e-9 else None
+        )
+        remaining_budget = float(forecast_annual - actual_total)
+
+        indicator_label, indicator_value, indicator_alert = _annual_indicator(
+            agregat_key=key,
+            nature=str(item["nature"]),
+            forecast_annual=forecast_annual,
+            actual_total=actual_total,
+            ecart_to_date_pct=ecart_to_date_pct,
+        )
+        if indicator_alert is not None:
+            alert_level = indicator_alert
+
+        response_rows.append(
+            {
+                "agregat_key": key,
+                "agregat_label": str(item["agregat_label"]),
+                "nature": str(item["nature"]),
+                "forecast_annual": forecast_annual,
+                "forecast_to_date": forecast_to_date,
+                "actual_total": actual_total,
+                "ecart_to_date_value": ecart_to_date_value,
+                "ecart_to_date_pct": ecart_to_date_pct,
+                "taux_realisation_annuel_pct": taux_realisation_annuel_pct,
+                "remaining_budget": remaining_budget,
+                "alert_level": alert_level,
+                "indicator_label": indicator_label,
+                "indicator_value": indicator_value,
+                "is_derived": bool(item.get("is_derived", False)),
+            }
+        )
+
+    response_rows.sort(key=lambda r: (bool(r.get("is_derived", False)), str(r["agregat_label"])))
+    clean_rows = [{k: v for k, v in row.items() if k != "is_derived"} for row in response_rows]
+
+    return {
+        "target_year": target_year,
+        "cycle_code": cycle_code,
+        "cycle_phase": _resolve_cycle_phase(uploaded_months),
+        "uploaded_months": uploaded_months,
+        "cycle_cutoff_month": _get_cycle_cutoff_month(cycle_code),
+        "rows": clean_rows,
+    }
+
+
 def get_catalog_items():
     items = []
     for key, meta in ALL_AGGREGATES.items():
