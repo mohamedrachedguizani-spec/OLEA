@@ -201,3 +201,20 @@ def init_forecast_tables():
                     ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
+
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS bfc_forecast_manual_subvalues (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                forecast_year INT NOT NULL,
+                cycle_code VARCHAR(32) NOT NULL,
+                agregat_key VARCHAR(64) NOT NULL,
+                month TINYINT NOT NULL,
+                subagregat_key VARCHAR(128) NOT NULL,
+                subagregat_label VARCHAR(255) NOT NULL,
+                forecast_value DOUBLE NOT NULL DEFAULT 0,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY uq_bfc_forecast_manual_subvalues (forecast_year, cycle_code, agregat_key, month, subagregat_key),
+                INDEX idx_bfc_forecast_manual_subvalues_lookup (forecast_year, cycle_code, agregat_key, month)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)

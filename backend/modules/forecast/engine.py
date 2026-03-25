@@ -13,6 +13,7 @@ import pandas as pd
 from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.holtwinters import ExponentialSmoothing, Holt
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+from modules.sage_bfc.config import get_mapping_config
 
 try:
     from prophet import Prophet
@@ -54,6 +55,36 @@ DERIVED_AGGREGATES: Dict[str, Dict[str, object]] = {
 }
 
 ALL_AGGREGATES: Dict[str, Dict[str, object]] = {**BASE_AGGREGATES, **DERIVED_AGGREGATES}
+
+AGGREGATE_DISPLAY_ORDER: List[str] = [
+    "ca_brut",
+    "retrocessions",
+    "ca_net",
+    "autres_produits",
+    "total_produits",
+    "frais_personnel",
+    "honoraires",
+    "frais_commerciaux",
+    "impots_taxes",
+    "fonctionnement",
+    "autres_charges",
+    "total_charges",
+    "ebitda",
+    "ebitda_pct",
+    "produits_financiers",
+    "charges_financieres",
+    "resultat_financier",
+    "dotations",
+    "produits_exceptionnels",
+    "charges_exceptionnelles",
+    "resultat_exceptionnel",
+    "resultat_avant_impot",
+    "impot_societes",
+    "resultat_net",
+    "resultat_net_pct",
+]
+
+AGGREGATE_ORDER_RANK: Dict[str, int] = {key: idx for idx, key in enumerate(AGGREGATE_DISPLAY_ORDER)}
 
 CYCLE_CONFIG = {
     "M03": {"label": "Ajustement fin Mars", "cycle_month": 3},
@@ -97,6 +128,43 @@ CSV_LABEL_TO_KEY = {
     "charges exceptionnelles": "charges_exceptionnelles",
 }
 
+AGREGAT_KEY_TO_SAGE_LABEL: Dict[str, str] = {
+    "ca_brut": "CA Brut",
+    "retrocessions": "Retrocessions",
+    "autres_produits": "Autres Produits d'Exploitation",
+    "frais_personnel": "Frais de Personnel",
+    "honoraires": "Honoraires & Sous-traitance",
+    "frais_commerciaux": "Frais Commerciaux",
+    "impots_taxes": "Impôts et taxes",
+    "fonctionnement": "Fonctionnement Courant",
+    "autres_charges": "Autres Charges",
+    "produits_financiers": "Produits Financiers",
+    "charges_financieres": "Charges Financières",
+    "dotations": "Dotations Amortissements & Provisions",
+    "impot_societes": "Impôt sur les sociétés",
+    "produits_exceptionnels": "Produits Exceptionnels",
+    "charges_exceptionnelles": "Charges Exceptionnelles",
+}
+
+MAPPING_SECTION_KEYS = [
+    "mapping_chiffre_affaires",
+    "mapping_retrocessions",
+    "mapping_frais_personnel",
+    "mapping_interco_frais",
+    "mapping_honoraires",
+    "mapping_frais_commerciaux",
+    "mapping_impots",
+    "mapping_fonctionnement",
+    "mapping_autres_charges",
+    "mapping_produits_exploitation",
+    "mapping_produits_financiers",
+    "mapping_charges_financieres",
+    "mapping_dotations",
+    "mapping_produits_exceptionnels",
+    "mapping_charges_exceptionnelles",
+    "mapping_impots_societes",
+]
+
 
 @dataclass
 class ModelForecast:
@@ -121,6 +189,19 @@ def _to_float(value) -> float:
         return 0.0
 
 
+def _round3(value: Optional[float]) -> Optional[float]:
+    if value is None:
+        return None
+    return round(float(value), 3)
+
+
+def _aggregate_sort_key(row: Dict[str, object]) -> Tuple[int, str]:
+    key = str(row.get("agregat_key") or "")
+    rank = AGGREGATE_ORDER_RANK.get(key, 10_000)
+    label = str(row.get("agregat_label") or "")
+    return rank, label
+
+
 def _normalize_text(value: str) -> str:
     text = unicodedata.normalize("NFKD", str(value)).encode("ascii", "ignore").decode("ascii")
     text = re.sub(r"[^a-zA-Z0-9 ]+", " ", text).lower().strip()
@@ -133,6 +214,93 @@ def _nature_normalize(key: str, value: float) -> float:
     if nature == "charge":
         return abs(value)
     return value
+
+
+def _subagregat_key(label: str) -> str:
+    text = _normalize_text(label or "autres")
+    return text.replace(" ", "_") or "autres"
+
+
+def _subagregat_key_from_code(code: str) -> str:
+    text = re.sub(r"[^a-zA-Z0-9]+", "_", str(code or "").strip().lower())
+    text = re.sub(r"_+", "_", text).strip("_")
+    return text or "autres"
+
+
+def _possible_subagregats_for_agregat(agregat_key: str) -> List[Dict[str, str]]:
+    target_label = AGREGAT_KEY_TO_SAGE_LABEL.get(agregat_key)
+    if not target_label:
+        return []
+
+    mapping = get_mapping_config()
+    values: Dict[str, str] = {}
+    for section in MAPPING_SECTION_KEYS:
+        section_items = mapping.get(section, {})
+        if not isinstance(section_items, dict):
+            continue
+        for code, cfg in section_items.items():
+            if not isinstance(cfg, dict):
+                continue
+            if str(cfg.get("agregat_bfc", "")).strip() != target_label:
+                continue
+            libelle = str(cfg.get("libelle_sage") or code or "Autres")
+            key = _subagregat_key_from_code(str(code))
+            label = f"{code} - {libelle}" if str(code).strip() else libelle
+            if key not in values:
+                values[key] = label
+
+    return [
+        {"subagregat_key": k, "subagregat_label": values[k]}
+        for k in sorted(values.keys(), key=lambda x: values[x].lower())
+    ]
+
+
+def _load_actual_subagregats(target_year: int, agregat_key: str, month: Optional[int]) -> Dict[str, Dict[str, object]]:
+    target_label = AGREGAT_KEY_TO_SAGE_LABEL.get(agregat_key)
+    if not target_label:
+        return {}
+
+    if month is None:
+        query = """
+            SELECT lignes
+            FROM sage_bfc_monthly
+            WHERE YEAR(periode) = %s
+            ORDER BY periode ASC
+        """
+        params = (target_year,)
+    else:
+        query = """
+            SELECT lignes
+            FROM sage_bfc_monthly
+            WHERE YEAR(periode) = %s AND MONTH(periode) = %s
+            ORDER BY periode ASC
+        """
+        params = (target_year, month)
+
+    with db.get_cursor() as cursor:
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+
+    sums: Dict[str, Dict[str, object]] = {}
+    for row in rows:
+        lignes_raw = row.get("lignes")
+        lignes = lignes_raw if isinstance(lignes_raw, list) else json.loads(lignes_raw or "[]")
+        for ligne in lignes:
+            if str(ligne.get("agregat_bfc", "")).strip() != target_label:
+                continue
+
+            code = str(ligne.get("code_sage") or "").strip()
+            libelle = str(ligne.get("libelle_sage") or ligne.get("sous_categorie") or "Autres")
+            key = _subagregat_key_from_code(code) if code else _subagregat_key(libelle)
+            label = f"{code} - {libelle}" if code else libelle
+
+            amount = abs(_to_float(ligne.get("montant_absolu", ligne.get("montant", 0.0))))
+            current = sums.get(key, {"subagregat_label": label, "actual_value": 0.0})
+            current["subagregat_label"] = current.get("subagregat_label") or label
+            current["actual_value"] = float(_to_float(current.get("actual_value", 0.0)) + amount)
+            sums[key] = current
+
+    return sums
 
 
 def _build_derived_month(base_month: Dict[str, float]) -> Dict[str, float]:
@@ -778,11 +946,12 @@ def get_comparison(target_year: int, cycle_code: str, month: int):
                    ecart_value, ecart_pct, alert_level, model_name
             FROM bfc_forecast_values
             WHERE forecast_year = %s AND cycle_code = %s AND month = %s
-            ORDER BY is_derived ASC, agregat_label ASC
+            ORDER BY agregat_label ASC
             """,
             (target_year, cycle_code, month),
         )
-        return cursor.fetchall()
+        rows = cursor.fetchall()
+    return sorted(rows, key=_aggregate_sort_key)
 
 
 def _resolve_cycle_phase(uploaded_months: List[int]) -> str:
@@ -933,7 +1102,7 @@ def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object
             }
         )
 
-    response_rows.sort(key=lambda r: (bool(r.get("is_derived", False)), str(r["agregat_label"])))
+    response_rows.sort(key=_aggregate_sort_key)
     clean_rows = [{k: v for k, v in row.items() if k != "is_derived"} for row in response_rows]
 
     return {
@@ -943,6 +1112,384 @@ def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object
         "uploaded_months": uploaded_months,
         "cycle_cutoff_month": _get_cycle_cutoff_month(cycle_code),
         "rows": clean_rows,
+    }
+
+
+def get_subagregats(target_year: int, cycle_code: str, agregat_key: str, month: Optional[int] = None) -> Dict[str, object]:
+    if agregat_key not in BASE_AGGREGATES:
+        return {
+            "target_year": target_year,
+            "cycle_code": cycle_code,
+            "agregat_key": agregat_key,
+            "month": month,
+            "aggregate_forecast_value": None,
+            "items": [],
+        }
+
+    possible = _possible_subagregats_for_agregat(agregat_key)
+    actual_map = _load_actual_subagregats(target_year=target_year, agregat_key=agregat_key, month=month)
+
+    with db.get_cursor() as cursor:
+        if month is None:
+            cursor.execute(
+                """
+                SELECT subagregat_key, subagregat_label, SUM(forecast_value) AS forecast_value
+                FROM bfc_forecast_manual_subvalues
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s
+                GROUP BY subagregat_key, subagregat_label
+                ORDER BY subagregat_label ASC
+                """,
+                (target_year, cycle_code, agregat_key),
+            )
+            sub_rows = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT SUM(forecast_value) AS forecast_value
+                FROM bfc_forecast_values
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s
+                """,
+                (target_year, cycle_code, agregat_key),
+            )
+            agg_row = cursor.fetchone()
+            aggregate_forecast_value = _to_float(agg_row["forecast_value"]) if agg_row and agg_row["forecast_value"] is not None else None
+        else:
+            cursor.execute(
+                """
+                SELECT subagregat_key, subagregat_label, forecast_value
+                FROM bfc_forecast_manual_subvalues
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s AND month = %s
+                ORDER BY subagregat_label ASC
+                """,
+                (target_year, cycle_code, agregat_key, month),
+            )
+            sub_rows = cursor.fetchall()
+
+            cursor.execute(
+                """
+                SELECT forecast_value
+                FROM bfc_forecast_values
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s AND month = %s
+                LIMIT 1
+                """,
+                (target_year, cycle_code, agregat_key, month),
+            )
+            agg_row = cursor.fetchone()
+            aggregate_forecast_value = _to_float(agg_row["forecast_value"]) if agg_row and agg_row["forecast_value"] is not None else None
+
+    forecast_map: Dict[str, Tuple[str, float]] = {}
+    for row in sub_rows:
+        skey = str(row["subagregat_key"])
+        slabel = str(row["subagregat_label"])
+        sval = _to_float(row.get("forecast_value"))
+        forecast_map[skey] = (slabel, sval)
+
+    labels_map: Dict[str, str] = {x["subagregat_key"]: x["subagregat_label"] for x in possible}
+    for skey, (slabel, _) in forecast_map.items():
+        labels_map[skey] = slabel
+    for skey in actual_map.keys():
+        labels_map.setdefault(skey, str(actual_map[skey].get("subagregat_label") or skey.replace("_", " ").title()))
+
+    items = []
+    nature = str(BASE_AGGREGATES.get(agregat_key, {}).get("nature", "charge"))
+    for skey in sorted(labels_map.keys(), key=lambda k: labels_map[k].lower()):
+        slabel = labels_map[skey]
+        f_val = forecast_map.get(skey, (slabel, None))[1] if skey in forecast_map else None
+        # Si aucun réalisé n'existe encore, considérer 0 par défaut pour permettre
+        # le calcul immédiat des KPI (taux, reste, indice/alerte).
+        a_val = _to_float(actual_map[skey].get("actual_value")) if skey in actual_map else 0.0
+
+        diff, pct, level = _compute_alert(nature, a_val, f_val) if f_val is not None else (None, None, None)
+        taux_realisation = (a_val / f_val * 100.0) if (f_val is not None and abs(f_val) > 1e-9) else None
+        remaining_budget = (f_val - a_val) if (f_val is not None) else None
+
+        indicator_label, indicator_value, indicator_alert = _annual_indicator(
+            agregat_key=agregat_key,
+            nature=nature,
+            forecast_annual=float(f_val) if f_val is not None else 0.0,
+            actual_total=float(a_val),
+            ecart_to_date_pct=pct,
+        ) if f_val is not None else (None, None, None)
+        if indicator_alert is not None:
+            level = indicator_alert
+
+        items.append(
+            {
+                "subagregat_key": skey,
+                "subagregat_label": slabel,
+                "forecast_value": _round3(f_val),
+                "actual_value": _round3(a_val),
+                "taux_realisation_annuel_pct": _round3(taux_realisation),
+                "remaining_budget": _round3(remaining_budget),
+                "alert_level": level,
+                "indicator_label": indicator_label,
+                "indicator_value": _round3(indicator_value),
+            }
+        )
+
+    return {
+        "target_year": target_year,
+        "cycle_code": cycle_code,
+        "agregat_key": agregat_key,
+        "month": month,
+        "aggregate_forecast_value": _round3(aggregate_forecast_value),
+        "items": items,
+    }
+
+
+def _refresh_derived_forecast_values(target_year: int, cycle_code: str, month: int):
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT agregat_key, forecast_value
+            FROM bfc_forecast_values
+            WHERE forecast_year = %s AND cycle_code = %s AND month = %s AND is_derived = FALSE
+            """,
+            (target_year, cycle_code, month),
+        )
+        base_rows = cursor.fetchall()
+
+    base_month = {str(r["agregat_key"]): _to_float(r["forecast_value"]) for r in base_rows}
+    derived = _build_derived_month(base_month)
+
+    with db.get_cursor() as cursor:
+        for dkey, dval in derived.items():
+            cursor.execute(
+                """
+                SELECT id, actual_value, nature
+                FROM bfc_forecast_values
+                WHERE forecast_year = %s AND cycle_code = %s AND month = %s AND agregat_key = %s
+                LIMIT 1
+                """,
+                (target_year, cycle_code, month, dkey),
+            )
+            row = cursor.fetchone()
+            if not row:
+                continue
+
+            actual_value = row.get("actual_value")
+            diff, pct, level = _compute_alert(
+                str(row["nature"]),
+                None if actual_value is None else _to_float(actual_value),
+                float(dval),
+            )
+            cursor.execute(
+                """
+                UPDATE bfc_forecast_values
+                SET forecast_value = %s,
+                    lower_value = NULL,
+                    upper_value = NULL,
+                    model_name = %s,
+                    ecart_value = %s,
+                    ecart_pct = %s,
+                    alert_level = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (float(dval), "formula", diff, pct, level, row["id"]),
+            )
+
+
+def set_manual_forecast_values(
+    target_year: int,
+    cycle_code: str,
+    agregat_key: str,
+    month: int,
+    forecast_value: float,
+    subagregats: List[Dict[str, object]],
+) -> Dict[str, object]:
+    if agregat_key not in BASE_AGGREGATES:
+        raise ValueError("Modification manuelle autorisée uniquement sur les agrégats de base")
+
+    # Si les sous-agrégats sont fournis, la valeur globale est calculée automatiquement.
+    if subagregats:
+        forecast_value = float(sum(_to_float(item.get("forecast_value")) for item in subagregats))
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, actual_value, nature
+            FROM bfc_forecast_values
+            WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s AND month = %s
+            LIMIT 1
+            """,
+            (target_year, cycle_code, agregat_key, month),
+        )
+        row = cursor.fetchone()
+
+        if not row:
+            raise ValueError("Prévision introuvable pour les paramètres fournis")
+
+        actual_value = row.get("actual_value")
+        diff, pct, level = _compute_alert(
+            str(row["nature"]),
+            None if actual_value is None else _to_float(actual_value),
+            float(forecast_value),
+        )
+        cursor.execute(
+            """
+            UPDATE bfc_forecast_values
+            SET forecast_value = %s,
+                lower_value = NULL,
+                upper_value = NULL,
+                model_name = %s,
+                ecart_value = %s,
+                ecart_pct = %s,
+                alert_level = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            (float(forecast_value), "manual", diff, pct, level, row["id"]),
+        )
+
+        cursor.execute(
+            """
+            DELETE FROM bfc_forecast_manual_subvalues
+            WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s AND month = %s
+            """,
+            (target_year, cycle_code, agregat_key, month),
+        )
+
+        written = 0
+        for item in subagregats:
+            sub_key = _subagregat_key(str(item.get("subagregat_key") or item.get("subagregat_label") or "Autres"))
+            sub_label = str(item.get("subagregat_label") or sub_key)
+            sub_val = _round3(_to_float(item.get("forecast_value"))) or 0.0
+            cursor.execute(
+                """
+                INSERT INTO bfc_forecast_manual_subvalues (
+                    forecast_year, cycle_code, agregat_key, month,
+                    subagregat_key, subagregat_label, forecast_value
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    subagregat_label = VALUES(subagregat_label),
+                    forecast_value = VALUES(forecast_value),
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (target_year, cycle_code, agregat_key, month, sub_key, sub_label, float(sub_val)),
+            )
+            written += 1
+
+    _refresh_derived_forecast_values(target_year=target_year, cycle_code=cycle_code, month=month)
+
+    return {
+        "status": "updated",
+        "target_year": target_year,
+        "cycle_code": cycle_code,
+        "agregat_key": agregat_key,
+        "month": month,
+        "forecast_value": float(forecast_value),
+        "subagregats_written": written,
+    }
+
+
+def set_manual_annual_forecast_values(
+    target_year: int,
+    cycle_code: str,
+    agregat_key: str,
+    forecast_annual_value: float,
+    subagregats: List[Dict[str, object]],
+) -> Dict[str, object]:
+    if agregat_key not in BASE_AGGREGATES:
+        raise ValueError("Modification manuelle annuelle autorisée uniquement sur les agrégats de base")
+
+    # Si les sous-agrégats sont fournis, la valeur annuelle globale est calculée automatiquement.
+    if subagregats:
+        forecast_annual_value = float(sum(_to_float(item.get("forecast_value")) for item in subagregats))
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, month, forecast_value, actual_value, nature
+            FROM bfc_forecast_values
+            WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s
+            ORDER BY month ASC
+            """,
+            (target_year, cycle_code, agregat_key),
+        )
+        rows = cursor.fetchall()
+
+    if not rows:
+        raise ValueError("Prévision annuelle introuvable pour les paramètres fournis")
+
+    months = [int(r["month"]) for r in rows]
+    current_vals = [max(0.0, _to_float(r.get("forecast_value"))) for r in rows]
+    current_sum = float(sum(current_vals))
+    if current_sum > 1e-9:
+        weights = [v / current_sum for v in current_vals]
+    else:
+        weights = [1.0 / len(rows)] * len(rows)
+
+    monthly_new_values = [float(forecast_annual_value) * w for w in weights]
+
+    with db.get_cursor() as cursor:
+        for idx, row in enumerate(rows):
+            new_value = float(monthly_new_values[idx])
+            actual_value = row.get("actual_value")
+            diff, pct, level = _compute_alert(
+                str(row["nature"]),
+                None if actual_value is None else _to_float(actual_value),
+                new_value,
+            )
+            cursor.execute(
+                """
+                UPDATE bfc_forecast_values
+                SET forecast_value = %s,
+                    lower_value = NULL,
+                    upper_value = NULL,
+                    model_name = %s,
+                    ecart_value = %s,
+                    ecart_pct = %s,
+                    alert_level = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = %s
+                """,
+                (new_value, "manual_annual", diff, pct, level, row["id"]),
+            )
+
+        # Reset old annual manual sub-values for this aggregate
+        cursor.execute(
+            """
+            DELETE FROM bfc_forecast_manual_subvalues
+            WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s
+            """,
+            (target_year, cycle_code, agregat_key),
+        )
+
+        sub_written = 0
+        for item in subagregats:
+            sub_key = _subagregat_key(str(item.get("subagregat_key") or item.get("subagregat_label") or "Autres"))
+            sub_label = str(item.get("subagregat_label") or sub_key)
+            annual_sub_value = _round3(_to_float(item.get("forecast_value"))) or 0.0
+
+            for idx, month in enumerate(months):
+                month_value = _round3(float(annual_sub_value) * float(weights[idx])) or 0.0
+                cursor.execute(
+                    """
+                    INSERT INTO bfc_forecast_manual_subvalues (
+                        forecast_year, cycle_code, agregat_key, month,
+                        subagregat_key, subagregat_label, forecast_value
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        subagregat_label = VALUES(subagregat_label),
+                        forecast_value = VALUES(forecast_value),
+                        updated_at = CURRENT_TIMESTAMP
+                    """,
+                    (target_year, cycle_code, agregat_key, month, sub_key, sub_label, month_value),
+                )
+                sub_written += 1
+
+    for month in months:
+        _refresh_derived_forecast_values(target_year=target_year, cycle_code=cycle_code, month=month)
+
+    return {
+        "status": "updated",
+        "target_year": target_year,
+        "cycle_code": cycle_code,
+        "agregat_key": agregat_key,
+        "forecast_annual_value": float(forecast_annual_value),
+        "months_updated": len(months),
+        "subagregats_written": sub_written,
     }
 
 
@@ -1106,4 +1653,118 @@ def run_cycle_adjustment(target_year: int, cycle_code: str, force: bool = False)
         "run_id": run_id,
         "rows_written": rows_written,
         "status": "done",
+    }
+
+
+def invalidate_adjustment_cycles_for_year(target_year: int) -> Dict[str, object]:
+    """
+    Invalide/supprime les cycles d'ajustement (M03/M06/M08) qui ne sont plus valides
+    après suppression de mois réels.
+    Un cycle est invalide si tous ses mois requis ne sont pas présents dans sage_bfc_monthly.
+    """
+    uploaded_months = _get_uploaded_months(target_year)
+    uploaded_set = set(uploaded_months)
+    invalidated_cycles: List[Dict[str, object]] = []
+
+    for cycle_code, meta in CYCLE_CONFIG.items():
+        cycle_month = int(meta["cycle_month"])
+        required_months = list(range(1, cycle_month + 1))
+        missing_months = [m for m in required_months if m not in uploaded_set]
+        if not missing_months:
+            continue
+
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS cnt
+                FROM bfc_forecast_values
+                WHERE forecast_year = %s AND cycle_code = %s
+                """,
+                (target_year, cycle_code),
+            )
+            values_count = int(cursor.fetchone()["cnt"])
+
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS cnt
+                FROM bfc_forecast_runs
+                WHERE forecast_year = %s AND cycle_code = %s
+                """,
+                (target_year, cycle_code),
+            )
+            runs_count = int(cursor.fetchone()["cnt"])
+
+            cursor.execute(
+                """
+                DELETE FROM bfc_forecast_values
+                WHERE forecast_year = %s AND cycle_code = %s
+                """,
+                (target_year, cycle_code),
+            )
+            cursor.execute(
+                """
+                DELETE FROM bfc_forecast_runs
+                WHERE forecast_year = %s AND cycle_code = %s
+                """,
+                (target_year, cycle_code),
+            )
+            cursor.execute(
+                """
+                DELETE FROM bfc_forecast_manual_subvalues
+                WHERE forecast_year = %s AND cycle_code = %s
+                """,
+                (target_year, cycle_code),
+            )
+
+        if values_count > 0 or runs_count > 0:
+            invalidated_cycles.append(
+                {
+                    "cycle_code": cycle_code,
+                    "cycle_month": cycle_month,
+                    "required_months": required_months,
+                    "uploaded_months": uploaded_months,
+                    "missing_months": missing_months,
+                    "deleted_values": values_count,
+                    "deleted_runs": runs_count,
+                }
+            )
+
+    return {
+        "target_year": target_year,
+        "uploaded_months": uploaded_months,
+        "invalidated_cycles": invalidated_cycles,
+    }
+
+
+def purge_all_adjustment_cycles() -> Dict[str, int]:
+    """
+    Supprime globalement toutes les prévisions de cycles d'ajustement (hors INITIAL).
+    Utilisé lors de la suppression globale des mois réels.
+    """
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM bfc_forecast_values
+            WHERE cycle_code <> 'INITIAL'
+            """
+        )
+        values_count = int(cursor.fetchone()["cnt"])
+
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS cnt
+            FROM bfc_forecast_runs
+            WHERE cycle_code <> 'INITIAL'
+            """
+        )
+        runs_count = int(cursor.fetchone()["cnt"])
+
+        cursor.execute("DELETE FROM bfc_forecast_values WHERE cycle_code <> 'INITIAL'")
+        cursor.execute("DELETE FROM bfc_forecast_runs WHERE cycle_code <> 'INITIAL'")
+        cursor.execute("DELETE FROM bfc_forecast_manual_subvalues WHERE cycle_code <> 'INITIAL'")
+
+    return {
+        "deleted_values": values_count,
+        "deleted_runs": runs_count,
     }

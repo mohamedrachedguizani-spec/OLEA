@@ -9,9 +9,12 @@ from .engine import (
     get_catalog_items,
     get_comparison,
     get_cycle_status,
+    get_subagregats,
     get_year_values,
     import_historical_csv,
     run_cycle_adjustment,
+    set_manual_annual_forecast_values,
+    set_manual_forecast_values,
     sync_closed_years_into_history,
 )
 from database import db
@@ -23,7 +26,13 @@ from .models import (
     ForecastComparisonRow,
     ForecastCycleRunResponse,
     ForecastCycleStatusResponse,
+    ForecastManualAnnualAggregateUpdateRequest,
+    ForecastManualAnnualAggregateUpdateResponse,
+    ForecastManualAggregateUpdateRequest,
+    ForecastManualAggregateUpdateResponse,
     ForecastRunResponse,
+    ForecastSubAggregateItem,
+    ForecastSubAggregatesResponse,
     HistoricalImportResponse,
     ForecastYearValues,
 )
@@ -163,6 +172,66 @@ def get_forecast_annual_comparison(
         cycle_cutoff_month=payload.get("cycle_cutoff_month"),
         rows=mapped_rows,
     )
+
+
+@router.get("/subagregats", response_model=ForecastSubAggregatesResponse)
+def get_forecast_subagregats(
+    target_year: int = Query(..., ge=2000, le=2100),
+    cycle_code: str = Query("INITIAL"),
+    agregat_key: str = Query(...),
+    month: int | None = Query(None, ge=1, le=12),
+):
+    payload = get_subagregats(
+        target_year=target_year,
+        cycle_code=cycle_code,
+        agregat_key=agregat_key,
+        month=month,
+    )
+    return ForecastSubAggregatesResponse(
+        target_year=payload["target_year"],
+        cycle_code=payload["cycle_code"],
+        agregat_key=payload["agregat_key"],
+        month=payload.get("month"),
+        aggregate_forecast_value=payload.get("aggregate_forecast_value"),
+        items=[ForecastSubAggregateItem(**x) for x in payload.get("items", [])],
+    )
+
+
+@router.put("/manual/aggregate", response_model=ForecastManualAggregateUpdateResponse)
+def update_manual_aggregate_forecast(payload: ForecastManualAggregateUpdateRequest):
+    try:
+        result = set_manual_forecast_values(
+            target_year=payload.target_year,
+            cycle_code=payload.cycle_code,
+            agregat_key=payload.agregat_key,
+            month=payload.month,
+            forecast_value=payload.forecast_value,
+            subagregats=[x.model_dump() for x in payload.subagregats],
+        )
+        ws_manager.broadcast("forecast", "manual_updated", result)
+        return ForecastManualAggregateUpdateResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur mise à jour manuelle: {str(e)}")
+
+
+@router.put("/manual/aggregate-annual", response_model=ForecastManualAnnualAggregateUpdateResponse)
+def update_manual_aggregate_forecast_annual(payload: ForecastManualAnnualAggregateUpdateRequest):
+    try:
+        result = set_manual_annual_forecast_values(
+            target_year=payload.target_year,
+            cycle_code=payload.cycle_code,
+            agregat_key=payload.agregat_key,
+            forecast_annual_value=payload.forecast_annual_value,
+            subagregats=[x.model_dump() for x in payload.subagregats],
+        )
+        ws_manager.broadcast("forecast", "manual_annual_updated", result)
+        return ForecastManualAnnualAggregateUpdateResponse(**result)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur mise à jour manuelle annuelle: {str(e)}")
 
 
 @router.get("/year-values", response_model=ForecastYearValues)

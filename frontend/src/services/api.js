@@ -471,6 +471,42 @@ class ApiService {
         return response.json();
     }
 
+    static async getForecastSubAgregats(targetYear, cycleCode, agregatKey, month = null) {
+        const params = new URLSearchParams({
+            target_year: String(targetYear),
+            cycle_code: String(cycleCode),
+            agregat_key: String(agregatKey),
+        });
+        if (month != null) params.append('month', String(month));
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/subagregats?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async updateForecastManualAggregate(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/manual/aggregate`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur mise à jour manuelle forecast' }));
+            throw new Error(err.detail || `Erreur ${response.status}`);
+        }
+        return response.json();
+    }
+
+    static async updateForecastManualAggregateAnnual(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/forecast/manual/aggregate-annual`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur mise à jour manuelle annuelle forecast' }));
+            throw new Error(err.detail || `Erreur ${response.status}`);
+        }
+        return response.json();
+    }
+
     static async getForecastYearValues(targetYear, cycleCode, agregatKey) {
         const params = new URLSearchParams({
             target_year: String(targetYear),

@@ -4017,6 +4017,177 @@
     font-weight: 600;
 }
 
+.forecast-row-clickable {
+    cursor: pointer;
+}
+
+.forecast-row-clickable:hover {
+    background: var(--bg-muted);
+}
+
+.forecast-expand-icon {
+    display: inline-block;
+    min-width: 14px;
+    margin-right: 0.25rem;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.forecast-subrow td {
+    background: color-mix(in srgb, var(--bg-muted) 72%, transparent);
+}
+
+.forecast-subpanel {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-card);
+    padding: 0.65rem;
+}
+
+.forecast-subpanel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.55rem;
+}
+
+.forecast-subpanel-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+}
+
+.forecast-sub-aggregate-input {
+    height: 34px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    padding: 0 0.5rem;
+    width: 130px;
+}
+
+.forecast-subitems {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.4rem;
+}
+
+.forecast-subitem-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) 130px minmax(130px, auto) minmax(120px, auto) minmax(120px, auto) minmax(220px, auto);
+    gap: 0.55rem;
+    align-items: center;
+}
+
+.forecast-subitem-row input {
+    height: 32px;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    background: var(--bg-input);
+    color: var(--text-primary);
+    padding: 0 0.45rem;
+}
+
+.forecast-subitem-label {
+    font-size: 0.79rem;
+    color: var(--text-primary);
+    font-weight: 600;
+}
+
+.forecast-subitem-forecast {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    text-align: right;
+    padding: 0.26rem 0.45rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--info) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--info) 30%, var(--border-light));
+}
+
+.forecast-subitem-actual {
+    font-size: 0.76rem;
+    color: var(--text-secondary);
+    text-align: left;
+    padding: 0.26rem 0.45rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--primary-500) 10%, transparent);
+    border: 1px solid color-mix(in srgb, var(--primary-500) 26%, var(--border-light));
+}
+
+.forecast-subitem-kpi {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    font-weight: 700;
+    padding: 0.24rem 0.5rem;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-light);
+    background: var(--bg-muted);
+}
+
+.forecast-subitem-kpi.good {
+    color: #065f46;
+    border-color: rgba(16, 185, 129, 0.42);
+    background: rgba(16, 185, 129, 0.18);
+}
+
+.forecast-subitem-kpi.warn {
+    color: #92400e;
+    border-color: rgba(245, 158, 11, 0.42);
+    background: rgba(245, 158, 11, 0.18);
+}
+
+.forecast-subitem-kpi.bad {
+    color: #991b1b;
+    border-color: rgba(239, 68, 68, 0.42);
+    background: rgba(239, 68, 68, 0.17);
+}
+
+.forecast-subitem-kpi-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    white-space: normal;
+    border-radius: var(--radius-sm);
+    padding: 0.22rem 0.42rem;
+}
+
+.forecast-subitem-indicator-label {
+    font-weight: 700;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 1200px) {
+    .forecast-subitem-row {
+        grid-template-columns: minmax(220px, 1fr) 130px;
+    }
+
+    .forecast-subitem-actual,
+    .forecast-subitem-kpi {
+        grid-column: 1 / -1;
+    }
+}
+
+.dark-mode .forecast-subrow td,
+.dark-mode .forecast-row-clickable:hover {
+    background: color-mix(in srgb, var(--bg-hover) 55%, transparent);
+}
+
+.dark-mode .forecast-subitem-kpi.good {
+    color: #a7f3d0;
+}
+
+.dark-mode .forecast-subitem-kpi.warn {
+    color: #fcd34d;
+}
+
+.dark-mode .forecast-subitem-kpi.bad {
+    color: #fca5a5;
+}
+
 .annual-indicator-cell {
     display: flex;
     align-items: center;

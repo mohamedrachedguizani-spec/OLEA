@@ -12,6 +12,18 @@ import {
 } from 'recharts';
 
 const CYCLE_OPTIONS = ['INITIAL', 'M03', 'M06', 'M08'];
+const DERIVED_KEYS = new Set([
+    'ca_net',
+    'total_produits',
+    'total_charges',
+    'ebitda',
+    'ebitda_pct',
+    'resultat_financier',
+    'resultat_exceptionnel',
+    'resultat_avant_impot',
+    'resultat_net',
+    'resultat_net_pct',
+]);
 
 function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     const now = new Date();
@@ -56,6 +68,10 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     const [chartLoading, setChartLoading] = useState(false);
     const [annualSearch, setAnnualSearch] = useState('');
     const [alertsOnly, setAlertsOnly] = useState(false);
+    const [expandedAnnualKey, setExpandedAnnualKey] = useState(null);
+    const [expandedMonthlyKey, setExpandedMonthlyKey] = useState(null);
+    const [subAggData, setSubAggData] = useState({});
+    const [manualSaveLoading, setManualSaveLoading] = useState('');
 
     useEffect(() => {
         setTargetYear(inferredYear);
@@ -73,10 +89,10 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         }).format(Number(v));
     };
 
-    const fmtPct = (v) => {
+    const fmtPct = (v, digits = 2) => {
         if (v == null || Number.isNaN(Number(v))) return '—';
         const n = Number(v);
-        return `${n >= 0 ? '+' : ''}${n.toFixed(2)}%`;
+        return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`;
     };
 
     const alertLabel = (level) => {
@@ -147,6 +163,167 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
             setActionLoading('');
         }
     };
+
+    const canDrilldown = useCallback((agregatKey) => !DERIVED_KEYS.has(String(agregatKey || '')), []);
+
+    const subAggCacheKey = useCallback(
+        (agregatKey, monthScope = compareMonth) => `${targetYear}:${compareCycle}:${monthScope == null ? 'ALL' : monthScope}:${agregatKey}`,
+        [targetYear, compareCycle, compareMonth]
+    );
+
+    const loadSubAgregats = useCallback(async (agregatKey, aggregateForecastValue, monthScope = compareMonth) => {
+        if (!canDrilldown(agregatKey)) return;
+        const key = subAggCacheKey(agregatKey, monthScope);
+        setSubAggData((prev) => ({
+            ...prev,
+            [key]: {
+                ...(prev[key] || {}),
+                loading: true,
+                error: '',
+            },
+        }));
+        try {
+            const res = await ApiService.getForecastSubAgregats(targetYear, compareCycle, agregatKey, monthScope);
+            const items = (res.items || []).map((it) => ({
+                ...it,
+                draft: it.forecast_value != null ? String(it.forecast_value) : '',
+            }));
+            setSubAggData((prev) => ({
+                ...prev,
+                [key]: {
+                    loading: false,
+                    error: '',
+                    items,
+                    monthScope,
+                    draftAggregate:
+                        res.aggregate_forecast_value != null
+                            ? String(res.aggregate_forecast_value)
+                            : String(aggregateForecastValue ?? ''),
+                },
+            }));
+        } catch (e) {
+            setSubAggData((prev) => ({
+                ...prev,
+                [key]: {
+                    ...(prev[key] || {}),
+                    loading: false,
+                    error: e.message || 'Erreur chargement sous-agrégats',
+                },
+            }));
+        }
+    }, [targetYear, compareCycle, compareMonth, canDrilldown, subAggCacheKey]);
+
+    const saveManualForAgregat = useCallback(async (agregatKey) => {
+        const cacheKey = subAggCacheKey(agregatKey, compareMonth);
+        const data = subAggData[cacheKey];
+        if (!data) return;
+
+        const aggregateValue = Number(data.draftAggregate || 0);
+        if (Number.isNaN(aggregateValue)) {
+            setError('Valeur agrégat invalide');
+            return;
+        }
+
+        const subagregats = (data.items || [])
+            .filter((it) => String(it.draft || '').trim() !== '')
+            .map((it) => ({
+                subagregat_key: it.subagregat_key,
+                subagregat_label: it.subagregat_label,
+                forecast_value: Number(it.draft || 0),
+            }))
+            .filter((x) => !Number.isNaN(x.forecast_value));
+
+        const saveKey = `${agregatKey}:${compareMonth}`;
+        setManualSaveLoading(saveKey);
+        setError('');
+        setSuccessMsg('');
+        try {
+            await ApiService.updateForecastManualAggregate({
+                target_year: targetYear,
+                cycle_code: compareCycle,
+                agregat_key: agregatKey,
+                month: compareMonth,
+                forecast_value: aggregateValue,
+                subagregats,
+            });
+            setSuccessMsg(`Prévision manuelle enregistrée (${agregatKey} / M${String(compareMonth).padStart(2, '0')})`);
+            await reloadAll();
+            await loadSubAgregats(agregatKey, aggregateValue, compareMonth);
+        } catch (e) {
+            setError(e.message || 'Erreur sauvegarde manuelle');
+        } finally {
+            setManualSaveLoading('');
+        }
+    }, [subAggCacheKey, subAggData, compareMonth, compareCycle, targetYear, reloadAll, loadSubAgregats]);
+
+    const saveManualAnnualForAgregat = useCallback(async (agregatKey) => {
+        const cacheKey = subAggCacheKey(agregatKey, null);
+        const data = subAggData[cacheKey];
+        if (!data) return;
+
+        const annualAggregateValue = Number(data.draftAggregate || 0);
+        if (Number.isNaN(annualAggregateValue)) {
+            setError('Valeur annuelle agrégat invalide');
+            return;
+        }
+
+        const subagregats = (data.items || [])
+            .filter((it) => String(it.draft || '').trim() !== '')
+            .map((it) => ({
+                subagregat_key: it.subagregat_key,
+                subagregat_label: it.subagregat_label,
+                forecast_value: Number(it.draft || 0),
+            }))
+            .filter((x) => !Number.isNaN(x.forecast_value));
+
+        const saveKey = `${agregatKey}:ANNUAL`;
+        setManualSaveLoading(saveKey);
+        setError('');
+        setSuccessMsg('');
+        try {
+            await ApiService.updateForecastManualAggregateAnnual({
+                target_year: targetYear,
+                cycle_code: compareCycle,
+                agregat_key: agregatKey,
+                forecast_annual_value: annualAggregateValue,
+                subagregats,
+            });
+            setSuccessMsg(`Prévision annuelle enregistrée (${agregatKey})`);
+            await reloadAll();
+            await loadSubAgregats(agregatKey, annualAggregateValue, null);
+        } catch (e) {
+            setError(e.message || 'Erreur sauvegarde annuelle');
+        } finally {
+            setManualSaveLoading('');
+        }
+    }, [subAggCacheKey, subAggData, compareCycle, targetYear, reloadAll, loadSubAgregats]);
+
+    const recomputeDraftAggregate = useCallback((items = []) => {
+        const total = (items || []).reduce((sum, it) => {
+            const raw = String(it?.draft ?? '').trim();
+            if (raw === '') return sum;
+            const n = Number(raw);
+            return Number.isNaN(n) ? sum : sum + n;
+        }, 0);
+        return String(Number(total.toFixed(3)));
+    }, []);
+
+    const updateSubDraftAndAggregate = useCallback((cacheKey, subKey, value) => {
+        setSubAggData((prev) => {
+            const current = prev[cacheKey] || {};
+            const nextItems = (current.items || []).map((x) =>
+                x.subagregat_key === subKey ? { ...x, draft: value } : x
+            );
+            return {
+                ...prev,
+                [cacheKey]: {
+                    ...current,
+                    items: nextItems,
+                    draftAggregate: recomputeDraftAggregate(nextItems),
+                },
+            };
+        });
+    }, [recomputeDraftAggregate]);
 
     const loadChartData = useCallback(async () => {
         if (!chartAgregatKey) return;
@@ -237,6 +414,11 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
             setChartAgregatKey(chartSelectableItems[0].agregat_key);
         }
     }, [chartSelectableItems, chartAgregatKey]);
+
+    useEffect(() => {
+        setExpandedAnnualKey(null);
+        setExpandedMonthlyKey(null);
+    }, [targetYear, compareCycle, compareMonth]);
 
     return (
         <div className="forecast-panel">
@@ -434,26 +616,118 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                 </thead>
                                 <tbody>
                                     {annualFilteredRows.map((row) => (
-                                        <tr key={`annual-${row.agregat_key}`}>
-                                            <td>{row.agregat_label}</td>
-                                            <td>
-                                                <span className={`nature-pill ${row.nature}`}>
-                                                    {row.nature}
-                                                </span>
-                                            </td>
-                                            <td>{fmt(row.forecast_annual, 2)}</td>
-                                            <td>{fmt(row.actual_total, 2)}</td>
-                                            <td className={Number(row.taux_realisation_annuel_pct || 0) < 100 ? 'neg' : 'pos'}>{fmtPct(row.taux_realisation_annuel_pct)}</td>
-                                            <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.remaining_budget, 2)}</td>
-                                            <td>
-                                                <div className="annual-indicator-cell">
-                                                    <span className={`alert-pill ${row.alert_level || 'none'}`}>
-                                                        {alertLabel(row.alert_level)}
+                                        <React.Fragment key={`annual-${row.agregat_key}`}>
+                                            <tr
+                                                className={canDrilldown(row.agregat_key) ? 'forecast-row-clickable' : ''}
+                                                onClick={() => {
+                                                    if (!canDrilldown(row.agregat_key)) return;
+                                                    const next = expandedAnnualKey === row.agregat_key ? null : row.agregat_key;
+                                                    setExpandedAnnualKey(next);
+                                                    if (next) {
+                                                        loadSubAgregats(row.agregat_key, row.forecast_annual ?? 0, null);
+                                                    }
+                                                }}
+                                            >
+                                                <td>
+                                                    {canDrilldown(row.agregat_key) && (
+                                                        <span className="forecast-expand-icon">{expandedAnnualKey === row.agregat_key ? '▾' : '▸'}</span>
+                                                    )}
+                                                    {row.agregat_label}
+                                                </td>
+                                                <td>
+                                                    <span className={`nature-pill ${row.nature}`}>
+                                                        {row.nature}
                                                     </span>
-                                                    <span className="annual-indicator-text">{row.indicator_label || '—'}</span>
-                                                </div>
-                                            </td>
-                                        </tr>
+                                                </td>
+                                                <td>{fmt(row.forecast_annual, 2)}</td>
+                                                <td>{fmt(row.actual_total, 2)}</td>
+                                                <td className={Number(row.taux_realisation_annuel_pct || 0) < 100 ? 'neg' : 'pos'}>{fmtPct(row.taux_realisation_annuel_pct)}</td>
+                                                <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.remaining_budget, 2)}</td>
+                                                <td>
+                                                    <div className="annual-indicator-cell">
+                                                        <span className={`alert-pill ${row.alert_level || 'none'}`}>
+                                                            {alertLabel(row.alert_level)}
+                                                        </span>
+                                                        <span className="annual-indicator-text">{row.indicator_label || '—'}</span>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {expandedAnnualKey === row.agregat_key && canDrilldown(row.agregat_key) && (() => {
+                                                const key = subAggCacheKey(row.agregat_key, null);
+                                                const data = subAggData[key];
+                                                const saveKey = `${row.agregat_key}:ANNUAL`;
+                                                return (
+                                                    <tr className="forecast-subrow">
+                                                        <td colSpan={7}>
+                                                            <div className="forecast-subpanel">
+                                                                <div className="forecast-subpanel-head">
+                                                                    <strong>Sous-agrégats annuels (global)</strong>
+                                                                    <div className="forecast-subpanel-actions">
+                                                                        <input
+                                                                            type="number"
+                                                                            className="forecast-sub-aggregate-input"
+                                                                            value={data?.draftAggregate ?? ''}
+                                                                            onChange={(e) => {
+                                                                                const val = e.target.value;
+                                                                                setSubAggData((prev) => ({
+                                                                                    ...prev,
+                                                                                    [key]: { ...(prev[key] || {}), draftAggregate: val },
+                                                                                }));
+                                                                            }}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                        />
+                                                                        <button
+                                                                            className="btn-forecast"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                saveManualAnnualForAgregat(row.agregat_key);
+                                                                            }}
+                                                                            disabled={manualSaveLoading === saveKey}
+                                                                        >
+                                                                            {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer annuel'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                {data?.loading ? (
+                                                                    <div className="forecast-loading">Chargement sous-agrégats...</div>
+                                                                ) : data?.error ? (
+                                                                    <div className="forecast-message error">{data.error}</div>
+                                                                ) : (
+                                                                    <div className="forecast-subitems">
+                                                                        {(data?.items || []).map((it) => (
+                                                                            <div key={it.subagregat_key} className="forecast-subitem-row">
+                                                                                <span className="forecast-subitem-label">{it.subagregat_label}</span>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="0.001"
+                                                                                    value={it.draft ?? ''}
+                                                                                    onChange={(e) => {
+                                                                                        const val = e.target.value;
+                                                                                        updateSubDraftAndAggregate(key, it.subagregat_key, val);
+                                                                                    }}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                />
+                                                                                <span className="forecast-subitem-actual">Réalisé: {fmt(it.actual_value, 3)}</span>
+                                                                                <span className={`forecast-subitem-kpi forecast-subitem-kpi-rate ${Number(it.taux_realisation_annuel_pct || 0) >= 100 ? 'good' : 'warn'}`}>
+                                                                                    Taux: {fmtPct(it.taux_realisation_annuel_pct, 3)}
+                                                                                </span>
+                                                                                <span className={`forecast-subitem-kpi forecast-subitem-kpi-remaining ${Number(it.remaining_budget || 0) >= 0 ? 'good' : 'bad'}`}>
+                                                                                    Reste: {fmt(it.remaining_budget, 3)}
+                                                                                </span>
+                                                                                <span className="forecast-subitem-kpi forecast-subitem-kpi-indicator">
+                                                                                    <span className={`alert-pill ${it.alert_level || 'none'}`}>{alertLabel(it.alert_level)}</span>
+                                                                                    <span className="forecast-subitem-indicator-label">{it.indicator_label || '—'}</span>
+                                                                                </span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })()}
+                                        </React.Fragment>
                                     ))}
                                 </tbody>
                             </table>
@@ -543,24 +817,115 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                 </thead>
                                 <tbody>
                                     {comparisonRows.map((row) => (
-                                        <tr key={row.agregat_key}>
-                                            <td>{row.agregat_label}</td>
-                                            <td>
-                                                <span className={`nature-pill ${row.nature}`}>
-                                                    {row.nature}
-                                                </span>
-                                            </td>
-                                            <td>{fmt(row.forecast_value, 2)}</td>
-                                            <td>{fmt(row.actual_value, 2)}</td>
-                                            <td className={Number(row.ecart_value || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.ecart_value, 2)}</td>
-                                            <td className={Number(row.ecart_pct || 0) < 0 ? 'neg' : 'pos'}>{fmtPct(row.ecart_pct)}</td>
-                                            <td>
-                                                <span className={`alert-pill ${row.alert_level || 'none'}`}>
-                                                    {alertLabel(row.alert_level)}
-                                                </span>
-                                            </td>
-                                            <td>{row.model_name || '—'}</td>
-                                        </tr>
+                                        <React.Fragment key={row.agregat_key}>
+                                            <tr
+                                                className={canDrilldown(row.agregat_key) ? 'forecast-row-clickable' : ''}
+                                                onClick={() => {
+                                                    if (!canDrilldown(row.agregat_key)) return;
+                                                    const next = expandedMonthlyKey === row.agregat_key ? null : row.agregat_key;
+                                                    setExpandedMonthlyKey(next);
+                                                    if (next) loadSubAgregats(row.agregat_key, row.forecast_value ?? 0, compareMonth);
+                                                }}
+                                            >
+                                                <td>
+                                                    {canDrilldown(row.agregat_key) && (
+                                                        <span className="forecast-expand-icon">{expandedMonthlyKey === row.agregat_key ? '▾' : '▸'}</span>
+                                                    )}
+                                                    {row.agregat_label}
+                                                </td>
+                                                <td>
+                                                    <span className={`nature-pill ${row.nature}`}>
+                                                        {row.nature}
+                                                    </span>
+                                                </td>
+                                                <td>{fmt(row.forecast_value, 2)}</td>
+                                                <td>{fmt(row.actual_value, 2)}</td>
+                                                <td className={Number(row.ecart_value || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.ecart_value, 2)}</td>
+                                                <td className={Number(row.ecart_pct || 0) < 0 ? 'neg' : 'pos'}>{fmtPct(row.ecart_pct)}</td>
+                                                <td>
+                                                    <span className={`alert-pill ${row.alert_level || 'none'}`}>
+                                                        {alertLabel(row.alert_level)}
+                                                    </span>
+                                                </td>
+                                                <td>{row.model_name || '—'}</td>
+                                            </tr>
+                                            {expandedMonthlyKey === row.agregat_key && canDrilldown(row.agregat_key) && (() => {
+                                                const key = subAggCacheKey(row.agregat_key, compareMonth);
+                                                const data = subAggData[key];
+                                                const saveKey = `${row.agregat_key}:${compareMonth}`;
+                                                return (
+                                                    <tr className="forecast-subrow">
+                                                        <td colSpan={8}>
+                                                            <div className="forecast-subpanel">
+                                                                <div className="forecast-subpanel-head">
+                                                                    <strong>Sous-agrégats — M{String(compareMonth).padStart(2, '0')}</strong>
+                                                                    <div className="forecast-subpanel-actions">
+                                                                        <input
+                                                                            type="number"
+                                                                            className="forecast-sub-aggregate-input"
+                                                                            step="0.001"
+                                                                            value={data?.draftAggregate ?? ''}
+                                                                            onChange={(e) => {
+                                                                                const val = e.target.value;
+                                                                                setSubAggData((prev) => ({
+                                                                                    ...prev,
+                                                                                    [key]: { ...(prev[key] || {}), draftAggregate: val },
+                                                                                }));
+                                                                            }}
+                                                                            onClick={(e) => e.stopPropagation()}
+                                                                        />
+                                                                        <button
+                                                                            className="btn-forecast"
+                                                                            onClick={(e) => {
+                                                                                e.stopPropagation();
+                                                                                saveManualForAgregat(row.agregat_key);
+                                                                            }}
+                                                                            disabled={manualSaveLoading === saveKey}
+                                                                        >
+                                                                            {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer'}
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                                {data?.loading ? (
+                                                                    <div className="forecast-loading">Chargement sous-agrégats...</div>
+                                                                ) : data?.error ? (
+                                                                    <div className="forecast-message error">{data.error}</div>
+                                                                ) : (
+                                                                    <div className="forecast-subitems">
+                                                                        {(data?.items || []).map((it) => (
+                                                                            <div key={it.subagregat_key} className="forecast-subitem-row">
+                                                                                <span className="forecast-subitem-label">{it.subagregat_label}</span>
+                                                                                <input
+                                                                                    type="number"
+                                                                                    step="0.001"
+                                                                                    value={it.draft ?? ''}
+                                                                                    onChange={(e) => {
+                                                                                        const val = e.target.value;
+                                                                                        updateSubDraftAndAggregate(key, it.subagregat_key, val);
+                                                                                    }}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                />
+                                                                                <span className="forecast-subitem-actual">Réalisé: {fmt(it.actual_value, 3)}</span>
+                                                                                <span className={`forecast-subitem-kpi forecast-subitem-kpi-rate ${Number(it.taux_realisation_annuel_pct || 0) >= 100 ? 'good' : 'warn'}`}>
+                                                                                    Taux: {fmtPct(it.taux_realisation_annuel_pct, 3)}
+                                                                                </span>
+                                                                                <span className={`forecast-subitem-kpi forecast-subitem-kpi-remaining ${Number(it.remaining_budget || 0) >= 0 ? 'good' : 'bad'}`}>
+                                                                                    Reste: {fmt(it.remaining_budget, 3)}
+                                                                                </span>
+                                                                                <span className="forecast-subitem-kpi forecast-subitem-kpi-indicator">
+                                                                                    <span className={`alert-pill ${it.alert_level || 'none'}`}>{alertLabel(it.alert_level)}</span>
+                                                                                    <span className="forecast-subitem-indicator-label">{it.indicator_label || '—'}</span>
+                                                                                </span>
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                    </tr>
+                                                );
+                                            })()}
+                                        </React.Fragment>
                                     ))}
                                 </tbody>
                             </table>

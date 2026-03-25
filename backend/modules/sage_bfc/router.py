@@ -10,7 +10,13 @@ from fastapi.responses import StreamingResponse
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.forecast.engine import sync_actuals_from_resume, clear_actuals_for_month, clear_all_actuals
+from modules.forecast.engine import (
+    sync_actuals_from_resume,
+    clear_actuals_for_month,
+    clear_all_actuals,
+    invalidate_adjustment_cycles_for_year,
+    purge_all_adjustment_cycles,
+)
 from .config import get_mapping_config
 from .mapper import SageBFCMapper
 from .parser import SageBalanceParser
@@ -575,10 +581,18 @@ async def delete_monthly(periode: str):
     # Synchroniser le module forecast: suppression des réels/écarts pour ce mois
     clear_actuals_for_month(periode.year, periode.month)
 
+    # Invalider les cycles d'ajustement devenus incohérents (ex: M03 sans 3 mois réels)
+    invalidation_payload = invalidate_adjustment_cycles_for_year(periode.year)
+
     ws_manager.broadcast("sage_bfc", "delete", {"periode": str(periode)})
     ws_manager.broadcast("forecast", "actuals_cleared", {"year": periode.year, "month": periode.month})
+    ws_manager.broadcast("forecast", "cycles_invalidated", invalidation_payload)
 
-    return {"status": "supprimé", "periode": str(periode)}
+    return {
+        "status": "supprimé",
+        "periode": str(periode),
+        "forecast_cycle_invalidation": invalidation_payload,
+    }
 
 
 @router.delete("/monthly")
@@ -594,11 +608,17 @@ async def delete_all_monthly():
 
     # Synchroniser le module forecast: suppression globale des réels/écarts
     clear_all_actuals()
+    purge_payload = purge_all_adjustment_cycles()
 
     ws_manager.broadcast("sage_bfc", "delete_all", {"count": count})
     ws_manager.broadcast("forecast", "actuals_cleared_all", {"count": count})
+    ws_manager.broadcast("forecast", "cycles_purged", purge_payload)
 
-    return {"status": "supprimé", "count": count}
+    return {
+        "status": "supprimé",
+        "count": count,
+        "forecast_cycle_purge": purge_payload,
+    }
 
 
 @router.get("/audit/cumulative-delta")

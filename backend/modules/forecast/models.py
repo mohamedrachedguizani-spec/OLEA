@@ -130,3 +130,67 @@ class ForecastAnnualComparisonResponse(BaseModel):
     uploaded_months: List[int]
     cycle_cutoff_month: Optional[int] = None
     rows: List[ForecastAnnualComparisonRow]
+
+
+class ForecastSubAggregateItem(BaseModel):
+    subagregat_key: str
+    subagregat_label: str
+    forecast_value: Optional[float] = None
+    actual_value: Optional[float] = None
+    taux_realisation_annuel_pct: Optional[float] = None
+    remaining_budget: Optional[float] = None
+    alert_level: Optional[str] = None
+    indicator_label: Optional[str] = None
+    indicator_value: Optional[float] = None
+
+
+class ForecastSubAggregatesResponse(BaseModel):
+    target_year: int
+    cycle_code: str
+    agregat_key: str
+    month: Optional[int] = None
+    aggregate_forecast_value: Optional[float] = None
+    items: List[ForecastSubAggregateItem]
+
+
+class ForecastSubAggregateInput(BaseModel):
+    subagregat_key: str
+    subagregat_label: str
+    forecast_value: float
+
+
+class ForecastManualAggregateUpdateRequest(BaseModel):
+    target_year: int = Field(..., ge=2000, le=2100)
+    cycle_code: str = Field(...)
+    agregat_key: str = Field(...)
+    month: int = Field(..., ge=1, le=12)
+    forecast_value: float
+    subagregats: List[ForecastSubAggregateInput] = Field(default_factory=list)
+
+
+class ForecastManualAggregateUpdateResponse(BaseModel):
+    status: str
+    target_year: int
+    cycle_code: str
+    agregat_key: str
+    month: int
+    forecast_value: float
+    subagregats_written: int
+
+
+class ForecastManualAnnualAggregateUpdateRequest(BaseModel):
+    target_year: int = Field(..., ge=2000, le=2100)
+    cycle_code: str = Field(...)
+    agregat_key: str = Field(...)
+    forecast_annual_value: float
+    subagregats: List[ForecastSubAggregateInput] = Field(default_factory=list)
+
+
+class ForecastManualAnnualAggregateUpdateResponse(BaseModel):
+    status: str
+    target_year: int
+    cycle_code: str
+    agregat_key: str
+    forecast_annual_value: float
+    months_updated: int
+    subagregats_written: int
