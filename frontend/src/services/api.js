@@ -537,6 +537,73 @@ class ApiService {
         if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
         return response.json();
     }
+
+    // ===================== Reporting =====================
+
+    static async getReportingPreview(targetYear, cycleCode = 'INITIAL', month = null) {
+        const params = new URLSearchParams({
+            target_year: String(targetYear),
+            cycle_code: String(cycleCode),
+        });
+        if (month != null) params.append('month', String(month));
+
+        const response = await ApiService._fetch(`${API_BASE_URL}/reporting/preview?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async exportReportingExcel(
+        targetYear,
+        cycleCode = 'INITIAL',
+        month = null,
+        {
+            pnlScope = 'selected',
+            pnlMonths = [],
+            monthlyDetailMonths = [],
+            budgetCycleCode = null,
+            includeExecutiveSummary = true,
+            includePnlFormatted = true,
+            includeBudgetForecast = true,
+            includeMonthlyForecast = true,
+            includeCycles = true,
+            includeAlerts = false,
+            includeSubaggregates = true,
+        } = {}
+    ) {
+        const params = new URLSearchParams({
+            target_year: String(targetYear),
+            cycle_code: String(cycleCode),
+            pnl_scope: String(pnlScope),
+            include_executive_summary: String(!!includeExecutiveSummary),
+            include_pnl_formatted: String(!!includePnlFormatted),
+            include_budget_forecast: String(!!includeBudgetForecast),
+            include_monthly_forecast: String(!!includeMonthlyForecast),
+            include_cycles: String(!!includeCycles),
+            include_alerts: String(!!includeAlerts),
+            include_subaggregates: String(!!includeSubaggregates),
+        });
+        if (month != null) params.append('month', String(month));
+        if (budgetCycleCode) params.append('budget_cycle_code', String(budgetCycleCode));
+        (pnlMonths || []).forEach((m) => params.append('pnl_months', String(m)));
+        (monthlyDetailMonths || []).forEach((m) => params.append('monthly_detail_months', String(m)));
+
+        const response = await ApiService._fetch(`${API_BASE_URL}/reporting/export/excel?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const contentDisposition = response.headers.get('content-disposition') || '';
+        const fileNameMatch = contentDisposition.match(/filename=([^;]+)/i);
+        const filename = fileNameMatch ? fileNameMatch[1].replaceAll('"', '') : 'Reporting_OLEA.xlsx';
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }
 }
 
 export default ApiService;

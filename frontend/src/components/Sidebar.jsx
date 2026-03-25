@@ -20,6 +20,7 @@ function Sidebar({ activeTab, setActiveTab, darkMode, setDarkMode, sidebarOpen, 
         { id: 'migration', label: 'Migration Sage', icon: 'sync', module: 'migration_sage' },
         { id: 'export', label: 'Export CSV', icon: 'download', module: 'export_csv' },
         { id: 'sage-bfc', label: 'SAGE → BFC', icon: 'transform', module: 'sage_bfc' },
+        { id: 'reporting', label: 'Reporting', icon: 'reporting', alwaysVisible: true },
     ];
 
     // Filtrer : superadmin voit tout, les autres selon permissions
@@ -37,6 +38,14 @@ function Sidebar({ activeTab, setActiveTab, darkMode, setDarkMode, sidebarOpen, 
                     <rect x="14" y="3" width="7" height="7" rx="1"/>
                     <rect x="3" y="14" width="7" height="7" rx="1"/>
                     <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+            ),
+            reporting: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M3 3v18h18"/>
+                    <rect x="7" y="12" width="3" height="5" rx="1"/>
+                    <rect x="12" y="9" width="3" height="8" rx="1"/>
+                    <rect x="17" y="6" width="3" height="11" rx="1"/>
                 </svg>
             ),
             edit: (

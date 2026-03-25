@@ -13,6 +13,7 @@ from modules.export_csv import router as export_csv_router
 from modules.sage_bfc import router as sage_bfc_router
 from modules.dashboard import router as dashboard_router
 from modules.forecast import router as forecast_router
+from modules.reporting import router as reporting_router
 
 
 app = FastAPI(title="Olea – Gestion de Caisse & BFC")
@@ -39,6 +40,7 @@ app.include_router(export_csv_router)
 app.include_router(sage_bfc_router)
 app.include_router(dashboard_router)
 app.include_router(forecast_router)
+app.include_router(reporting_router)
 
 
 # ─── Enregistrer la boucle asyncio au démarrage ───

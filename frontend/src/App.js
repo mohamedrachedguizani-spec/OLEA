@@ -10,6 +10,7 @@ import SageBfcParser from './components/SageBfcParser';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import UserManagement from './components/UserManagement';
+import Reporting from './components/Reporting';
 
 function App() {
     const { user, loading } = useAuth();
@@ -109,6 +110,7 @@ function App() {
 
                 <div className="content-wrapper">
                     {activeTab === 'dashboard' && <Dashboard refreshTrigger={refreshTrigger} />}
+                    {activeTab === 'reporting' && <Reporting />}
                     {activeTab === 'saisie' && <SaisieCaisse refreshTrigger={refreshTrigger} />}
                     {activeTab === 'migration' && <MigrationSage onMigrationComplete={handleMigrationComplete} refreshTrigger={migrationRefresh} />}
                     {activeTab === 'export' && <ExportCSV />}
