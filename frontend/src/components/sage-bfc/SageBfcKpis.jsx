@@ -4,15 +4,15 @@ import React from 'react';
 function SageBfcKpis({ resume, previousResume }) {
     const formatMontant = (montant) => {
         return new Intl.NumberFormat('fr-TN', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
         }).format(montant);
     };
 
     const formatPct = (pct) => {
         return new Intl.NumberFormat('fr-FR', {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1,
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3,
             signDisplay: 'exceptZero'
         }).format(pct);
     };
@@ -111,7 +111,7 @@ function SageBfcKpis({ resume, previousResume }) {
                             <span className="kpi-label">{kpi.label}</span>
                             {delta != null && (
                                 <span className={`kpi-indicator ${delta >= 0 ? 'up' : 'down'}`}>
-                                    {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(1)}%
+                                    {delta >= 0 ? '↑' : '↓'} {Math.abs(delta).toFixed(3)}%
                                 </span>
                             )}
                         </div>

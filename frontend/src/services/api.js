@@ -558,29 +558,40 @@ class ApiService {
         month = null,
         {
             pnlScope = 'selected',
+            includePnlSelected = true,
+            includePnlGlobal = false,
             pnlMonths = [],
             monthlyDetailMonths = [],
             budgetCycleCode = null,
             includeExecutiveSummary = true,
             includePnlFormatted = true,
             includeBudgetForecast = true,
+            includeGlobalState = true,
             includeMonthlyForecast = true,
             includeCycles = true,
             includeAlerts = false,
             includeSubaggregates = true,
         } = {}
     ) {
+        let effectivePnlScope = String(pnlScope);
+        if (includePnlSelected && !includePnlGlobal) effectivePnlScope = 'selected';
+        else if (!includePnlSelected && includePnlGlobal) effectivePnlScope = 'global';
+        else if (includePnlSelected && includePnlGlobal) effectivePnlScope = 'selected';
+
         const params = new URLSearchParams({
             target_year: String(targetYear),
             cycle_code: String(cycleCode),
-            pnl_scope: String(pnlScope),
+            pnl_scope: effectivePnlScope,
             include_executive_summary: String(!!includeExecutiveSummary),
             include_pnl_formatted: String(!!includePnlFormatted),
             include_budget_forecast: String(!!includeBudgetForecast),
+            include_global_state: String(!!includeGlobalState),
             include_monthly_forecast: String(!!includeMonthlyForecast),
             include_cycles: String(!!includeCycles),
             include_alerts: String(!!includeAlerts),
             include_subaggregates: String(!!includeSubaggregates),
+            include_pnl_selected: String(!!includePnlSelected),
+            include_pnl_global: String(!!includePnlGlobal),
         });
         if (month != null) params.append('month', String(month));
         if (budgetCycleCode) params.append('budget_cycle_code', String(budgetCycleCode));

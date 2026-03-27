@@ -104,8 +104,8 @@ function SageBfcLignes({ lignes, sortedMonths, formatMonthShort }) {
 
     const fmt = (val) => {
         return new Intl.NumberFormat('fr-TN', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
         }).format(val);
     };
 

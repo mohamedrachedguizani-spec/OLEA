@@ -27,16 +27,16 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
     const fmt = (val) => {
         if (val == null) return '—';
         return new Intl.NumberFormat('fr-TN', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
         }).format(val);
     };
 
     const fmtPct = (val) => {
         if (val == null) return '—';
         return new Intl.NumberFormat('fr-FR', {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
         }).format(val);
     };
 
@@ -189,7 +189,7 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
                         <span className="hero-label">Résultat Net</span>
                         <span className="hero-value">{fmt(resume.resultat_net)} <small>TND</small></span>
                         <div className="hero-meta">
-                            <span className="hero-pct">Marge: {fmtPct(resume.resultat_net_pct)}%  ·  Ratio C/P: {chargesRatio.toFixed(1)}%</span>
+                            <span className="hero-pct">Marge: {fmtPct(resume.resultat_net_pct)}%  ·  Ratio C/P: {chargesRatio.toFixed(3)}%</span>
                             {hasPrevious && (
                                 <span className={`hero-delta ${resume.resultat_net >= previousResume.resultat_net ? 'up' : 'down'}`}>
                                     {resume.resultat_net >= previousResume.resultat_net ? '↑' : '↓'} {fmt(Math.abs(resume.resultat_net - previousResume.resultat_net))}
@@ -275,7 +275,7 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
                                                             {delta != null ? (
                                                                 <>
                                                                     <span className="pnl-delta-arrow">{delta > 0 ? '↑' : '↓'}</span>
-                                                                    {Math.abs(delta).toFixed(1)}%
+                                                                    {Math.abs(delta).toFixed(3)}%
                                                                 </>
                                                             ) : '—'}
                                                         </span>

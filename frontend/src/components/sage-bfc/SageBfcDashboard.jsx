@@ -5,22 +5,22 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
     const fmt = (val) => {
         if (val == null) return '—';
         return new Intl.NumberFormat('fr-TN', {
-            minimumFractionDigits: 0,
-            maximumFractionDigits: 0
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
         }).format(val);
     };
 
     const fmtFull = (val) => {
         if (val == null) return '—';
         return new Intl.NumberFormat('fr-TN', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
         }).format(val);
     };
 
     const fmtPct = (val) => {
         if (val == null) return '—';
-        return `${val >= 0 ? '+' : ''}${val.toFixed(1)}%`;
+        return `${val >= 0 ? '+' : ''}${val.toFixed(3)}%`;
     };
 
     const getDelta = (current, previous) => {
@@ -91,7 +91,7 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
                 label: 'EBITDA',
                 value: currentResume.ebitda,
                 delta: ebitdaDelta,
-                badge: `${(currentResume.ebitda_pct || 0).toFixed(1)}%`,
+                badge: `${(currentResume.ebitda_pct || 0).toFixed(3)}%`,
                 theme: currentResume.ebitda >= 0 ? 'success' : 'danger',
                 icon: (
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -116,7 +116,7 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
                 label: 'Résultat Net',
                 value: currentResume.resultat_net,
                 delta: rnDelta,
-                badge: `${(currentResume.resultat_net_pct || 0).toFixed(1)}%`,
+                badge: `${(currentResume.resultat_net_pct || 0).toFixed(3)}%`,
                 theme: currentResume.resultat_net >= 0 ? 'success' : 'danger',
                 icon: (
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -159,7 +159,7 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
                                 <span className="kpi-label">{kpi.label}</span>
                                 {kpi.delta != null && (
                                     <span className={`kpi-indicator ${kpi.delta >= 0 ? 'up' : 'down'}`}>
-                                        {kpi.delta >= 0 ? '↑' : '↓'} {Math.abs(kpi.delta).toFixed(1)}%
+                                        {kpi.delta >= 0 ? '↑' : '↓'} {Math.abs(kpi.delta).toFixed(3)}%
                                     </span>
                                 )}
                             </div>
@@ -215,7 +215,7 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
                                                 const val = m.resume[row.key];
                                                 return (
                                                     <td key={m.key} className={`comparison-value ${val < 0 ? 'negative' : ''}`}>
-                                                        {row.isPct ? `${(val || 0).toFixed(1)}%` : fmt(val)}
+                                                        {row.isPct ? `${(val || 0).toFixed(3)}%` : fmt(val)}
                                                     </td>
                                                 );
                                             })}

@@ -81,7 +81,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         setCompareMonth(inferredMonth);
     }, [inferredMonth]);
 
-    const fmt = (v, digits = 2) => {
+    const fmt = (v, digits = 3) => {
         if (v == null || Number.isNaN(Number(v))) return '—';
         return new Intl.NumberFormat('fr-TN', {
             minimumFractionDigits: digits,
@@ -89,11 +89,19 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         }).format(Number(v));
     };
 
-    const fmtPct = (v, digits = 2) => {
+    const fmtPct = (v, digits = 3) => {
         if (v == null || Number.isNaN(Number(v))) return '—';
         const n = Number(v);
         return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`;
     };
+
+    const asDraft3 = useCallback((value) => {
+        const raw = String(value ?? '').trim();
+        if (raw === '') return '';
+        const n = Number(raw);
+        if (Number.isNaN(n)) return '';
+        return n.toFixed(3);
+    }, []);
 
     const alertLabel = (level) => {
         if (level === 'positive') return 'Favorable';
@@ -186,7 +194,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
             const res = await ApiService.getForecastSubAgregats(targetYear, compareCycle, agregatKey, monthScope);
             const items = (res.items || []).map((it) => ({
                 ...it,
-                draft: it.forecast_value != null ? String(it.forecast_value) : '',
+                draft: asDraft3(it.forecast_value),
             }));
             setSubAggData((prev) => ({
                 ...prev,
@@ -197,8 +205,8 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                     monthScope,
                     draftAggregate:
                         res.aggregate_forecast_value != null
-                            ? String(res.aggregate_forecast_value)
-                            : String(aggregateForecastValue ?? ''),
+                            ? asDraft3(res.aggregate_forecast_value)
+                            : asDraft3(aggregateForecastValue ?? ''),
                 },
             }));
         } catch (e) {
@@ -211,7 +219,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 },
             }));
         }
-    }, [targetYear, compareCycle, compareMonth, canDrilldown, subAggCacheKey]);
+    }, [targetYear, compareCycle, compareMonth, canDrilldown, subAggCacheKey, asDraft3]);
 
     const saveManualForAgregat = useCallback(async (agregatKey) => {
         const cacheKey = subAggCacheKey(agregatKey, compareMonth);
@@ -305,7 +313,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
             const n = Number(raw);
             return Number.isNaN(n) ? sum : sum + n;
         }, 0);
-        return String(Number(total.toFixed(3)));
+        return total.toFixed(3);
     }, []);
 
     const updateSubDraftAndAggregate = useCallback((cacheKey, subKey, value) => {
@@ -639,10 +647,10 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                         {row.nature}
                                                     </span>
                                                 </td>
-                                                <td>{fmt(row.forecast_annual, 2)}</td>
-                                                <td>{fmt(row.actual_total, 2)}</td>
+                                                <td>{fmt(row.forecast_annual, 3)}</td>
+                                                <td>{fmt(row.actual_total, 3)}</td>
                                                 <td className={Number(row.taux_realisation_annuel_pct || 0) < 100 ? 'neg' : 'pos'}>{fmtPct(row.taux_realisation_annuel_pct)}</td>
-                                                <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.remaining_budget, 2)}</td>
+                                                <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.remaining_budget, 3)}</td>
                                                 <td>
                                                     <div className="annual-indicator-cell">
                                                         <span className={`alert-pill ${row.alert_level || 'none'}`}>
@@ -669,6 +677,13 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                             value={data?.draftAggregate ?? ''}
                                                                             onChange={(e) => {
                                                                                 const val = e.target.value;
+                                                                                setSubAggData((prev) => ({
+                                                                                    ...prev,
+                                                                                    [key]: { ...(prev[key] || {}), draftAggregate: val },
+                                                                                }));
+                                                                            }}
+                                                                            onBlur={(e) => {
+                                                                                const val = asDraft3(e.target.value);
                                                                                 setSubAggData((prev) => ({
                                                                                     ...prev,
                                                                                     [key]: { ...(prev[key] || {}), draftAggregate: val },
@@ -703,6 +718,10 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                                     value={it.draft ?? ''}
                                                                                     onChange={(e) => {
                                                                                         const val = e.target.value;
+                                                                                        updateSubDraftAndAggregate(key, it.subagregat_key, val);
+                                                                                    }}
+                                                                                    onBlur={(e) => {
+                                                                                        const val = asDraft3(e.target.value);
                                                                                         updateSubDraftAndAggregate(key, it.subagregat_key, val);
                                                                                     }}
                                                                                     onClick={(e) => e.stopPropagation()}
@@ -781,7 +800,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                         <Tooltip
                                             formatter={(value, name) => {
                                                 if (value == null) return ['—', name];
-                                                return [fmt(value, 2), name];
+                                                return [fmt(value, 3), name];
                                             }}
                                         />
                                         <Legend />
@@ -838,9 +857,9 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                         {row.nature}
                                                     </span>
                                                 </td>
-                                                <td>{fmt(row.forecast_value, 2)}</td>
-                                                <td>{fmt(row.actual_value, 2)}</td>
-                                                <td className={Number(row.ecart_value || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.ecart_value, 2)}</td>
+                                                <td>{fmt(row.forecast_value, 3)}</td>
+                                                <td>{fmt(row.actual_value, 3)}</td>
+                                                <td className={Number(row.ecart_value || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.ecart_value, 3)}</td>
                                                 <td className={Number(row.ecart_pct || 0) < 0 ? 'neg' : 'pos'}>{fmtPct(row.ecart_pct)}</td>
                                                 <td>
                                                     <span className={`alert-pill ${row.alert_level || 'none'}`}>
@@ -867,6 +886,13 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                             value={data?.draftAggregate ?? ''}
                                                                             onChange={(e) => {
                                                                                 const val = e.target.value;
+                                                                                setSubAggData((prev) => ({
+                                                                                    ...prev,
+                                                                                    [key]: { ...(prev[key] || {}), draftAggregate: val },
+                                                                                }));
+                                                                            }}
+                                                                            onBlur={(e) => {
+                                                                                const val = asDraft3(e.target.value);
                                                                                 setSubAggData((prev) => ({
                                                                                     ...prev,
                                                                                     [key]: { ...(prev[key] || {}), draftAggregate: val },
@@ -901,6 +927,10 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                                     value={it.draft ?? ''}
                                                                                     onChange={(e) => {
                                                                                         const val = e.target.value;
+                                                                                        updateSubDraftAndAggregate(key, it.subagregat_key, val);
+                                                                                    }}
+                                                                                    onBlur={(e) => {
+                                                                                        const val = asDraft3(e.target.value);
                                                                                         updateSubDraftAndAggregate(key, it.subagregat_key, val);
                                                                                     }}
                                                                                     onClick={(e) => e.stopPropagation()}

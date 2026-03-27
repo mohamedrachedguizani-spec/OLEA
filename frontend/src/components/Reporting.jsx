@@ -4,7 +4,7 @@ import '../styles/Reporting.css';
 
 const CYCLE_OPTIONS = ['INITIAL', 'M03', 'M06', 'M08'];
 
-function Reporting() {
+function Reporting({ refreshTrigger = 0 }) {
     const now = new Date();
     const [targetYear, setTargetYear] = useState(now.getFullYear());
     const [budgetCycleCode, setBudgetCycleCode] = useState('INITIAL');
@@ -15,13 +15,15 @@ function Reporting() {
     const [preview, setPreview] = useState(null);
 
     const [exportConfig, setExportConfig] = useState({
-        pnlScope: 'selected',
+        includePnlSelected: true,
+        includePnlGlobal: false,
         pnlMonths: [],
         monthlyDetailMonths: [],
         includeExecutiveSummary: true,
         includePnlFormatted: true,
         includeBudgetForecast: true,
-        includeMonthlyForecast: true,
+        includeGlobalState: true,
+        includeMonthlyForecast: false,
         includeCycles: true,
         includeAlerts: false,
         includeSubaggregates: true,
@@ -51,6 +53,11 @@ function Reporting() {
     useEffect(() => {
         loadPreview();
     }, [loadPreview]);
+
+    useEffect(() => {
+        if (!refreshTrigger) return;
+        loadPreview();
+    }, [refreshTrigger, loadPreview]);
 
     const handleExport = async () => {
         setExportLoading(true);
@@ -107,6 +114,7 @@ function Reporting() {
         exportConfig.includeExecutiveSummary ||
         exportConfig.includePnlFormatted ||
         exportConfig.includeBudgetForecast ||
+        exportConfig.includeGlobalState ||
         exportConfig.includeCycles
     ), [exportConfig]);
 
@@ -124,14 +132,23 @@ function Reporting() {
     const hasValidPnlSelection = useMemo(() => {
         if (loading || !availableMonths.length) return true;
         if (!exportConfig.includePnlFormatted) return true;
-        if (exportConfig.pnlScope === 'all') return true;
+        if (!exportConfig.includePnlSelected && !exportConfig.includePnlGlobal) return false;
+        if (!exportConfig.includePnlSelected) return true;
         return exportConfig.pnlMonths.length > 0;
     }, [exportConfig, loading, availableMonths]);
 
     const pnlMonthsText = useMemo(() => {
-        if (exportConfig.pnlScope === 'all') return 'Tous les mois réalisés';
-        if (!exportConfig.pnlMonths.length) return 'Aucun mois';
-        return exportConfig.pnlMonths.map((m) => `M${String(m).padStart(2, '0')}`).join(', ');
+        const parts = [];
+        if (exportConfig.includePnlSelected) {
+            const selected = exportConfig.pnlMonths.length
+                ? exportConfig.pnlMonths.map((m) => `M${String(m).padStart(2, '0')}`).join(', ')
+                : 'Aucun mois';
+            parts.push(`Sélection: ${selected}`);
+        }
+        if (exportConfig.includePnlGlobal) {
+            parts.push('Global: Tous les mois réalisés');
+        }
+        return parts.length ? parts.join(' · ') : 'Aucun mode';
     }, [exportConfig]);
 
     return (
@@ -166,13 +183,14 @@ function Reporting() {
                         <label><input type="checkbox" checked={exportConfig.includeExecutiveSummary} onChange={() => toggleConfigBool('includeExecutiveSummary')} /> Executive summary KPI</label>
                         <label><input type="checkbox" checked={exportConfig.includePnlFormatted} onChange={() => toggleConfigBool('includePnlFormatted')} /> P&L formaté</label>
                         <label><input type="checkbox" checked={exportConfig.includeBudgetForecast} onChange={() => toggleConfigBool('includeBudgetForecast')} /> Prévision budget (tableaux)</label>
+                        <label><input type="checkbox" checked={exportConfig.includeGlobalState} onChange={() => toggleConfigBool('includeGlobalState')} /> Etat globale </label>
                         <label><input type="checkbox" checked={exportConfig.includeCycles} onChange={() => toggleConfigBool('includeCycles')} /> Statut des cycles</label>
                     </div>
 
                     <div className="reporting-config-card">
                         <h4>P&L formaté</h4>
-                        <label><input type="radio" name="pnlScope" checked={exportConfig.pnlScope === 'selected'} onChange={() => setExportConfig((prev) => ({ ...prev, pnlScope: 'selected' }))} /> Mois sélectionnés</label>
-                        <label><input type="radio" name="pnlScope" checked={exportConfig.pnlScope === 'all'} onChange={() => setExportConfig((prev) => ({ ...prev, pnlScope: 'all', pnlMonths: [] }))} /> Tous les mois (global)</label>
+                        <label><input type="checkbox" checked={exportConfig.includePnlSelected} onChange={() => toggleConfigBool('includePnlSelected')} /> Mois sélectionnés</label>
+                        <label><input type="checkbox" checked={exportConfig.includePnlGlobal} onChange={() => toggleConfigBool('includePnlGlobal')} /> Tous les mois (global)</label>
                         <div className="reporting-month-picker">
                             {(availableMonths || []).map((m) => (
                                 <button
@@ -180,15 +198,15 @@ function Reporting() {
                                     key={`pnl-${m}`}
                                     className={`reporting-month-chip ${exportConfig.pnlMonths.includes(m) ? 'active' : ''}`}
                                     onClick={() => togglePnlMonth(m)}
-                                    disabled={exportConfig.pnlScope !== 'selected'}
+                                    disabled={!exportConfig.includePnlSelected}
                                 >
                                     M{String(m).padStart(2, '0')}
                                 </button>
                             ))}
                         </div>
-                        <div className="reporting-hint">
+                        {/* <div className="reporting-hint">
                             Inclut prévision + réalisé des agrégats et sous-agrégats.
-                        </div>
+                        </div> */}
                     </div>
 
                     <div className="reporting-config-card">
@@ -228,7 +246,7 @@ function Reporting() {
                     <div className="reporting-error">Sélectionnez au moins un mois pour le Forecast_Mensuel_Detail.</div>
                 )}
                 {!loading && !!availableMonths.length && !hasValidPnlSelection && (
-                    <div className="reporting-error">Sélectionnez au moins un mois pour le P&L formaté.</div>
+                    <div className="reporting-error">Activez au moins un mode P&L et sélectionnez un mois si « Mois sélectionnés » est actif.</div>
                 )}
             </div>
 

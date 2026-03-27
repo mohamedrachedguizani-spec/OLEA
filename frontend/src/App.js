@@ -21,6 +21,7 @@ function App() {
     const [migrationRefresh, setMigrationRefresh] = useState(0);
     const [sageBfcRefresh, setSageBfcRefresh] = useState(0);
     const [forecastRefresh, setForecastRefresh] = useState(0);
+    const [reportingRefresh, setReportingRefresh] = useState(0);
 
     const handleMigrationComplete = useCallback(() => {
         setRefreshTrigger(prev => prev + 1);
@@ -38,9 +39,11 @@ function App() {
         },
         sage_bfc: () => {
             setSageBfcRefresh(prev => prev + 1);
+            setReportingRefresh(prev => prev + 1);
         },
         forecast: () => {
             setForecastRefresh(prev => prev + 1);
+            setReportingRefresh(prev => prev + 1);
         },
     });
 
@@ -110,7 +113,7 @@ function App() {
 
                 <div className="content-wrapper">
                     {activeTab === 'dashboard' && <Dashboard refreshTrigger={refreshTrigger} />}
-                    {activeTab === 'reporting' && <Reporting />}
+                    {activeTab === 'reporting' && <Reporting refreshTrigger={reportingRefresh} />}
                     {activeTab === 'saisie' && <SaisieCaisse refreshTrigger={refreshTrigger} />}
                     {activeTab === 'migration' && <MigrationSage onMigrationComplete={handleMigrationComplete} refreshTrigger={migrationRefresh} />}
                     {activeTab === 'export' && <ExportCSV />}

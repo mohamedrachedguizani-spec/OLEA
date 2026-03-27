@@ -3,6 +3,7 @@ import math
 import re
 import unicodedata
 import calendar
+from decimal import Decimal, ROUND_HALF_UP
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -193,6 +194,41 @@ def _round3(value: Optional[float]) -> Optional[float]:
     if value is None:
         return None
     return round(float(value), 3)
+
+
+def _remaining_budget_value(forecast_value: float, actual_value: float) -> float:
+    """
+    Reste budget sémantique:
+    - si prévision >= 0 : reste = prévision - réalisé
+    - si prévision < 0  : reste = -(prévision - réalisé)
+      (ex: -40k vs -68k => reste négatif = dépassement)
+    """
+    base = float(forecast_value) - float(actual_value)
+    return base if float(forecast_value) >= 0 else -base
+
+
+def _distribute_total_rounded(total: float, weights: List[float], decimals: int = 3) -> List[float]:
+    if not weights:
+        return []
+
+    q = Decimal(1).scaleb(-decimals)
+    total_d = Decimal(str(total)).quantize(q, rounding=ROUND_HALF_UP)
+
+    w_sum = float(sum(max(0.0, float(w)) for w in weights))
+    if w_sum <= 1e-12:
+        weights_norm = [1.0 / len(weights)] * len(weights)
+    else:
+        weights_norm = [max(0.0, float(w)) / w_sum for w in weights]
+
+    raw = [total_d * Decimal(str(w)) for w in weights_norm]
+    rounded = [x.quantize(q, rounding=ROUND_HALF_UP) for x in raw]
+
+    delta = total_d - sum(rounded)
+    if delta != 0:
+        idx_target = max(range(len(weights_norm)), key=lambda i: weights_norm[i])
+        rounded[idx_target] = (rounded[idx_target] + delta).quantize(q, rounding=ROUND_HALF_UP)
+
+    return [float(x) for x in rounded]
 
 
 def _aggregate_sort_key(row: Dict[str, object]) -> Tuple[int, str]:
@@ -987,7 +1023,17 @@ def _annual_indicator(
     if abs(forecast_annual) < 1e-9:
         return None, None, None
 
-    remaining_budget = float(forecast_annual - actual_total)
+    remaining_budget = _remaining_budget_value(forecast_annual, actual_total)
+
+    if agregat_key == "resultat_financier":
+        tolerance = 1e-6
+        if abs(actual_total - forecast_annual) <= tolerance:
+            return "Objectif favorable atteint", remaining_budget, "positive"
+        if remaining_budget < -tolerance:
+            return "Dépassement défavorable", remaining_budget, "negative"
+        if actual_total > forecast_annual + tolerance:
+            return "Dépassement favorable", remaining_budget, "positive"
+        return "Neutre - reste à réaliser", remaining_budget, "neutral"
 
     if nature == "charge":
         vigilance_ratio = 0.15 if agregat_key == "frais_personnel" else 0.10
@@ -1071,7 +1117,7 @@ def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object
         taux_realisation_annuel_pct = (
             (actual_total / forecast_annual * 100.0) if abs(forecast_annual) > 1e-9 else None
         )
-        remaining_budget = float(forecast_annual - actual_total)
+        remaining_budget = _remaining_budget_value(forecast_annual, actual_total)
 
         indicator_label, indicator_value, indicator_alert = _annual_indicator(
             agregat_key=key,
@@ -1201,7 +1247,7 @@ def get_subagregats(target_year: int, cycle_code: str, agregat_key: str, month: 
 
         diff, pct, level = _compute_alert(nature, a_val, f_val) if f_val is not None else (None, None, None)
         taux_realisation = (a_val / f_val * 100.0) if (f_val is not None and abs(f_val) > 1e-9) else None
-        remaining_budget = (f_val - a_val) if (f_val is not None) else None
+        remaining_budget = _remaining_budget_value(float(f_val), float(a_val)) if (f_val is not None) else None
 
         indicator_label, indicator_value, indicator_alert = _annual_indicator(
             agregat_key=agregat_key,
@@ -1420,7 +1466,7 @@ def set_manual_annual_forecast_values(
     else:
         weights = [1.0 / len(rows)] * len(rows)
 
-    monthly_new_values = [float(forecast_annual_value) * w for w in weights]
+    monthly_new_values = _distribute_total_rounded(float(forecast_annual_value), weights, decimals=3)
 
     with db.get_cursor() as cursor:
         for idx, row in enumerate(rows):
@@ -1461,9 +1507,10 @@ def set_manual_annual_forecast_values(
             sub_key = _subagregat_key(str(item.get("subagregat_key") or item.get("subagregat_label") or "Autres"))
             sub_label = str(item.get("subagregat_label") or sub_key)
             annual_sub_value = _round3(_to_float(item.get("forecast_value"))) or 0.0
+            monthly_sub_values = _distribute_total_rounded(float(annual_sub_value), weights, decimals=3)
 
             for idx, month in enumerate(months):
-                month_value = _round3(float(annual_sub_value) * float(weights[idx])) or 0.0
+                month_value = _round3(monthly_sub_values[idx]) or 0.0
                 cursor.execute(
                     """
                     INSERT INTO bfc_forecast_manual_subvalues (

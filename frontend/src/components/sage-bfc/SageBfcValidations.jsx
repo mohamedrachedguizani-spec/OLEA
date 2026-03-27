@@ -7,8 +7,8 @@ function SageBfcValidations({ validations, alertes }) {
 
     const fmt = (val) => {
         return new Intl.NumberFormat('fr-TN', {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
+            minimumFractionDigits: 3,
+            maximumFractionDigits: 3
         }).format(val);
     };
 
@@ -222,7 +222,7 @@ function SageBfcValidations({ validations, alertes }) {
                                             <div className="val-metric">
                                                 <span className="val-metric-label">Conformité</span>
                                                 <span className={`val-metric-value ${matchRate >= 95 ? '' : 'has-ecart'}`}>
-                                                    {matchRate.toFixed(1)}%
+                                                    {matchRate.toFixed(3)}%
                                                 </span>
                                                 <div className="val-metric-bar">
                                                     <div

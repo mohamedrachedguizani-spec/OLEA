@@ -44,9 +44,9 @@ const fmtMontant = (v) =>
     new Intl.NumberFormat('fr-TN', { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(v);
 
 const fmtShort = (v) => {
-    if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(1) + 'M';
-    if (Math.abs(v) >= 1_000) return (v / 1_000).toFixed(1) + 'K';
-    return v.toFixed(0);
+    if (Math.abs(v) >= 1_000_000) return (v / 1_000_000).toFixed(3) + 'M';
+    if (Math.abs(v) >= 1_000) return (v / 1_000).toFixed(3) + 'K';
+    return v.toFixed(3);
 };
 
 const fmtDate = (d) => {
@@ -375,7 +375,7 @@ function Dashboard({ refreshTrigger }) {
                                                 <span className="gd-pie-lbl">Entrées</span>
                                                 <span className="gd-pie-val">{fmtMontant(caisse.total_debit)} TND</span>
                                                 <span className="gd-pie-pct">
-                                                    {((caisse.total_debit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(1)}%
+                                                    {((caisse.total_debit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
                                                 </span>
                                             </div>
                                         </div>
@@ -385,7 +385,7 @@ function Dashboard({ refreshTrigger }) {
                                                 <span className="gd-pie-lbl">Sorties</span>
                                                 <span className="gd-pie-val">{fmtMontant(caisse.total_credit)} TND</span>
                                                 <span className="gd-pie-pct">
-                                                    {((caisse.total_credit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(1)}%
+                                                    {((caisse.total_credit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
                                                 </span>
                                             </div>
                                         </div>
@@ -483,7 +483,7 @@ function Dashboard({ refreshTrigger }) {
                                                 <span className="gd-pie-lbl">Entrées</span>
                                                 <span className="gd-pie-val">{fmtMontant(caisse.total_debit)} TND</span>
                                                 <span className="gd-pie-pct">
-                                                    {((caisse.total_debit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(1)}%
+                                                    {((caisse.total_debit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
                                                 </span>
                                             </div>
                                         </div>
@@ -493,7 +493,7 @@ function Dashboard({ refreshTrigger }) {
                                                 <span className="gd-pie-lbl">Sorties</span>
                                                 <span className="gd-pie-val">{fmtMontant(caisse.total_credit)} TND</span>
                                                 <span className="gd-pie-pct">
-                                                    {((caisse.total_credit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(1)}%
+                                                    {((caisse.total_credit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
                                                 </span>
                                             </div>
                                         </div>
@@ -520,10 +520,10 @@ function Dashboard({ refreshTrigger }) {
                                     sub={bfc.derniere_periode} loading={loading} />
                                 <KpiCard icon="📈" label="EBITDA" color={bfc.pnl_detail?.ebitda >= 0 ? 'success' : 'danger'}
                                     value={fmtMontant(bfc.pnl_detail?.ebitda || 0)} unit="TND"
-                                    sub={`${(bfc.pnl_detail?.ebitda_pct || 0).toFixed(1)}%`} loading={loading} />
+                                    sub={`${(bfc.pnl_detail?.ebitda_pct || 0).toFixed(3)}%`} loading={loading} />
                                 <KpiCard icon="🎯" label="Résultat Net" color={bfc.pnl_detail?.resultat_net >= 0 ? 'success' : 'danger'}
                                     value={fmtMontant(bfc.pnl_detail?.resultat_net || 0)} unit="TND"
-                                    sub={`${(bfc.pnl_detail?.resultat_net_pct || 0).toFixed(1)}%`} loading={loading} />
+                                    sub={`${(bfc.pnl_detail?.resultat_net_pct || 0).toFixed(3)}%`} loading={loading} />
                             </div>
 
                             {/* Tendance + P&L */}
@@ -657,7 +657,7 @@ function PnlRow({ label, value, bold, highlight, pct }) {
                     {fmtMontant(value)} TND
                 </span>
                 {pct !== undefined && (
-                    <span className="gd-pnl-pct" style={{ color }}>{pct >= 0 ? '+' : ''}{pct.toFixed(1)}%</span>
+                    <span className="gd-pnl-pct" style={{ color }}>{pct >= 0 ? '+' : ''}{pct.toFixed(3)}%</span>
                 )}
             </div>
         </div>

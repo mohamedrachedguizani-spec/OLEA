@@ -265,6 +265,88 @@ def _build_hierarchical_annual_df(
     return pd.DataFrame(out)
 
 
+def _remaining_budget_semantic(forecast_value: float, actual_value: float) -> float:
+    base = float(forecast_value) - float(actual_value)
+    return base if float(forecast_value) >= 0 else -base
+
+
+def _build_global_state_df(
+    target_year: int,
+    cycle_code: str,
+    annual_rows: list[dict],
+    sub_ann_map: dict[str, list[dict]],
+    realized_months: list[int],
+) -> pd.DataFrame:
+    month_labels = [f"M{m:02d}" for m in realized_months]
+
+    agg_actual_monthly: dict[tuple[str, int], float] = {}
+    for m in realized_months:
+        monthly_rows = get_comparison(target_year=target_year, cycle_code=cycle_code, month=m)
+        for row in monthly_rows:
+            key = row.get("agregat_key")
+            if not key:
+                continue
+            agg_actual_monthly[(key, m)] = float(row.get("actual_value") or 0.0)
+
+    sub_actual_monthly: dict[tuple[str, str, int], float] = {}
+    for row in annual_rows:
+        agg_key = row.get("agregat_key")
+        if not agg_key:
+            continue
+        for m in realized_months:
+            sub_data = get_subagregats(target_year=target_year, cycle_code=cycle_code, agregat_key=agg_key, month=m)
+            for item in sub_data.get("items", []):
+                skey = item.get("subagregat_key")
+                if not skey:
+                    continue
+                sub_actual_monthly[(agg_key, skey, m)] = float(item.get("actual_value") or 0.0)
+
+    out: list[dict] = []
+    for row in annual_rows:
+        key = row.get("agregat_key")
+        if not key:
+            continue
+
+        line = {
+            "Niveau": "Agrégat",
+            "Libellé": row.get("agregat_label"),
+            "Nature": row.get("nature"),
+            "Prévision annuelle": float(row.get("forecast_annual") or 0.0),
+        }
+        for m, col in zip(realized_months, month_labels):
+            line[col] = float(agg_actual_monthly.get((key, m), 0.0))
+
+        line["Réalisé cumulé"] = float(row.get("actual_total") or 0.0)
+        line["Taux réalisation annuel"] = row.get("taux_realisation_annuel_pct")
+        line["Reste budget"] = float(row.get("remaining_budget") or 0.0)
+        line["Indice / alerte"] = row.get("indicator_label") or _badge_label(row.get("alert_level"))
+        line["Statut"] = _badge_label(row.get("alert_level"))
+        out.append(line)
+
+        for sub in sub_ann_map.get(key, []):
+            skey = sub.get("subagregat_key")
+            f_val = float(sub.get("forecast_value") or 0.0)
+            a_cum = float(sum(sub_actual_monthly.get((key, skey, m), 0.0) for m in realized_months))
+
+            sub_line = {
+                "Niveau": "Sous-agrégat",
+                "Libellé": f"↳ {sub.get('subagregat_label')}",
+                "Nature": row.get("nature"),
+                "Prévision annuelle": f_val,
+            }
+            for m, col in zip(realized_months, month_labels):
+                sub_line[col] = float(sub_actual_monthly.get((key, skey, m), 0.0))
+
+            sub_line["Réalisé cumulé"] = a_cum
+            sub_line["Taux réalisation annuel"] = (a_cum / f_val * 100.0) if abs(f_val) > 1e-9 else None
+            sub_line["Reste budget"] = _remaining_budget_semantic(f_val, a_cum)
+            sub_line["Indice / alerte"] = sub.get("indicator_label") or _badge_label(sub.get("alert_level"))
+            sub_line["Statut"] = _badge_label(sub.get("alert_level"))
+            out.append(sub_line)
+
+    return pd.DataFrame(out)
+
+
 def _resolve_pnl_months(
     realized_months: list[int],
     pnl_scope: str,
@@ -490,6 +572,9 @@ def export_reporting_excel(
     include_cycles: bool = Query(True),
     include_alerts: bool = Query(False),
     include_subaggregates: bool = Query(True),
+    include_global_state: bool = Query(False),
+    include_pnl_selected: bool = Query(False),
+    include_pnl_global: bool = Query(False),
 ):
     try:
         if not any([
@@ -498,8 +583,15 @@ def export_reporting_excel(
             include_budget_forecast,
             include_cycles,
             include_alerts,
+            include_global_state,
         ]):
-            raise ValueError("Aucun contenu sélectionné pour l'export")
+            # Compatibilité descendante: certains clients envoient encore
+            # les modes P&L sans activer explicitement le bloc de contenu.
+            if include_pnl_selected or include_pnl_global:
+                include_pnl_formatted = True
+            else:
+                # Fallback robuste: au moins une feuille utile au lieu d'une 400.
+                include_global_state = True
 
         selected_month = _normalize_month_param(target_year, month)
         effective_budget_cycle = budget_cycle_code or cycle_code
@@ -513,14 +605,32 @@ def export_reporting_excel(
                 detail_months=monthly_detail_months,
             )
 
-        effective_pnl_months = []
+        effective_pnl_months_selected = []
+        effective_pnl_months_global = []
+        export_pnl_selected = False
+        export_pnl_global = False
         if include_pnl_formatted:
-            effective_pnl_months = _resolve_pnl_months(
-                realized_months=realized_months,
-                pnl_scope=pnl_scope,
-                selected_month=selected_month,
-                pnl_months=pnl_months,
-            )
+            if include_pnl_selected or include_pnl_global:
+                export_pnl_selected = include_pnl_selected
+                export_pnl_global = include_pnl_global
+            else:
+                export_pnl_selected = pnl_scope == "selected"
+                export_pnl_global = pnl_scope in {"all", "global"}
+
+            if export_pnl_selected:
+                effective_pnl_months_selected = _resolve_pnl_months(
+                    realized_months=realized_months,
+                    pnl_scope="selected",
+                    selected_month=selected_month,
+                    pnl_months=pnl_months,
+                )
+            if export_pnl_global:
+                effective_pnl_months_global = _resolve_pnl_months(
+                    realized_months=realized_months,
+                    pnl_scope="global",
+                    selected_month=selected_month,
+                    pnl_months=pnl_months,
+                )
 
         annual = get_annual_comparison(target_year=target_year, cycle_code=effective_budget_cycle)
         monthly = get_comparison(target_year=target_year, cycle_code=effective_budget_cycle, month=selected_month)
@@ -530,7 +640,7 @@ def export_reporting_excel(
         annual_df = pd.DataFrame(_build_annual_forecast_export_rows(annual_raw_rows))
 
         sub_ann_map: dict[str, list[dict]] = {}
-        need_annual_sub = include_subaggregates or include_pnl_formatted
+        need_annual_sub = include_subaggregates or include_pnl_formatted or include_global_state
         if need_annual_sub:
             for row in annual_raw_rows:
                 key = row.get("agregat_key")
@@ -538,7 +648,8 @@ def export_reporting_excel(
                     continue
                 sub_ann_map[key] = list(get_subagregats(target_year, effective_budget_cycle, key, None).get("items", []))
 
-        pnl_df = pd.DataFrame()
+        pnl_selected_df = pd.DataFrame()
+        pnl_global_df = pd.DataFrame()
 
         if include_pnl_formatted:
             annual_base = get_annual_comparison(target_year=target_year, cycle_code=cycle_code)
@@ -550,14 +661,24 @@ def export_reporting_excel(
                     continue
                 pnl_sub_map[key] = list(get_subagregats(target_year, cycle_code, key, None).get("items", []))
 
-            pnl_df = _build_pnl_formatted_hierarchical_df(
-                target_year=target_year,
-                cycle_code=cycle_code,
-                annual_rows=annual_pnl_rows,
-                sub_ann_map=pnl_sub_map,
-                pnl_months=effective_pnl_months,
-                pnl_scope=pnl_scope,
-            )
+            if export_pnl_selected:
+                pnl_selected_df = _build_pnl_formatted_hierarchical_df(
+                    target_year=target_year,
+                    cycle_code=cycle_code,
+                    annual_rows=annual_pnl_rows,
+                    sub_ann_map=pnl_sub_map,
+                    pnl_months=effective_pnl_months_selected,
+                    pnl_scope="selected",
+                )
+            if export_pnl_global:
+                pnl_global_df = _build_pnl_formatted_hierarchical_df(
+                    target_year=target_year,
+                    cycle_code=cycle_code,
+                    annual_rows=annual_pnl_rows,
+                    sub_ann_map=pnl_sub_map,
+                    pnl_months=effective_pnl_months_global,
+                    pnl_scope="global",
+                )
 
         by_key_annual = {r["agregat_key"]: r for r in annual_raw_rows}
         executive_rows = [
@@ -625,21 +746,43 @@ def export_reporting_excel(
             include_subaggregates=include_subaggregates,
         ) if include_budget_forecast and include_monthly_forecast else pd.DataFrame()
 
+        global_state_df = _build_global_state_df(
+            target_year=target_year,
+            cycle_code=effective_budget_cycle,
+            annual_rows=annual_raw_rows,
+            sub_ann_map=sub_ann_map,
+            realized_months=realized_months,
+        ) if include_global_state else pd.DataFrame()
+
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+            TITLE_ROW = 0
+            HEADER_ROW = 2
+            DATA_START_ROW = 3
+
             if include_executive_summary:
-                executive_df.to_excel(writer, sheet_name="Executive_Summary", index=False)
+                executive_df.to_excel(writer, sheet_name="Executive_Summary", index=False, startrow=HEADER_ROW)
             if include_pnl_formatted:
-                pnl_df.to_excel(writer, sheet_name="PnL_Formate", index=False)
+                has_selected = not pnl_selected_df.empty
+                has_global = not pnl_global_df.empty
+                if has_selected and has_global:
+                    pnl_selected_df.to_excel(writer, sheet_name="PnL_Formate_Selection", index=False, startrow=HEADER_ROW)
+                    pnl_global_df.to_excel(writer, sheet_name="PnL_Formate_Global", index=False, startrow=HEADER_ROW)
+                elif has_selected:
+                    pnl_selected_df.to_excel(writer, sheet_name="PnL_Formate", index=False, startrow=HEADER_ROW)
+                elif has_global:
+                    pnl_global_df.to_excel(writer, sheet_name="PnL_Formate", index=False, startrow=HEADER_ROW)
             if include_budget_forecast:
-                annual_df.to_excel(writer, sheet_name="Forecast_Annuel", index=False)
-                annual_detail_df.to_excel(writer, sheet_name="Forecast_Annuel_Detail", index=False)
+                annual_df.to_excel(writer, sheet_name="Forecast_Annuel", index=False, startrow=HEADER_ROW)
+                annual_detail_df.to_excel(writer, sheet_name="Forecast_Annuel_Detail", index=False, startrow=HEADER_ROW)
                 if include_monthly_forecast:
-                    monthly_detail_df.to_excel(writer, sheet_name="Forecast_Mensuel_Detail", index=False)
+                    monthly_detail_df.to_excel(writer, sheet_name="Forecast_Mensuel_Detail", index=False, startrow=HEADER_ROW)
+            if include_global_state:
+                global_state_df.to_excel(writer, sheet_name="Etat_Globale", index=False, startrow=HEADER_ROW)
             if include_cycles:
-                cycles_df.to_excel(writer, sheet_name="Cycles", index=False)
+                cycles_df.to_excel(writer, sheet_name="Cycles", index=False, startrow=HEADER_ROW)
             if include_alerts:
-                alerts_start_row = 0
+                alerts_start_row = HEADER_ROW
                 if not annual_alerts_df.empty:
                     annual_alerts_df.to_excel(writer, sheet_name="Alertes", index=False, startrow=alerts_start_row)
                     alerts_start_row += len(annual_alerts_df) + 3
@@ -650,15 +793,35 @@ def export_reporting_excel(
             money_fmt = workbook.add_format({"num_format": "#,##0.000"})
             pct_fmt = workbook.add_format({"num_format": "0.000"})
             header_fmt = workbook.add_format({"bold": True, "font_color": "#FFFFFF", "bg_color": "#1E3A8A", "border": 1, "align": "center"})
-            kpi_row_fmt = workbook.add_format({"bg_color": "#EEF2FF", "bold": True})
-            aggregate_row_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True})
-            subaggregate_row_fmt = workbook.add_format({"bg_color": "#F8FAFC"})
-            pnl_products_fmt = workbook.add_format({"bg_color": "#ECFDF5"})
-            pnl_charges_fmt = workbook.add_format({"bg_color": "#FEF2F2"})
-            pnl_result_fmt = workbook.add_format({"bg_color": "#EFF6FF", "bold": True})
-            pnl_products_agg_fmt = workbook.add_format({"bg_color": "#ECFDF5", "bold": True})
-            pnl_charges_agg_fmt = workbook.add_format({"bg_color": "#FEF2F2", "bold": True})
-            pnl_result_agg_fmt = workbook.add_format({"bg_color": "#EFF6FF", "bold": True})
+            kpi_row_fmt = workbook.add_format({"bg_color": "#EEF2FF", "bold": True, "num_format": "#,##0.000"})
+            aggregate_row_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True, "num_format": "#,##0.000"})
+            subaggregate_row_fmt = workbook.add_format({"bg_color": "#F8FAFC", "num_format": "#,##0.000"})
+            pnl_products_fmt = workbook.add_format({"bg_color": "#ECFDF5", "num_format": "#,##0.000"})
+            pnl_charges_fmt = workbook.add_format({"bg_color": "#FEF2F2", "num_format": "#,##0.000"})
+            pnl_result_fmt = workbook.add_format({"bg_color": "#EFF6FF", "bold": True, "num_format": "#,##0.000"})
+            pnl_products_agg_fmt = workbook.add_format({"bg_color": "#ECFDF5", "bold": True, "num_format": "#,##0.000"})
+            pnl_charges_agg_fmt = workbook.add_format({"bg_color": "#FEF2F2", "bold": True, "num_format": "#,##0.000"})
+            pnl_result_agg_fmt = workbook.add_format({"bg_color": "#EFF6FF", "bold": True, "num_format": "#,##0.000"})
+            title_fmt = workbook.add_format({
+                "bold": True,
+                "font_size": 13,
+                "font_color": "#1E3A8A",
+                "align": "left",
+                "valign": "vcenter",
+            })
+
+            sheet_titles = {
+                "Executive_Summary": "Reporting Décisionnel — Executive Summary",
+                "PnL_Formate": "Reporting Décisionnel — P&L Formaté",
+                "PnL_Formate_Selection": "Reporting Décisionnel — P&L Formaté (Mois sélectionnés)",
+                "PnL_Formate_Global": "Reporting Décisionnel — P&L Formaté (Global)",
+                "Forecast_Annuel": "Reporting Décisionnel — Prévision Budget Annuelle",
+                "Forecast_Annuel_Detail": "Reporting Décisionnel — Prévision Budget Annuelle Détaillée",
+                "Forecast_Mensuel_Detail": "Reporting Décisionnel — Prévision Budget Mensuelle Détaillée",
+                "Etat_Globale": "Reporting Décisionnel — État Globale",
+                "Cycles": "Reporting Décisionnel — Statut des Cycles",
+                "Alertes": "Reporting Décisionnel — Alertes",
+            }
 
             for sheet_name in writer.sheets.keys():
                 ws = writer.sheets[sheet_name]
@@ -666,25 +829,36 @@ def export_reporting_excel(
                 if sheet_name == "Executive_Summary":
                     df_source = executive_df
                 elif sheet_name == "PnL_Formate":
-                    df_source = pnl_df
+                    df_source = pnl_selected_df if not pnl_selected_df.empty else pnl_global_df
+                elif sheet_name == "PnL_Formate_Selection":
+                    df_source = pnl_selected_df
+                elif sheet_name == "PnL_Formate_Global":
+                    df_source = pnl_global_df
                 elif sheet_name == "Forecast_Annuel":
                     df_source = annual_df
                 elif sheet_name == "Forecast_Annuel_Detail":
                     df_source = annual_detail_df
                 elif sheet_name == "Forecast_Mensuel_Detail":
                     df_source = monthly_detail_df
+                elif sheet_name == "Etat_Globale":
+                    df_source = global_state_df
                 elif sheet_name == "Cycles":
                     df_source = cycles_df
                 elif sheet_name == "Alertes":
                     df_source = pd.concat([annual_alerts_df, monthly_alerts_df], ignore_index=True)
 
                 if df_source is not None and not df_source.empty:
-                    ws.autofilter(0, 0, len(df_source), max(len(df_source.columns) - 1, 0))
+                    ws.autofilter(HEADER_ROW, 0, HEADER_ROW + len(df_source), max(len(df_source.columns) - 1, 0))
 
-                ws.freeze_panes(1, 0)
-                ws.set_row(0, 22, header_fmt)
+                ws.freeze_panes(DATA_START_ROW, 0)
+                ws.set_row(HEADER_ROW, 22, header_fmt)
                 ws.set_column(0, 0, 34)
                 ws.set_column(1, 30, 18, money_fmt)
+
+                title_text = sheet_titles.get(sheet_name)
+                if title_text:
+                    max_col = max((len(df_source.columns) - 1) if (df_source is not None and not df_source.empty) else 3, 3)
+                    ws.merge_range(TITLE_ROW, 0, TITLE_ROW, max_col, title_text, title_fmt)
 
                 if df_source is not None and not df_source.empty:
                     for idx, col in enumerate(df_source.columns):
@@ -696,19 +870,19 @@ def export_reporting_excel(
 
                     if "statut" in [str(c).lower() for c in df_source.columns]:
                         stat_idx = [str(c).lower() for c in df_source.columns].index("statut")
-                        ws.conditional_format(1, stat_idx, len(df_source), stat_idx, {
+                        ws.conditional_format(DATA_START_ROW, stat_idx, HEADER_ROW + len(df_source), stat_idx, {
                             "type": "text",
                             "criteria": "containing",
                             "value": "Défavorable",
                             "format": workbook.add_format({"font_color": "#991B1B", "bg_color": "#FEE2E2", "bold": True}),
                         })
-                        ws.conditional_format(1, stat_idx, len(df_source), stat_idx, {
+                        ws.conditional_format(DATA_START_ROW, stat_idx, HEADER_ROW + len(df_source), stat_idx, {
                             "type": "text",
                             "criteria": "containing",
                             "value": "Favorable",
                             "format": workbook.add_format({"font_color": "#14532D", "bg_color": "#DCFCE7", "bold": True}),
                         })
-                        ws.conditional_format(1, stat_idx, len(df_source), stat_idx, {
+                        ws.conditional_format(DATA_START_ROW, stat_idx, HEADER_ROW + len(df_source), stat_idx, {
                             "type": "text",
                             "criteria": "containing",
                             "value": "Neutre",
@@ -716,20 +890,20 @@ def export_reporting_excel(
                         })
 
                     if sheet_name == "Executive_Summary":
-                        for ridx in range(1, len(df_source) + 1):
+                        for ridx in range(DATA_START_ROW, DATA_START_ROW + len(df_source)):
                             ws.set_row(ridx, 20, kpi_row_fmt)
 
-                    if sheet_name in {"Forecast_Annuel_Detail", "Forecast_Mensuel_Detail", "PnL_Formate"}:
+                    if sheet_name in {"Forecast_Annuel_Detail", "Forecast_Mensuel_Detail", "PnL_Formate", "PnL_Formate_Selection", "PnL_Formate_Global", "Etat_Globale"}:
                         lvl_idx = [str(c).lower() for c in df_source.columns].index("niveau") if "Niveau" in df_source.columns else -1
                         lib_idx = [str(c).lower() for c in df_source.columns].index("libellé") if "Libellé" in df_source.columns else -1
-                        for ridx, row in enumerate(df_source.to_dict(orient="records"), start=1):
+                        for ridx, row in enumerate(df_source.to_dict(orient="records"), start=DATA_START_ROW):
                             level = row.get("Niveau")
                             if level == "Agrégat":
                                 ws.set_row(ridx, 20, aggregate_row_fmt)
                             elif level == "Sous-agrégat":
                                 ws.set_row(ridx, 20, subaggregate_row_fmt)
 
-                            if sheet_name == "PnL_Formate":
+                            if sheet_name in {"PnL_Formate", "PnL_Formate_Selection", "PnL_Formate_Global"}:
                                 label = str(row.get("Libellé") or "").lower()
                                 is_agg = row.get("Niveau") == "Agrégat"
                                 if any(x in label for x in ["charges", "frais", "impot", "dotations"]):
@@ -742,7 +916,20 @@ def export_reporting_excel(
                             if lvl_idx >= 0 and lib_idx >= 0 and row.get("Niveau") == "Sous-agrégat":
                                 ws.write(ridx, lib_idx, row.get("Libellé"), workbook.add_format({"italic": True, "font_color": "#334155"}))
 
-                if sheet_name == "PnL_Formate" and df_source is not None and not df_source.empty:
+                if sheet_name == "Etat_Globale" and df_source is not None and not df_source.empty:
+                    cols = list(df_source.columns)
+                    month_indices = [i for i, c in enumerate(cols) if str(c).startswith("M")]
+                    for i in month_indices:
+                        ws.set_column(i, i, 12, money_fmt)
+                    if "Niveau" in cols:
+                        ws.set_column(cols.index("Niveau"), cols.index("Niveau"), 14)
+                    if "Libellé" in cols:
+                        ws.set_column(cols.index("Libellé"), cols.index("Libellé"), 36)
+                    if "Nature" in cols:
+                        ws.set_column(cols.index("Nature"), cols.index("Nature"), 14)
+                    ws.freeze_panes(DATA_START_ROW, 4)
+
+                if sheet_name in {"PnL_Formate", "PnL_Formate_Selection", "PnL_Formate_Global"} and df_source is not None and not df_source.empty:
                     cols = list(df_source.columns)
                     if "Libellé" in cols:
                         lib_idx = cols.index("Libellé")
@@ -763,7 +950,7 @@ def export_reporting_excel(
                         lv_idx = cols.index("Niveau")
                         ws.set_column(lv_idx, lv_idx, 14)
 
-                    ws.freeze_panes(1, 3)
+                    ws.freeze_panes(DATA_START_ROW, 3)
 
         output.seek(0)
         filename = f"Reporting_OLEA_{target_year}_{cycle_code}_M{selected_month:02d}.xlsx"
