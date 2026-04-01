@@ -20,6 +20,7 @@ class ModuleEnum(str, Enum):
     migration_sage = "migration_sage"
     export_csv = "export_csv"
     sage_bfc = "sage_bfc"
+    reporting = "reporting"
 
 
 # ─── Auth Schemas ───

@@ -3,10 +3,11 @@ import json
 from datetime import date
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from database import db
+from modules.auth.dependencies import require_permission
 from modules.forecast.engine import get_annual_comparison, get_comparison, get_cycle_status, get_subagregats
 
 router = APIRouter(
@@ -243,7 +244,6 @@ def _build_hierarchical_annual_df(
                 "Taux réalisation annuel": r.get("taux_realisation_annuel_pct"),
                 "Reste budget": r.get("remaining_budget"),
                 "Indice / alerte": r.get("indicator_label") or _badge_label(r.get("alert_level")),
-                "Statut": _badge_label(r.get("alert_level")),
             }
         )
 
@@ -258,7 +258,6 @@ def _build_hierarchical_annual_df(
                     "Taux réalisation annuel": item.get("taux_realisation_annuel_pct"),
                     "Reste budget": item.get("remaining_budget"),
                     "Indice / alerte": item.get("indicator_label") or _badge_label(item.get("alert_level")),
-                    "Statut": _badge_label(item.get("alert_level")),
                 }
             )
 
@@ -317,10 +316,7 @@ def _build_global_state_df(
             line[col] = float(agg_actual_monthly.get((key, m), 0.0))
 
         line["Réalisé cumulé"] = float(row.get("actual_total") or 0.0)
-        line["Taux réalisation annuel"] = row.get("taux_realisation_annuel_pct")
         line["Reste budget"] = float(row.get("remaining_budget") or 0.0)
-        line["Indice / alerte"] = row.get("indicator_label") or _badge_label(row.get("alert_level"))
-        line["Statut"] = _badge_label(row.get("alert_level"))
         out.append(line)
 
         for sub in sub_ann_map.get(key, []):
@@ -338,10 +334,7 @@ def _build_global_state_df(
                 sub_line[col] = float(sub_actual_monthly.get((key, skey, m), 0.0))
 
             sub_line["Réalisé cumulé"] = a_cum
-            sub_line["Taux réalisation annuel"] = (a_cum / f_val * 100.0) if abs(f_val) > 1e-9 else None
             sub_line["Reste budget"] = _remaining_budget_semantic(f_val, a_cum)
-            sub_line["Indice / alerte"] = sub.get("indicator_label") or _badge_label(sub.get("alert_level"))
-            sub_line["Statut"] = _badge_label(sub.get("alert_level"))
             out.append(sub_line)
 
     return pd.DataFrame(out)
@@ -522,6 +515,7 @@ def get_reporting_preview(
     target_year: int = Query(..., ge=2000, le=2100),
     cycle_code: str = Query("INITIAL"),
     month: int | None = Query(None, ge=1, le=12),
+    _user: dict = Depends(require_permission("reporting", "read")),
 ):
     try:
         selected_month = _normalize_month_param(target_year, month)
@@ -575,6 +569,7 @@ def export_reporting_excel(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
+    _user: dict = Depends(require_permission("reporting", "read")),
 ):
     try:
         if not any([
@@ -686,25 +681,19 @@ def export_reporting_excel(
                 "KPI": "CA Net",
                 "Prévision Annuelle": by_key_annual.get("ca_net", {}).get("forecast_annual"),
                 "Réalisé Cumulé": by_key_annual.get("ca_net", {}).get("actual_total"),
-                "Taux Réalisation %": by_key_annual.get("ca_net", {}).get("taux_realisation_annuel_pct"),
-                "Indice": by_key_annual.get("ca_net", {}).get("indicator_label"),
-                "Alerte": by_key_annual.get("ca_net", {}).get("alert_level"),
+                "Reste budget": by_key_annual.get("ca_net", {}).get("remaining_budget"),
             },
             {
                 "KPI": "EBITDA",
                 "Prévision Annuelle": by_key_annual.get("ebitda", {}).get("forecast_annual"),
                 "Réalisé Cumulé": by_key_annual.get("ebitda", {}).get("actual_total"),
-                "Taux Réalisation %": by_key_annual.get("ebitda", {}).get("taux_realisation_annuel_pct"),
-                "Indice": by_key_annual.get("ebitda", {}).get("indicator_label"),
-                "Alerte": by_key_annual.get("ebitda", {}).get("alert_level"),
+                "Reste budget": by_key_annual.get("ebitda", {}).get("remaining_budget"),
             },
             {
                 "KPI": "Résultat Net",
                 "Prévision Annuelle": by_key_annual.get("resultat_net", {}).get("forecast_annual"),
                 "Réalisé Cumulé": by_key_annual.get("resultat_net", {}).get("actual_total"),
-                "Taux Réalisation %": by_key_annual.get("resultat_net", {}).get("taux_realisation_annuel_pct"),
-                "Indice": by_key_annual.get("resultat_net", {}).get("indicator_label"),
-                "Alerte": by_key_annual.get("resultat_net", {}).get("alert_level"),
+                "Reste budget": by_key_annual.get("resultat_net", {}).get("remaining_budget"),
             },
         ]
         executive_df = pd.DataFrame(executive_rows)

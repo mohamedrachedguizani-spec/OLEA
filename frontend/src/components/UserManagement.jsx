@@ -15,6 +15,7 @@ const MODULES = [
     { name: 'migration_sage', label: 'Migration Sage', icon: '📤' },
     { name: 'export_csv', label: 'Export CSV', icon: '📁' },
     { name: 'sage_bfc', label: 'SAGE → BFC', icon: '🔄' },
+    { name: 'reporting', label: 'Reporting', icon: '📊' },
 ];
 
 function UserManagement() {

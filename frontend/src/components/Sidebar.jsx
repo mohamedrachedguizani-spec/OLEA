@@ -20,7 +20,7 @@ function Sidebar({ activeTab, setActiveTab, darkMode, setDarkMode, sidebarOpen, 
         { id: 'migration', label: 'Migration Sage', icon: 'sync', module: 'migration_sage' },
         { id: 'export', label: 'Export CSV', icon: 'download', module: 'export_csv' },
         { id: 'sage-bfc', label: 'SAGE → BFC', icon: 'transform', module: 'sage_bfc' },
-        { id: 'reporting', label: 'Reporting', icon: 'reporting', alwaysVisible: true },
+        { id: 'reporting', label: 'Reporting', icon: 'reporting', module: 'reporting' },
     ];
 
     // Filtrer : superadmin voit tout, les autres selon permissions

@@ -13,7 +13,7 @@ import UserManagement from './components/UserManagement';
 import Reporting from './components/Reporting';
 
 function App() {
-    const { user, loading } = useAuth();
+    const { user, loading, hasPermission } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [darkMode, setDarkMode] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -113,7 +113,7 @@ function App() {
 
                 <div className="content-wrapper">
                     {activeTab === 'dashboard' && <Dashboard refreshTrigger={refreshTrigger} />}
-                    {activeTab === 'reporting' && <Reporting refreshTrigger={reportingRefresh} />}
+                    {activeTab === 'reporting' && hasPermission('reporting', 'read') && <Reporting refreshTrigger={reportingRefresh} />}
                     {activeTab === 'saisie' && <SaisieCaisse refreshTrigger={refreshTrigger} />}
                     {activeTab === 'migration' && <MigrationSage onMigrationComplete={handleMigrationComplete} refreshTrigger={migrationRefresh} />}
                     {activeTab === 'export' && <ExportCSV />}
