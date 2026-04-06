@@ -11,6 +11,7 @@ function Reporting({ refreshTrigger = 0 }) {
 
     const [loading, setLoading] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
+    const [printLoading, setPrintLoading] = useState(false);
     const [error, setError] = useState('');
     const [preview, setPreview] = useState(null);
 
@@ -20,11 +21,11 @@ function Reporting({ refreshTrigger = 0 }) {
         pnlMonths: [],
         monthlyDetailMonths: [],
         includeExecutiveSummary: true,
-        includePnlFormatted: true,
-        includeBudgetForecast: true,
+        includePnlFormatted: false,
+        includeBudgetForecast: false,
         includeGlobalState: true,
         includeMonthlyForecast: false,
-        includeCycles: true,
+        includeCycles: false,
         includeAlerts: false,
         includeSubaggregates: true,
     });
@@ -71,6 +72,21 @@ function Reporting({ refreshTrigger = 0 }) {
             setError(e.message || 'Erreur export reporting');
         } finally {
             setExportLoading(false);
+        }
+    };
+
+    const handlePrint = async () => {
+        setPrintLoading(true);
+        setError('');
+        try {
+            await ApiService.printReporting(targetYear, 'INITIAL', null, {
+                ...exportConfig,
+                budgetCycleCode,
+            });
+        } catch (e) {
+            setError(e.message || 'Erreur impression reporting');
+        } finally {
+            setPrintLoading(false);
         }
     };
 
@@ -169,7 +185,7 @@ function Reporting({ refreshTrigger = 0 }) {
                     <input type="number" min="2000" max="2100" value={targetYear} onChange={(e) => setTargetYear(Number(e.target.value || now.getFullYear()))} />
                 </label>
                 <div className="reporting-actions">
-                    <button className="btn-reporting" onClick={loadPreview} disabled={loading}>{loading ? 'Chargement...' : 'Actualiser'}</button>
+                    <button className="btn-reporting" onClick={handlePrint} disabled={printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{printLoading ? 'Impression...' : '🖨 Imprimer'}</button>
                     <button className="btn-reporting primary" onClick={handleExport} disabled={exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{exportLoading ? 'Export...' : '⬇ Export Excel'}</button>
                 </div>
             </div>

@@ -196,10 +196,7 @@ def _build_annual_forecast_export_rows(rows: list[dict]) -> list[dict]:
                 "Nature": r.get("nature"),
                 "Prévision annuelle": r.get("forecast_annual"),
                 "Réalisé cumulé": r.get("actual_total"),
-                "Taux réalisation annuel": r.get("taux_realisation_annuel_pct"),
                 "Reste budget": r.get("remaining_budget"),
-                "Indice / alerte": r.get("indicator_label") or _export_label(r.get("alert_level")),
-                "Niveau alerte": _export_label(r.get("alert_level")),
             }
         )
     return out
@@ -241,9 +238,7 @@ def _build_hierarchical_annual_df(
                 "Nature": r.get("nature"),
                 "Prévision annuelle": r.get("forecast_annual"),
                 "Réalisé cumulé": r.get("actual_total"),
-                "Taux réalisation annuel": r.get("taux_realisation_annuel_pct"),
                 "Reste budget": r.get("remaining_budget"),
-                "Indice / alerte": r.get("indicator_label") or _badge_label(r.get("alert_level")),
             }
         )
 
@@ -255,9 +250,7 @@ def _build_hierarchical_annual_df(
                     "Nature": r.get("nature"),
                     "Prévision annuelle": item.get("forecast_value"),
                     "Réalisé cumulé": item.get("actual_value"),
-                    "Taux réalisation annuel": item.get("taux_realisation_annuel_pct"),
                     "Reste budget": item.get("remaining_budget"),
-                    "Indice / alerte": item.get("indicator_label") or _badge_label(item.get("alert_level")),
                 }
             )
 
@@ -462,8 +455,6 @@ def _build_hierarchical_monthly_detail_df(
                     "Réalisé": row.get("actual_value"),
                     "Écart": row.get("ecart_value"),
                     "Écart %": row.get("ecart_pct"),
-                    "Indice / alerte": _badge_label(row.get("alert_level")),
-                    "Statut": _badge_label(row.get("alert_level")),
                 }
             )
 
@@ -486,8 +477,6 @@ def _build_hierarchical_monthly_detail_df(
                         "Réalisé": a_val,
                         "Écart": ecart,
                         "Écart %": ecart_pct,
-                        "Indice / alerte": item.get("indicator_label") or _badge_label(item.get("alert_level")),
-                        "Statut": _badge_label(item.get("alert_level")),
                     }
                 )
 
@@ -502,8 +491,6 @@ def _build_hierarchical_monthly_detail_df(
                     "Réalisé": "",
                     "Écart": "",
                     "Écart %": "",
-                    "Indice / alerte": "",
-                    "Statut": "",
                 }
             )
 
