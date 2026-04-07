@@ -492,53 +492,47 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                         Transformation des balances SAGE au format Budget BFC
                     </p>
                 </div>
-                {sortedMonths.length > 0 && (
-                    <div className="sage-bfc-stats-badge months-badge">
-                        <span className="stats-badge-icon">📅</span>
-                        <span>{sortedMonths.length} mois chargé{sortedMonths.length > 1 ? 's' : ''}</span>
-                    </div>
-                )}
-            </div>
 
-            {/* Navigation rapide */}
-            <div className="sage-bfc-nav">
-                <button
-                    className={`sage-nav-btn ${activeStep === 'upload' ? 'active' : ''}`}
-                    onClick={() => setActiveStep('upload')}
-                >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                        <polyline points="17 8 12 3 7 8"/>
-                        <line x1="12" y1="3" x2="12" y2="15"/>
-                    </svg>
-                    Import
-                    {sortedMonths.length > 0 && <span className="nav-check">✓</span>}
-                </button>
-                <button
-                    className={`sage-nav-btn ${activeStep === 'results' ? 'active' : ''}`}
-                    onClick={handleViewResults}
-                >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="20" x2="18" y2="10"/>
-                        <line x1="12" y1="20" x2="12" y2="4"/>
-                        <line x1="6" y1="20" x2="6" y2="14"/>
-                    </svg>
-                    Analyse
-                    {sortedMonths.length > 0 && <span className="nav-badge">{sortedMonths.length}</span>}
-                </button>
-                {!!latestClosableYear && (
+                {/* Navigation rapide (placée en haut à droite) */}
+                <div className="sage-bfc-nav">
                     <button
-                        className="sage-nav-btn"
-                        onClick={() => handleCloseYear(latestClosableYear)}
-                        disabled={closingYear}
-                        title={`Clôturer ${latestClosableYear}`}
+                        className={`sage-nav-btn ${activeStep === 'upload' ? 'active' : ''}`}
+                        onClick={() => setActiveStep('upload')}
                     >
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M20 6L9 17l-5-5"/>
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
                         </svg>
-                        {closingYear ? 'Clôture...' : `Clôturer ${latestClosableYear}`}
+                        Import
+                        {sortedMonths.length > 0 && <span className="nav-check">✓</span>}
                     </button>
-                )}
+                    <button
+                        className={`sage-nav-btn ${activeStep === 'results' ? 'active' : ''}`}
+                        onClick={handleViewResults}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="20" x2="18" y2="10"/>
+                            <line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                        </svg>
+                        Analyse
+                        {sortedMonths.length > 0 && <span className="nav-badge">{sortedMonths.length}</span>}
+                    </button>
+                    {!!latestClosableYear && (
+                        <button
+                            className="sage-nav-btn"
+                            onClick={() => handleCloseYear(latestClosableYear)}
+                            disabled={closingYear}
+                            title={`Clôturer ${latestClosableYear}`}
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M20 6L9 17l-5-5"/>
+                            </svg>
+                            {closingYear ? 'Clôture...' : `Clôturer ${latestClosableYear}`}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {closingYear && (
@@ -581,73 +575,6 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
             {/* Étape 2: Résultats */}
             {activeStep === 'results' && (
                 <div className="sage-bfc-results">
-                    {/* Barre d'actions */}
-                    {showTopFilters && (
-                        <div className="sage-bfc-actions-bar">
-                            <div className="actions-left">
-                                <div className="month-selector">
-                                    <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <path d="M3 5h18"/>
-                                        <path d="M3 12h18"/>
-                                        <path d="M3 19h18"/>
-                                    </svg>
-                                    <select
-                                        className="month-selector-select"
-                                        value={selectedYearFilter}
-                                        onChange={(e) => setSelectedYearFilter(e.target.value)}
-                                    >
-                                        <option value="all">Toutes les années</option>
-                                        {availableYears.map((y) => (
-                                            <option key={y} value={String(y)}>{y}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {/* Sélecteur de mois amélioré */}
-                                <div className="month-selector">
-                                    <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                                        <line x1="16" y1="2" x2="16" y2="6"/>
-                                        <line x1="8" y1="2" x2="8" y2="6"/>
-                                        <line x1="3" y1="10" x2="21" y2="10"/>
-                                    </svg>
-                                    <select
-                                        className="month-selector-select"
-                                        value={selectedMonth || ''}
-                                        onChange={(e) => setSelectedMonth(e.target.value)}
-                                    >
-                                        {!filteredMonths.length && <option value="">Aucune période chargée</option>}
-                                        <option value={ALL_PERIODS_KEY}> Toutes les périodes</option>
-                                        {filteredMonths.map(m => (
-                                            <option key={m} value={m}>{formatMonthLabel(m)}</option>
-                                        ))}
-                                    </select>
-                                </div>
-
-                                {currentResult && selectedMonth !== ALL_PERIODS_KEY && (
-                                    <span className="file-name-badge">
-                                        📄 {monthlyData[selectedMonth]?.fileName}
-                                    </span>
-                                )}
-                            </div>
-                            <div className="actions-right">
-                                {!!selectedMonth && selectedMonth !== ALL_PERIODS_KEY && (
-                                    <button
-                                        className="btn-delete-month"
-                                        onClick={() => handleDeleteMonth(selectedMonth)}
-                                        title="Supprimer ce mois"
-                                    >
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                            <polyline points="3,6 5,6 21,6"/>
-                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                                        </svg>
-                                        Supprimer
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
                     {/* Tabs de navigation */}
                     <div className="sage-bfc-tabs">
                         <button
@@ -701,6 +628,78 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                             Prévision Budget
                         </button>
                     </div>
+
+                    {/* Barre d'actions (Vue d'ensemble / P&L) */}
+                    {showTopFilters && (
+                        <div className="sage-bfc-actions-bar">
+                            <div className="actions-left">
+                                <div className="filter-block">
+                                    <span className="filter-block-label">Année</span>
+                                    <div className="month-selector">
+                                        <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <path d="M3 5h18"/>
+                                            <path d="M3 12h18"/>
+                                            <path d="M3 19h18"/>
+                                        </svg>
+                                        <select
+                                            className="month-selector-select"
+                                            value={selectedYearFilter}
+                                            onChange={(e) => setSelectedYearFilter(e.target.value)}
+                                        >
+                                            <option value="all">Toutes les années</option>
+                                            {availableYears.map((y) => (
+                                                <option key={y} value={String(y)}>{y}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="filter-block">
+                                    <span className="filter-block-label">Période</span>
+                                    <div className="month-selector">
+                                        <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                            <line x1="16" y1="2" x2="16" y2="6"/>
+                                            <line x1="8" y1="2" x2="8" y2="6"/>
+                                            <line x1="3" y1="10" x2="21" y2="10"/>
+                                        </svg>
+                                        <select
+                                            className="month-selector-select"
+                                            value={selectedMonth || ''}
+                                            onChange={(e) => setSelectedMonth(e.target.value)}
+                                        >
+                                            {!filteredMonths.length && <option value="">Aucune période chargée</option>}
+                                            <option value={ALL_PERIODS_KEY}> Toutes les périodes</option>
+                                            {filteredMonths.map(m => (
+                                                <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                {currentResult && selectedMonth !== ALL_PERIODS_KEY && (
+                                    <span className="file-name-badge">
+                                        📄 {monthlyData[selectedMonth]?.fileName}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="actions-right">
+                                {!!selectedMonth && selectedMonth !== ALL_PERIODS_KEY && (
+                                    <button
+                                        className="btn-delete-month danger-soft"
+                                        onClick={() => handleDeleteMonth(selectedMonth)}
+                                        title="Supprimer la période sélectionnée"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <polyline points="3,6 5,6 21,6"/>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        </svg>
+                                        Supprimer la période
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Contenu des tabs */}
                     <div className="sage-bfc-tab-content">

@@ -393,18 +393,6 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         });
     }, [annualRows, annualSearch, alertsOnly]);
 
-    const dashboardKpis = useMemo(() => {
-        const negativeAlerts = annualRows.filter((r) => r.alert_level === 'negative').length;
-        const positiveAlerts = annualRows.filter((r) => r.alert_level === 'positive').length;
-        const onTrack = annualRows.filter((r) => Number(r.taux_realisation_annuel_pct || 0) >= 100).length;
-        return {
-            total: annualRows.length,
-            negativeAlerts,
-            positiveAlerts,
-            onTrack,
-        };
-    }, [annualRows]);
-
     const selectedCycleMeta = useMemo(() => {
         return cycleStatus.find((c) => c.cycle_code === compareCycle) || null;
     }, [cycleStatus, compareCycle]);
@@ -443,9 +431,14 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 </div>
             )}
 
-            <div className="forecast-toolbar">
-                <div className="forecast-toolbar-left">
-                    <label className="forecast-field">
+            <div className="forecast-toolbar forecast-filter-shell">
+                <div className="forecast-filter-head">
+                    {/* <h3>Filtres d'analyse</h3>
+                    <span>Structure harmonisée avec les autres onglets</span> */}
+                </div>
+
+                <div className="forecast-toolbar-left forecast-filters-grid">
+                    <label className="forecast-field compact">
                         <span>Année</span>
                         <input
                             type="number"
@@ -456,7 +449,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                         />
                     </label>
 
-                    <label className="forecast-field">
+                    <label className="forecast-field compact">
                         <span>Cycle comparaison</span>
                         <select value={compareCycle} onChange={(e) => setCompareCycle(e.target.value)}>
                             {CYCLE_OPTIONS.map((c) => (
@@ -465,7 +458,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                         </select>
                     </label>
 
-                    <label className="forecast-field">
+                    <label className="forecast-field compact">
                         <span>Mois comparaison</span>
                         <select value={compareMonth} onChange={(e) => setCompareMonth(Number(e.target.value))}>
                             {Array.from({ length: 12 }, (_, i) => i + 1).map((m) => (
@@ -475,7 +468,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                     </label>
                 </div>
 
-                <div className="forecast-toolbar-actions">
+                <div className="forecast-toolbar-actions forecast-filter-actions">
                     {isYearStart && (
                         <button
                             className="btn-forecast primary"
@@ -493,25 +486,6 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                     {error || successMsg}
                 </div>
             )}
-
-            <div className="forecast-dashboard-grid">
-                <div className="forecast-kpi-card">
-                    <div className="forecast-kpi-title">Agrégats suivis</div>
-                    <div className="forecast-kpi-value">{dashboardKpis.total}</div>
-                </div>
-                <div className="forecast-kpi-card negative">
-                    <div className="forecast-kpi-title">Alertes défavorables</div>
-                    <div className="forecast-kpi-value">{dashboardKpis.negativeAlerts}</div>
-                </div>
-                <div className="forecast-kpi-card positive">
-                    <div className="forecast-kpi-title">Indicateurs favorables</div>
-                    <div className="forecast-kpi-value">{dashboardKpis.positiveAlerts}</div>
-                </div>
-                <div className="forecast-kpi-card info">
-                    <div className="forecast-kpi-title">Réalisé ≥ 100%</div>
-                    <div className="forecast-kpi-value">{dashboardKpis.onTrack}</div>
-                </div>
-            </div>
 
             <div className="forecast-section-head">
                 <h3>Pilotage des cycles d'ajustement</h3>

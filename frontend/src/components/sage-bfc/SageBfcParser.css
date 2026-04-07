@@ -7,7 +7,7 @@
 .sage-bfc-container {
     max-width: 1400px;
     margin: 0 auto;
-    padding: 1rem;
+    padding: 0 0 1rem;
     animation: fadeInUp 0.4s ease-out;
 }
 
@@ -146,6 +146,11 @@
     border-radius: var(--radius-lg);
     width: fit-content;
     box-shadow: var(--shadow-sm);
+}
+
+.sage-bfc-header .sage-bfc-nav {
+    margin-bottom: 0;
+    margin-left: auto;
 }
 
 .sage-nav-btn {
@@ -764,7 +769,11 @@
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    margin-bottom: 1.5rem;
+    margin-bottom: 1.25rem;
+    padding: 0.85rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
     flex-wrap: wrap;
 }
 
@@ -773,6 +782,21 @@
     align-items: center;
     gap: 1rem;
     flex-wrap: wrap;
+}
+
+.filter-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.filter-block-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    padding-left: 0.2rem;
 }
 
 .btn-sage-back {
@@ -988,19 +1012,21 @@
 
 /* ==================== Tabs ==================== */
 .sage-bfc-tabs {
-    display: flex;
-    gap: 0.25rem;
-    margin-bottom: 1.75rem;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.35rem;
+    margin-bottom: 1rem;
     padding: 0.35rem;
     background: var(--bg-muted);
     border: 1px solid var(--border-light);
     border-radius: var(--radius-lg);
-    width: fit-content;
+    width: 100%;
 }
 
 .sage-tab {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 0.6rem;
     padding: 0.75rem 1.35rem;
     background: transparent;
@@ -2676,7 +2702,7 @@
 
 @media (max-width: 768px) {
     .sage-bfc-container {
-        padding: 0.75rem;
+        padding: 0.5rem 0 0.75rem;
     }
     
     .sage-bfc-header {
@@ -2700,12 +2726,7 @@
 
     .sage-bfc-tabs {
         width: 100%;
-        overflow-x: auto;
-        flex-wrap: nowrap;
-    }
-    
-    .sage-tab {
-        flex-shrink: 0;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .sage-bfc-actions-bar {
@@ -2828,6 +2849,11 @@
     transition: all 0.25s ease;
 }
 
+.btn-delete-month.danger-soft {
+    border-color: rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.04);
+}
+
 .btn-delete-month svg {
     width: 16px;
     height: 16px;
@@ -2837,7 +2863,7 @@
 .btn-delete-month:hover {
     background: rgba(239, 68, 68, 0.1);
     border-color: var(--error);
-    transform: translateY(-1px);
+    transform: translateY(-1px) scale(1.01);
     box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
 }
 
@@ -3709,10 +3735,57 @@
     background: var(--bg-card);
 }
 
+.forecast-filter-shell {
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+    position: relative;
+    overflow: hidden;
+}
+
+.forecast-filter-shell::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 3px;
+    background: var(--gradient-primary);
+}
+
+.forecast-filter-head {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    margin-top: 0.15rem;
+}
+
+.forecast-filter-head h3 {
+    margin: 0;
+    font-size: 0.92rem;
+    color: var(--text-primary);
+    font-weight: 800;
+}
+
+.forecast-filter-head span {
+    font-size: 0.76rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
 .forecast-toolbar-left {
     display: flex;
     gap: 0.75rem;
     flex-wrap: wrap;
+}
+
+.forecast-filters-grid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
 }
 
 .forecast-field {
@@ -3720,6 +3793,10 @@
     flex-direction: column;
     gap: 0.35rem;
     min-width: 160px;
+}
+
+.forecast-field.compact {
+    min-width: 0;
 }
 
 .forecast-field span {
@@ -3736,12 +3813,25 @@
     padding: 0 0.65rem;
     background: var(--bg-input);
     color: var(--text-primary);
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.forecast-field input:focus,
+.forecast-field select:focus {
+    outline: none;
+    border-color: var(--primary-500);
+    box-shadow: 0 0 0 3px rgba(45, 139, 78, 0.15);
 }
 
 .forecast-toolbar-actions {
     display: flex;
     gap: 0.6rem;
     flex-wrap: wrap;
+}
+
+.forecast-filter-actions {
+    width: 100%;
+    justify-content: flex-end;
 }
 
 .btn-forecast {
