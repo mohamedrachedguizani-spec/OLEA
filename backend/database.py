@@ -139,6 +139,20 @@ def init_sage_bfc_tables():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
 
+        # Archive annuel après clôture (snapshot historique)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS sage_bfc_year_closure (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                closed_year INT NOT NULL UNIQUE,
+                monthly_count INT NOT NULL DEFAULT 0,
+                archive_payload LONGTEXT NOT NULL,
+                sync_payload JSON NULL,
+                forecast_payload JSON NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+        """)
+
 
 def init_forecast_tables():
     """Créer les tables de prévision BFC"""

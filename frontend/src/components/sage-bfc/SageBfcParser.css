@@ -248,6 +248,58 @@
     color: var(--primary-500);
 }
 
+/* ==================== Close Year Overlay ==================== */
+.sage-close-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.sage-close-overlay-card {
+    width: min(560px, calc(100vw - 2rem));
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.sage-close-overlay-card h4 {
+    margin: 0.75rem 0 0.35rem 0;
+    color: var(--text-primary);
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.sage-close-overlay-card p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.sage-close-spinner {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto;
+    border-radius: 50%;
+    border: 4px solid rgba(45, 139, 78, 0.2);
+    border-top-color: var(--primary-500);
+    animation: sageCloseSpin 0.9s linear infinite;
+    box-shadow: 0 0 0 8px rgba(45, 139, 78, 0.08);
+}
+
+@keyframes sageCloseSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
 /* ==================== Error Banner ==================== */
 .sage-bfc-error {
     display: flex;
@@ -3789,6 +3841,12 @@
     background: rgba(16, 185, 129, 0.15);
 }
 
+.cycle-pill.done {
+    color: #065f46;
+    background: rgba(16, 185, 129, 0.22);
+    border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
 .cycle-pill.blocked {
     color: var(--warning);
     background: rgba(245, 158, 11, 0.15);
@@ -3944,6 +4002,57 @@
     padding: 1rem;
     text-align: center;
     color: var(--text-secondary);
+}
+
+.forecast-cycle-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1250;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.forecast-cycle-overlay-card {
+    width: min(560px, calc(100vw - 2rem));
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-xl);
+    padding: 1.5rem;
+    text-align: center;
+}
+
+.forecast-cycle-overlay-card h4 {
+    margin: 0.75rem 0 0.35rem 0;
+    color: var(--text-primary);
+    font-size: 1.05rem;
+    font-weight: 700;
+}
+
+.forecast-cycle-overlay-card p {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 0.9rem;
+}
+
+.forecast-cycle-spinner {
+    width: 48px;
+    height: 48px;
+    margin: 0 auto;
+    border-radius: 50%;
+    border: 4px solid rgba(45, 139, 78, 0.2);
+    border-top-color: var(--primary-500);
+    animation: forecastCycleSpin 0.9s linear infinite;
+    box-shadow: 0 0 0 8px rgba(45, 139, 78, 0.08);
+}
+
+@keyframes forecastCycleSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
 }
 
 .forecast-table-wrap {

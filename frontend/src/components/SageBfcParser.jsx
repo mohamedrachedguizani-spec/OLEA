@@ -70,6 +70,7 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
 }
 
 function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
+    const currentYear = new Date().getFullYear();
     const [activeStep, setActiveStep] = useState('upload'); // upload | results
     const [activeTab, setActiveTab] = useState('dashboard'); // dashboard | pnl | lignes | forecast
     const [loading, setLoading] = useState(false);
@@ -77,47 +78,89 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     const [error, setError] = useState(null);
     const [mappingStats, setMappingStats] = useState(null);
     const [fileName, setFileName] = useState('');
+    const [closingYear, setClosingYear] = useState(false);
+    const [closedYears, setClosedYears] = useState([]);
 
     // Données mensuelles chargées depuis le backend
     const [monthlyData, setMonthlyData] = useState({});
     const [selectedMonth, setSelectedMonth] = useState(null);
+    const [selectedYearFilter, setSelectedYearFilter] = useState('all');
 
     // Mois triés chronologiquement
     const sortedMonths = useMemo(() => {
         return Object.keys(monthlyData).sort();
     }, [monthlyData]);
 
+    const availableYears = useMemo(() => {
+        const years = Array.from(
+            new Set(
+                sortedMonths
+                    .map((m) => {
+                        const d = new Date(m);
+                        return Number.isNaN(d.getTime()) ? null : d.getFullYear();
+                    })
+                    .filter((y) => Number.isFinite(y))
+            )
+        ).sort((a, b) => b - a);
+        return years;
+    }, [sortedMonths]);
+
+    const filteredMonths = useMemo(() => {
+        if (selectedYearFilter === 'all') return sortedMonths;
+        const yearNum = Number(selectedYearFilter);
+        if (!Number.isFinite(yearNum)) return sortedMonths;
+        return sortedMonths.filter((m) => {
+            const d = new Date(m);
+            return !Number.isNaN(d.getTime()) && d.getFullYear() === yearNum;
+        });
+    }, [sortedMonths, selectedYearFilter]);
+
     // Sélectionner toutes les périodes par défaut
     useEffect(() => {
-        if (sortedMonths.length > 0 && !selectedMonth) {
-            setSelectedMonth(ALL_PERIODS_KEY);
+        if (!availableYears.length) {
+            if (selectedYearFilter !== 'all') setSelectedYearFilter('all');
+            return;
         }
-    }, [sortedMonths, selectedMonth]);
+        const selectedYearNum = Number(selectedYearFilter);
+        if (selectedYearFilter !== 'all' && !availableYears.includes(selectedYearNum)) {
+            setSelectedYearFilter(availableYears.includes(currentYear) ? String(currentYear) : String(availableYears[0]));
+        }
+    }, [availableYears, currentYear, selectedYearFilter]);
+
+    useEffect(() => {
+        if (!filteredMonths.length) {
+            setSelectedMonth(null);
+            return;
+        }
+        if (!selectedMonth || (selectedMonth !== ALL_PERIODS_KEY && !filteredMonths.includes(selectedMonth))) {
+            setSelectedMonth(filteredMonths[filteredMonths.length - 1]);
+        }
+    }, [filteredMonths, selectedMonth]);
 
     // Résultat du mois sélectionné
     const currentResult = useMemo(() => {
         if (!selectedMonth) return null;
         if (selectedMonth === ALL_PERIODS_KEY) {
-            return buildAllPeriodsResult(sortedMonths, monthlyData);
+            return buildAllPeriodsResult(filteredMonths, monthlyData);
         }
         if (!monthlyData[selectedMonth]) return null;
         return monthlyData[selectedMonth].result;
-    }, [selectedMonth, monthlyData, sortedMonths]);
+    }, [selectedMonth, monthlyData, filteredMonths]);
 
     // Résultat du mois précédent (pour comparaison)
     const previousResult = useMemo(() => {
         if (!selectedMonth || selectedMonth === ALL_PERIODS_KEY) return null;
-        const idx = sortedMonths.indexOf(selectedMonth);
+        const idx = filteredMonths.indexOf(selectedMonth);
         if (idx <= 0) return null;
-        return monthlyData[sortedMonths[idx - 1]]?.result || null;
-    }, [selectedMonth, sortedMonths, monthlyData]);
+        return monthlyData[filteredMonths[idx - 1]]?.result || null;
+    }, [selectedMonth, filteredMonths, monthlyData]);
 
     // Toutes les lignes accumulées de tous les mois
     const allLignes = useMemo(() => {
-        return Object.entries(monthlyData).flatMap(([periode, data]) =>
-            (data.result?.lignes || []).map(l => ({ ...l, mois: periode }))
+        return filteredMonths.flatMap((periode) =>
+            (monthlyData[periode]?.result?.lignes || []).map((l) => ({ ...l, mois: periode }))
         );
-    }, [monthlyData]);
+    }, [filteredMonths, monthlyData]);
 
     // Charger les données mensuelles depuis le backend au montage
     const loadMonthlyData = useCallback(async () => {
@@ -141,14 +184,19 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
             }
             setMonthlyData(data);
 
-            // Si des mois existent et qu'on est sur l'upload, proposer les résultats
-            if (months.length > 0 && !selectedMonth) {
-                setSelectedMonth(months[months.length - 1].periode);
-            }
         } catch (err) {
             console.error('Erreur chargement données mensuelles:', err);
         } finally {
             setLoadingData(false);
+        }
+    }, []);
+
+    const loadClosedYears = useCallback(async () => {
+        try {
+            const res = await ApiService.getSageBfcClosedYears();
+            setClosedYears(Array.isArray(res?.years) ? res.years.map((y) => Number(y)).filter((y) => Number.isFinite(y)) : []);
+        } catch (err) {
+            console.error('Erreur chargement années clôturées:', err);
         }
     }, []);
 
@@ -250,14 +298,16 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
         };
         loadStats();
         loadMonthlyData();
-    }, [loadMonthlyData]);
+        loadClosedYears();
+    }, [loadMonthlyData, loadClosedYears]);
 
     // Rechargement temps réel déclenché par WebSocket
     useEffect(() => {
         if (refreshTrigger > 0) {
             loadMonthlyData();
+            loadClosedYears();
         }
-    }, [refreshTrigger, loadMonthlyData]);
+    }, [refreshTrigger, loadMonthlyData, loadClosedYears]);
 
     const handleFileParse = useCallback(async (file, periode) => {
         setLoading(true);
@@ -296,11 +346,9 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     }, []);
 
     const handleViewResults = useCallback(() => {
-        if (sortedMonths.length > 0) {
-            setActiveStep('results');
-            setActiveTab('dashboard');
-        }
-    }, [sortedMonths]);
+        setActiveStep('results');
+        setActiveTab('dashboard');
+    }, []);
 
     const handleDeleteMonth = useCallback(async (monthKey) => {
         try {
@@ -355,6 +403,74 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
         }
     };
 
+    const showTopFilters = activeTab !== 'lignes' && activeTab !== 'forecast';
+
+    const monthsByYear = useMemo(() => {
+        const acc = {};
+        sortedMonths.forEach((m) => {
+            const d = new Date(m);
+            if (Number.isNaN(d.getTime())) return;
+            const y = d.getFullYear();
+            const mo = d.getMonth() + 1;
+            if (!acc[y]) acc[y] = new Set();
+            acc[y].add(mo);
+        });
+        return acc;
+    }, [sortedMonths]);
+
+    const closableYear = useMemo(() => {
+        if (!selectedMonth || selectedMonth === ALL_PERIODS_KEY) return null;
+        const d = new Date(selectedMonth);
+        if (Number.isNaN(d.getTime())) return null;
+        const year = d.getFullYear();
+        const month = d.getMonth() + 1;
+        if (month !== 12) return null;
+        const count = monthsByYear[year] ? monthsByYear[year].size : 0;
+        return count === 12 ? year : null;
+    }, [selectedMonth, monthsByYear]);
+
+    const latestClosableYear = useMemo(() => {
+        const years = Object.keys(monthsByYear)
+            .map((y) => Number(y))
+            .filter((y) => Number.isFinite(y) && (monthsByYear[y]?.size || 0) === 12)
+            .filter((y) => !closedYears.includes(y))
+            .sort((a, b) => b - a);
+        return years.length ? years[0] : null;
+    }, [monthsByYear, closedYears]);
+
+    const handleCloseYear = useCallback(async (yearToClose = null) => {
+        const targetYear = yearToClose ?? closableYear;
+        if (!targetYear) return;
+        const ok = window.confirm(
+            `Clôturer l'année ${targetYear} ?\n\nCela va archiver l'année, synchroniser l'historique et générer le budget initial ${targetYear + 1}.`
+        );
+        if (!ok) return;
+
+        try {
+            setClosingYear(true);
+            setError(null);
+            const res = await ApiService.closeSageBfcYear(targetYear);
+
+            // Réinitialisation complète du module côté UI
+            setMonthlyData({});
+            setSelectedMonth(null);
+            setSelectedYearFilter('all');
+            setFileName('');
+            setActiveTab('dashboard');
+            setActiveStep('upload');
+
+            await loadMonthlyData();
+            await loadClosedYears();
+            window.alert(
+                `Année ${res.closed_year} clôturée avec succès. Le module a été réinitialisé pour ${res.next_year}.`
+            );
+        } catch (err) {
+            setError(err.message || 'Erreur lors de la clôture annuelle');
+        } finally {
+            setClosingYear(false);
+        }
+    }, [closableYear, loadMonthlyData, loadClosedYears]);
+
     return (
         <div className="sage-bfc-container fade-in">
             {/* Header du module */}
@@ -401,7 +517,6 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                 <button
                     className={`sage-nav-btn ${activeStep === 'results' ? 'active' : ''}`}
                     onClick={handleViewResults}
-                    disabled={sortedMonths.length === 0}
                 >
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <line x1="18" y1="20" x2="18" y2="10"/>
@@ -411,7 +526,30 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                     Analyse
                     {sortedMonths.length > 0 && <span className="nav-badge">{sortedMonths.length}</span>}
                 </button>
+                {!!latestClosableYear && (
+                    <button
+                        className="sage-nav-btn"
+                        onClick={() => handleCloseYear(latestClosableYear)}
+                        disabled={closingYear}
+                        title={`Clôturer ${latestClosableYear}`}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                        {closingYear ? 'Clôture...' : `Clôturer ${latestClosableYear}`}
+                    </button>
+                )}
             </div>
+
+            {closingYear && (
+                <div className="sage-close-overlay" role="status" aria-live="polite" aria-label="Clôture annuelle en cours">
+                    <div className="sage-close-overlay-card">
+                        <div className="sage-close-spinner" />
+                        <h4>Clôture annuelle en cours...</h4>
+                        <p>Archivage, synchronisation historique et génération du budget initial.</p>
+                    </div>
+                </div>
+            )}
 
             {/* Erreur globale */}
             {error && (
@@ -437,83 +575,78 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                         loading={loading}
                         mappingStats={mappingStats}
                     />
-
-                    {/* Historique des mois chargés */}
-                    {sortedMonths.length > 0 && (
-                        <div className="monthly-history-panel">
-                            <div className="monthly-history-header">
-                                <h4>📊 Mois déjà chargés</h4>
-                                <button className="btn-view-results" onClick={handleViewResults}>
-                                    Voir les résultats →
-                                </button>
-                            </div>
-                            <div className="monthly-history-chips">
-                                {sortedMonths.map(m => (
-                                    <div key={m} className="month-chip" onClick={() => {
-                                        setSelectedMonth(m);
-                                        setActiveStep('results');
-                                        setActiveTab('dashboard');
-                                    }}>
-                                        <span className="month-chip-label">{formatMonthShort(m)}</span>
-                                        <span className="month-chip-lines">
-                                            {monthlyData[m].result?.lignes?.length || 0} lignes
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    )}
                 </div>
             )}
 
             {/* Étape 2: Résultats */}
-            {activeStep === 'results' && sortedMonths.length > 0 && (
+            {activeStep === 'results' && (
                 <div className="sage-bfc-results">
                     {/* Barre d'actions */}
-                    <div className="sage-bfc-actions-bar">
-                        <div className="actions-left">
-                            {/* Sélecteur de mois amélioré */}
-                            <div className="month-selector">
-                                <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                                    <line x1="16" y1="2" x2="16" y2="6"/>
-                                    <line x1="8" y1="2" x2="8" y2="6"/>
-                                    <line x1="3" y1="10" x2="21" y2="10"/>
-                                </svg>
-                                <select
-                                    className="month-selector-select"
-                                    value={selectedMonth || ''}
-                                    onChange={(e) => setSelectedMonth(e.target.value)}
-                                >
-                                    <option value={ALL_PERIODS_KEY}> Toutes les périodes</option>
-                                    {sortedMonths.map(m => (
-                                        <option key={m} value={m}>{formatMonthLabel(m)}</option>
-                                    ))}
-                                </select>
-                            </div>
-
-                            {currentResult && selectedMonth !== ALL_PERIODS_KEY && (
-                                <span className="file-name-badge">
-                                    📄 {monthlyData[selectedMonth]?.fileName}
-                                </span>
-                            )}
-                        </div>
-                        <div className="actions-right">
-                            {selectedMonth !== ALL_PERIODS_KEY && (
-                                <button
-                                    className="btn-delete-month"
-                                    onClick={() => handleDeleteMonth(selectedMonth)}
-                                    title="Supprimer ce mois"
-                                >
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                        <polyline points="3,6 5,6 21,6"/>
-                                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                    {showTopFilters && (
+                        <div className="sage-bfc-actions-bar">
+                            <div className="actions-left">
+                                <div className="month-selector">
+                                    <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <path d="M3 5h18"/>
+                                        <path d="M3 12h18"/>
+                                        <path d="M3 19h18"/>
                                     </svg>
-                                    Supprimer
-                                </button>
-                            )}
+                                    <select
+                                        className="month-selector-select"
+                                        value={selectedYearFilter}
+                                        onChange={(e) => setSelectedYearFilter(e.target.value)}
+                                    >
+                                        <option value="all">Toutes les années</option>
+                                        {availableYears.map((y) => (
+                                            <option key={y} value={String(y)}>{y}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {/* Sélecteur de mois amélioré */}
+                                <div className="month-selector">
+                                    <svg className="month-selector-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                                        <line x1="16" y1="2" x2="16" y2="6"/>
+                                        <line x1="8" y1="2" x2="8" y2="6"/>
+                                        <line x1="3" y1="10" x2="21" y2="10"/>
+                                    </svg>
+                                    <select
+                                        className="month-selector-select"
+                                        value={selectedMonth || ''}
+                                        onChange={(e) => setSelectedMonth(e.target.value)}
+                                    >
+                                        {!filteredMonths.length && <option value="">Aucune période chargée</option>}
+                                        <option value={ALL_PERIODS_KEY}> Toutes les périodes</option>
+                                        {filteredMonths.map(m => (
+                                            <option key={m} value={m}>{formatMonthLabel(m)}</option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                {currentResult && selectedMonth !== ALL_PERIODS_KEY && (
+                                    <span className="file-name-badge">
+                                        📄 {monthlyData[selectedMonth]?.fileName}
+                                    </span>
+                                )}
+                            </div>
+                            <div className="actions-right">
+                                {!!selectedMonth && selectedMonth !== ALL_PERIODS_KEY && (
+                                    <button
+                                        className="btn-delete-month"
+                                        onClick={() => handleDeleteMonth(selectedMonth)}
+                                        title="Supprimer ce mois"
+                                    >
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                            <polyline points="3,6 5,6 21,6"/>
+                                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                                        </svg>
+                                        Supprimer
+                                    </button>
+                                )}
+                            </div>
                         </div>
-                    </div>
+                    )}
 
                     {/* Tabs de navigation */}
                     <div className="sage-bfc-tabs">
@@ -571,10 +704,17 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
 
                     {/* Contenu des tabs */}
                     <div className="sage-bfc-tab-content">
+                        {sortedMonths.length === 0 && (
+                            <div className="sage-bfc-error">
+                                <div>
+                                    <strong>Aucun upload détecté</strong>
+                                </div>
+                            </div>
+                        )}
                         {activeTab === 'dashboard' && (
                             <SageBfcDashboard
                                 monthlyData={monthlyData}
-                                sortedMonths={sortedMonths}
+                                sortedMonths={filteredMonths}
                                 formatMonthLabel={formatMonthLabel}
                                 formatMonthShort={formatMonthShort}
                                 currentResume={currentResult?.resume}

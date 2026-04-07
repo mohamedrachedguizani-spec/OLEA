@@ -392,6 +392,26 @@ class ApiService {
         return response.json();
     }
 
+    // Clôturer une année SAGE→BFC (archive + génération budget initial année suivante)
+    static async closeSageBfcYear(year, force = false) {
+        const params = new URLSearchParams({
+            year: String(year),
+            force: String(!!force),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/close-year?${params.toString()}`, {
+            method: 'POST'
+        });
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    // Récupérer les années déjà clôturées
+    static async getSageBfcClosedYears() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/closed-years`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
     // Récupérer un tableau BFC depuis le cache
     static async getSageBfcTableau(tableauId) {
         const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/tableau/${tableauId}`);

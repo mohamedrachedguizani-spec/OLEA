@@ -27,6 +27,7 @@ const DERIVED_KEYS = new Set([
 
 function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     const now = new Date();
+    const isYearStart = now.getMonth() === 0;
     const inferredYear = useMemo(() => {
         if (selectedMonth && selectedMonth !== '__all_periods__') {
             const d = new Date(selectedMonth);
@@ -428,8 +429,20 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         setExpandedMonthlyKey(null);
     }, [targetYear, compareCycle, compareMonth]);
 
+    const isCycleRunLoading = String(actionLoading || '').startsWith('run-');
+
     return (
         <div className="forecast-panel">
+            {isCycleRunLoading && (
+                <div className="forecast-cycle-overlay" role="status" aria-live="polite" aria-label="Exécution du cycle d'ajustement en cours">
+                    <div className="forecast-cycle-overlay-card">
+                        <div className="forecast-cycle-spinner" />
+                        <h4>Exécution du cycle en cours...</h4>
+                        <p>Calcul des ajustements et mise à jour des prévisions.</p>
+                    </div>
+                </div>
+            )}
+
             <div className="forecast-toolbar">
                 <div className="forecast-toolbar-left">
                     <label className="forecast-field">
@@ -463,21 +476,15 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 </div>
 
                 <div className="forecast-toolbar-actions">
-                    <button
-                        className="btn-forecast"
-                        onClick={() => runAction('import-hist', () => ApiService.importForecastHistorical(), 'Historique migré vers la base')}
-                        disabled={!!actionLoading}
-                    >
-                        {actionLoading === 'import-hist' ? 'Import...' : 'Importer historique 2024/2025'}
-                    </button>
-
-                    <button
-                        className="btn-forecast primary"
-                        onClick={() => runAction('initial', () => ApiService.generateForecast(targetYear, 'INITIAL'), 'Budget initial généré')}
-                        disabled={!!actionLoading}
-                    >
-                        {actionLoading === 'initial' ? 'Génération...' : `Générer budget initial ${targetYear}`}
-                    </button>
+                    {isYearStart && (
+                        <button
+                            className="btn-forecast primary"
+                            onClick={() => runAction('initial', () => ApiService.generateForecast(targetYear, 'INITIAL'), 'Budget initial généré')}
+                            disabled={!!actionLoading}
+                        >
+                            {actionLoading === 'initial' ? 'Génération...' : `Générer budget initial ${targetYear}`}
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -514,20 +521,26 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
             <div className="forecast-cycles-grid">
                 {cycleStatus.map((c) => (
                     <div key={c.cycle_code} className="forecast-cycle-card">
+                        {(() => {
+                            const statusClass = c.is_executed ? 'done' : (c.can_trigger ? 'ready' : 'blocked');
+                            const statusLabel = c.is_executed ? 'Terminé' : (c.can_trigger ? 'Prêt' : 'En attente');
+                            return (
                         <div className="forecast-cycle-head">
                             <h4>{c.cycle_label}</h4>
-                            <span className={`cycle-pill ${c.can_trigger ? 'ready' : 'blocked'}`}>
-                                {c.can_trigger ? 'Prêt' : 'En attente'}
+                            <span className={`cycle-pill ${statusClass}`}>
+                                {statusLabel}
                             </span>
                         </div>
+                            );
+                        })()}
 
                         <div className="forecast-cycle-body">
                             <div><strong>Code:</strong> {c.cycle_code}</div>
                             <div><strong>Mois cycle:</strong> M{String(c.cycle_month).padStart(2, '0')}</div>
                             <div><strong>Mois uploadés:</strong> {(c.uploaded_months || []).join(', ') || '—'}</div>
                             <div><strong>Mois manquants:</strong> {(c.missing_months || []).join(', ') || 'Aucun'}</div>
-                            <div><strong>Exécuté:</strong> {c.is_executed ? 'Oui' : 'Non'}</div>
-                            {!!c.reason && <div className="cycle-reason">{c.reason}</div>}
+                            <div><strong>Exécuté:</strong> {c.is_executed ? 'Oui (Terminé)' : 'Non'}</div>
+                            {!!c.reason && !c.is_executed && <div className="cycle-reason">{c.reason}</div>}
                         </div>
 
                         <div className="forecast-cycle-actions">
@@ -546,7 +559,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                 {actionLoading === `run-${c.cycle_code}` ? 'Exécution...' : `Lancer ${c.cycle_code}`}
                             </button>
                             {!c.can_trigger && (
-                                <span className="cycle-action-hint">{c.reason || 'Cycle indisponible'}</span>
+                                <span className="cycle-action-hint">{c.is_executed ? 'Cycle déjà exécuté' : (c.reason || 'Cycle indisponible')}</span>
                             )}
                         </div>
                     </div>
@@ -692,6 +705,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                             onClick={(e) => e.stopPropagation()}
                                                                         />
                                                                         <button
+                                                                            type="button"
                                                                             className="btn-forecast"
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();
@@ -901,6 +915,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                             onClick={(e) => e.stopPropagation()}
                                                                         />
                                                                         <button
+                                                                            type="button"
                                                                             className="btn-forecast"
                                                                             onClick={(e) => {
                                                                                 e.stopPropagation();

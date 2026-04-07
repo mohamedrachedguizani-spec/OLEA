@@ -16,6 +16,8 @@ from modules.forecast.engine import (
     clear_all_actuals,
     invalidate_adjustment_cycles_for_year,
     purge_all_adjustment_cycles,
+    sync_closed_years_into_history,
+    generate_forecast,
 )
 from .config import get_mapping_config
 from .mapper import SageBFCMapper
@@ -618,6 +620,143 @@ async def delete_all_monthly():
         "status": "supprimé",
         "count": count,
         "forecast_cycle_purge": purge_payload,
+    }
+
+
+@router.post("/close-year")
+async def close_year(
+    year: int = Query(..., ge=2000, le=2100, description="Année à clôturer"),
+    force: bool = Query(False, description="Autorise la clôture sans 12 mois"),
+):
+    """
+    Clôture annuelle SAGE→BFC:
+    1) Vérifie la complétude (12 mois sauf force)
+    2) Archive un snapshot annuel (historique)
+    3) Synchronise l'année clôturée vers bfc_budget_history
+    4) Génère le budget initial de l'année suivante
+    """
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT periode, file_name, lignes_count, resume, lignes, created_at, updated_at
+            FROM sage_bfc_monthly
+            WHERE YEAR(periode) = %s
+            ORDER BY periode ASC
+            """,
+            (year,),
+        )
+        monthly_rows = cursor.fetchall() or []
+
+        cursor.execute(
+            """
+            SELECT periode, file_name, lignes_count, resume, lignes, created_at, updated_at
+            FROM sage_bfc_monthly_cumule
+            WHERE YEAR(periode) = %s
+            ORDER BY periode ASC
+            """,
+            (year,),
+        )
+        cumulative_rows = cursor.fetchall() or []
+
+    if not monthly_rows:
+        raise HTTPException(status_code=404, detail=f"Aucune donnée mensuelle trouvée pour {year}")
+
+    months_count = len({int(r["periode"].month) for r in monthly_rows if r.get("periode") is not None})
+    if months_count < 12 and not force:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Clôture refusée: {months_count}/12 mois disponibles pour {year}",
+        )
+
+    def _normalize_rows(rows):
+        out = []
+        for r in rows:
+            resume_raw = r.get("resume")
+            lignes_raw = r.get("lignes")
+            out.append(
+                {
+                    "periode": str(r.get("periode")) if r.get("periode") is not None else None,
+                    "file_name": r.get("file_name"),
+                    "lignes_count": int(r.get("lignes_count") or 0),
+                    "resume": resume_raw if isinstance(resume_raw, dict) else json.loads(resume_raw or "{}"),
+                    "lignes": lignes_raw if isinstance(lignes_raw, list) else json.loads(lignes_raw or "[]"),
+                    "created_at": str(r.get("created_at")) if r.get("created_at") is not None else None,
+                    "updated_at": str(r.get("updated_at")) if r.get("updated_at") is not None else None,
+                }
+            )
+        return out
+
+    archive_payload = {
+        "year": year,
+        "months_count": months_count,
+        "monthly": _normalize_rows(monthly_rows),
+        "monthly_cumule": _normalize_rows(cumulative_rows),
+    }
+
+    next_year = year + 1
+    sync_payload = sync_closed_years_into_history(before_year=next_year)
+    run_id, rows_written = generate_forecast(target_year=next_year, cycle_code="INITIAL", cycle_month=None)
+    forecast_payload = {
+        "target_year": next_year,
+        "cycle_code": "INITIAL",
+        "run_id": run_id,
+        "rows_written": rows_written,
+    }
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            INSERT INTO sage_bfc_year_closure (closed_year, monthly_count, archive_payload, sync_payload, forecast_payload)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                monthly_count = VALUES(monthly_count),
+                archive_payload = VALUES(archive_payload),
+                sync_payload = VALUES(sync_payload),
+                forecast_payload = VALUES(forecast_payload),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (
+                year,
+                months_count,
+                json.dumps(archive_payload, ensure_ascii=False, default=str),
+                json.dumps(sync_payload, ensure_ascii=False, default=str),
+                json.dumps(forecast_payload, ensure_ascii=False, default=str),
+            ),
+        )
+
+    ws_manager.broadcast("sage_bfc", "year_closed", {"year": year, "next_year": next_year})
+    ws_manager.broadcast("forecast", "generated", forecast_payload)
+
+    return {
+        "status": "closed",
+        "closed_year": year,
+        "months_count": months_count,
+        "next_year": next_year,
+        "archive_saved": True,
+        "history_sync": sync_payload,
+        "forecast": forecast_payload,
+    }
+
+
+@router.get("/closed-years")
+async def get_closed_years():
+    """
+    Retourne la liste des années déjà clôturées.
+    """
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT closed_year
+            FROM sage_bfc_year_closure
+            ORDER BY closed_year DESC
+            """
+        )
+        rows = cursor.fetchall() or []
+
+    years = [int(r["closed_year"]) for r in rows if r.get("closed_year") is not None]
+    return {
+        "years": years,
+        "latest": years[0] if years else None,
     }
 
 
