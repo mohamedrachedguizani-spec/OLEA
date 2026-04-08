@@ -174,16 +174,30 @@ function Reporting({ refreshTrigger = 0 }) {
                     <div className="reporting-title-icon">📊</div>
                     <div>
                         <h2 className="reporting-title">Reporting Décisionnel</h2>
-                        <p className="reporting-subtitle">Configuration d'export claire et rapide</p>
+                        <p className="reporting-subtitle">Pilotage d'export homogène avec les autres modules</p>
                     </div>
                 </div>
             </div>
 
-            <div className="reporting-toolbar">
-                <label>
-                    <span>Année</span>
-                    <input type="number" min="2000" max="2100" value={targetYear} onChange={(e) => setTargetYear(Number(e.target.value || now.getFullYear()))} />
-                </label>
+            <div className="reporting-toolbar reporting-toolbar-shell">
+                <div className="reporting-toolbar-head">
+                    <h3>Filtres et actions</h3>
+                    <span>Export et impression selon la configuration sélectionnée</span>
+                </div>
+
+                <div className="reporting-toolbar-grid">
+                    <label>
+                        <span>Année</span>
+                        <input type="number" min="2000" max="2100" value={targetYear} onChange={(e) => setTargetYear(Number(e.target.value || now.getFullYear()))} />
+                    </label>
+                    <label>
+                        <span>Cycle budget</span>
+                        <select value={budgetCycleCode} onChange={(e) => setBudgetCycleCode(e.target.value)}>
+                            {CYCLE_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                    </label>
+                </div>
+
                 <div className="reporting-actions">
                     <button className="btn-reporting" onClick={handlePrint} disabled={printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{printLoading ? 'Impression...' : '🖨 Imprimer'}</button>
                     <button className="btn-reporting primary" onClick={handleExport} disabled={exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{exportLoading ? 'Export...' : '⬇ Export Excel'}</button>
@@ -227,13 +241,7 @@ function Reporting({ refreshTrigger = 0 }) {
 
                     <div className="reporting-config-card">
                         <h4>Prévision budget</h4>
-                        <label>
-                            <span>Cycle</span>
-                            <select value={budgetCycleCode} onChange={(e) => setBudgetCycleCode(e.target.value)}>
-                                {CYCLE_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                        </label>
-                        <div className="reporting-hint">Le cycle sélectionné pilote les prévisions budget exportées.</div>
+                        <div className="reporting-hint">Le cycle budget sélectionné en haut pilote les prévisions exportées.</div>
                         <label><input type="checkbox" checked={exportConfig.includeMonthlyForecast} onChange={() => toggleConfigBool('includeMonthlyForecast')} /> Inclure Forecast_Mensuel_Detail</label>
                         <label><input type="checkbox" checked={exportConfig.includeSubaggregates} onChange={() => toggleConfigBool('includeSubaggregates')} /> Inclure agrégats + sous-agrégats</label>
                         <div className="reporting-hint">Mois pour Forecast_Mensuel_Detail :</div>

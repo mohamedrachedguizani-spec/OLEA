@@ -17,6 +17,7 @@ function App() {
     const [activeTab, setActiveTab] = useState('dashboard');
     const [darkMode, setDarkMode] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
     const [migrationRefresh, setMigrationRefresh] = useState(0);
     const [sageBfcRefresh, setSageBfcRefresh] = useState(0);
@@ -78,9 +79,11 @@ function App() {
                 setDarkMode={setDarkMode}
                 sidebarOpen={sidebarOpen}
                 setSidebarOpen={setSidebarOpen}
+                sidebarCollapsed={sidebarCollapsed}
+                setSidebarCollapsed={setSidebarCollapsed}
             />
 
-            <main className="main-content">
+            <main className={`main-content ${sidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
                 <header className="top-header">
                     <button 
                         className="menu-toggle"

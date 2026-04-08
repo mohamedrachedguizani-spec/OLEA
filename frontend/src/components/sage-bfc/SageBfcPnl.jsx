@@ -57,6 +57,30 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
         return map;
     }, [lignes]);
 
+    // Consolider les sous-agrégats par code+libellé (utile pour "Toutes les périodes")
+    const lignesByAgregatConsolide = useMemo(() => {
+        const out = {};
+        Object.entries(lignesByAgregat).forEach(([agregat, items]) => {
+            const bucket = new Map();
+            (items || []).forEach((l) => {
+                const code = String(l.code_sage || '').trim();
+                const libelle = String(l.libelle_sage || '').trim();
+                const k = `${code}||${libelle}`;
+                const current = bucket.get(k) || {
+                    code_sage: code,
+                    libelle_sage: libelle,
+                    montant_absolu: 0,
+                };
+                current.montant_absolu += parseFloat(l.montant_absolu || 0);
+                bucket.set(k, current);
+            });
+            out[agregat] = Array.from(bucket.values()).sort((a, b) =>
+                String(a.code_sage || '').localeCompare(String(b.code_sage || ''))
+            );
+        });
+        return out;
+    }, [lignesByAgregat]);
+
     // Compatibilité rétro : avant la migration, honoraires ne contenait pas brand_fees/management_fees.
     // Détecter les anciennes données via les lignes (agrégat 'Brand Fees' ou 'Management Fees' encore présent).
     const hasLegacyAgregats = useMemo(
@@ -244,7 +268,7 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
                                         : null;
                                     const agregat = line.agregat;
                                     const isExpanded = agregat && expandedAgregat === agregat;
-                                    const detailLignes = agregat ? (lignesByAgregat[agregat] || []) : [];
+                                    const detailLignes = agregat ? (lignesByAgregatConsolide[agregat] || []) : [];
                                     const hasDetail = detailLignes.length > 0;
 
                                     return (

@@ -84,7 +84,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     // Données mensuelles chargées depuis le backend
     const [monthlyData, setMonthlyData] = useState({});
     const [selectedMonth, setSelectedMonth] = useState(null);
-    const [selectedYearFilter, setSelectedYearFilter] = useState('all');
+    const [selectedYearFilter, setSelectedYearFilter] = useState(String(currentYear));
 
     // Mois triés chronologiquement
     const sortedMonths = useMemo(() => {
@@ -118,9 +118,10 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     // Sélectionner toutes les périodes par défaut
     useEffect(() => {
         if (!availableYears.length) {
-            if (selectedYearFilter !== 'all') setSelectedYearFilter('all');
+           
             return;
         }
+
         const selectedYearNum = Number(selectedYearFilter);
         if (selectedYearFilter !== 'all' && !availableYears.includes(selectedYearNum)) {
             setSelectedYearFilter(availableYears.includes(currentYear) ? String(currentYear) : String(availableYears[0]));
@@ -454,7 +455,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
             // Réinitialisation complète du module côté UI
             setMonthlyData({});
             setSelectedMonth(null);
-            setSelectedYearFilter('all');
+            setSelectedYearFilter(String(res?.next_year || new Date().getFullYear()));
             setFileName('');
             setActiveTab('dashboard');
             setActiveStep('upload');

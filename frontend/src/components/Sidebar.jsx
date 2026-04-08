@@ -3,7 +3,16 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/api';
 
-function Sidebar({ activeTab, setActiveTab, darkMode, setDarkMode, sidebarOpen, setSidebarOpen }) {
+function Sidebar({
+    activeTab,
+    setActiveTab,
+    darkMode,
+    setDarkMode,
+    sidebarOpen,
+    setSidebarOpen,
+    sidebarCollapsed,
+    setSidebarCollapsed,
+}) {
     const { user, logout, isSuperAdmin, hasPermission } = useAuth();
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showSettingsMenu, setShowSettingsMenu] = useState(false);
@@ -29,6 +38,13 @@ function Sidebar({ activeTab, setActiveTab, darkMode, setDarkMode, sidebarOpen, 
         if (isSuperAdmin) return true;
         return hasPermission(item.module, 'read');
     });
+
+    const handleLogoToggle = () => {
+        if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1024px)').matches) {
+            return;
+        }
+        setSidebarCollapsed((prev) => !prev);
+    };
 
     const getIcon = (iconName) => {
         const icons = {
@@ -96,10 +112,22 @@ function Sidebar({ activeTab, setActiveTab, darkMode, setDarkMode, sidebarOpen, 
                 onClick={() => setSidebarOpen(false)}
             />
             
-            <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
+            <aside className={`sidebar ${sidebarOpen ? 'open' : ''} ${sidebarCollapsed ? 'collapsed' : ''}`}>
                 {/* Logo Section */}
                 <div className="sidebar-brand">
-                    <div className="brand-logo">
+                    <div
+                        className="brand-logo"
+                        onClick={handleLogoToggle}
+                        title={sidebarCollapsed ? 'Ouvrir la barre latérale' : 'Réduire la barre latérale'}
+                        role="button"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleLogoToggle();
+                            }
+                        }}
+                    >
                         <span className="logo-letter">O</span>
                     </div>
                     <div className="brand-info">
@@ -112,6 +140,15 @@ function Sidebar({ activeTab, setActiveTab, darkMode, setDarkMode, sidebarOpen, 
                             <line x1="6" y1="6" x2="18" y2="18"/>
                         </svg>
                     </button>
+                    {!sidebarCollapsed && (
+                        <button
+                            className="sidebar-collapse-toggle"
+                            onClick={() => setSidebarCollapsed(true)}
+                            title="Réduire la barre latérale"
+                        >
+                            ⮜
+                        </button>
+                    )}
                 </div>
 
                 {/* Navigation */}

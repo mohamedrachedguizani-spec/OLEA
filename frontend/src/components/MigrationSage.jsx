@@ -195,7 +195,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                             onClick={handleMigrerTout}
                             disabled={loading}
                         >
-                            <span className="icon">🚀</span>
+                            {/* <span className="icon">🚀</span> */}
                             {loading ? 'Migration...' : 'Migrer tout'}
                         </button>
                     </div>
