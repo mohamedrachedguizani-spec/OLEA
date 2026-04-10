@@ -516,14 +516,14 @@ function Dashboard({ refreshTrigger }) {
                                     value={bfc.nb_periodes}
                                     sub={`Dernière : ${bfc.derniere_periode}`} loading={loading} />
                                 <KpiCard icon="💵" label="CA Net" color="primary"
-                                    value={fmtMontant(bfc.pnl_detail?.ca_net || 0)} unit="TND"
-                                    sub={bfc.derniere_periode} loading={loading} />
-                                <KpiCard icon="📈" label="EBITDA" color={bfc.pnl_detail?.ebitda >= 0 ? 'success' : 'danger'}
-                                    value={fmtMontant(bfc.pnl_detail?.ebitda || 0)} unit="TND"
-                                    sub={`${(bfc.pnl_detail?.ebitda_pct || 0).toFixed(3)}%`} loading={loading} />
-                                <KpiCard icon="🎯" label="Résultat Net" color={bfc.pnl_detail?.resultat_net >= 0 ? 'success' : 'danger'}
-                                    value={fmtMontant(bfc.pnl_detail?.resultat_net || 0)} unit="TND"
-                                    sub={`${(bfc.pnl_detail?.resultat_net_pct || 0).toFixed(3)}%`} loading={loading} />
+                                    value={fmtMontant(bfc.pnl_cumule?.ca_net || 0)} unit="TND"
+                                    sub="Cumul réalisé" loading={loading} />
+                                <KpiCard icon="📈" label="EBITDA" color={bfc.pnl_cumule?.ebitda >= 0 ? 'success' : 'danger'}
+                                    value={fmtMontant(bfc.pnl_cumule?.ebitda || 0)} unit="TND"
+                                    sub={`${(bfc.pnl_cumule?.ebitda_pct || 0).toFixed(3)}% (cumul)`} loading={loading} />
+                                <KpiCard icon="🎯" label="Résultat Net" color={bfc.pnl_cumule?.resultat_net >= 0 ? 'success' : 'danger'}
+                                    value={fmtMontant(bfc.pnl_cumule?.resultat_net || 0)} unit="TND"
+                                    sub={`${(bfc.pnl_cumule?.resultat_net_pct || 0).toFixed(3)}% (cumul)`} loading={loading} />
                             </div>
 
                             {/* Tendance + P&L */}

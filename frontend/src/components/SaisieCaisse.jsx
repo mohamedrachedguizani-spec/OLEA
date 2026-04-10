@@ -8,8 +8,8 @@ function SaisieCaisse({ refreshTrigger }) {
     const [formData, setFormData] = useState({
         date_ecriture: new Date().toISOString().split('T')[0],
         libelle_ecriture: '',
-        debit: 0,
-        credit: 0
+        debit: '',
+        credit: ''
     });
     const [ecritures, setEcritures] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -36,7 +36,9 @@ function SaisieCaisse({ refreshTrigger }) {
         const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
-            [name]: name === 'debit' || name === 'credit' ? parseFloat(value) || 0 : value
+            [name]: (name === 'debit' || name === 'credit')
+                ? (value === '' ? '' : parseFloat(value))
+                : value
         }));
     };
 
@@ -53,13 +55,17 @@ function SaisieCaisse({ refreshTrigger }) {
         setMessage('');
 
         try {
-            await ApiService.createEcritureCaisse(formData);
+            await ApiService.createEcritureCaisse({
+                ...formData,
+                debit: Number(formData.debit) || 0,
+                credit: Number(formData.credit) || 0,
+            });
             setMessage('Écriture ajoutée avec succès!');
             setFormData({
                 date_ecriture: new Date().toISOString().split('T')[0],
                 libelle_ecriture: '',
-                debit: 0,
-                credit: 0
+                debit: '',
+                credit: ''
             });
             loadEcritures();
         } catch (error) {

@@ -274,6 +274,7 @@ def _get_bfc_stats(cursor):
             "tendance": [],
             "derniere_periode": None,
             "pnl_detail": None,
+            "pnl_cumule": None,
         }
 
     # ── Tendance mensuelle : CA Net, EBITDA, Résultat Net ──
@@ -287,6 +288,28 @@ def _get_bfc_stats(cursor):
     tendance = []
     derniere_periode = None
     dernier_resume = None
+    resume_cumule = {
+        "ca_brut": 0.0,
+        "retrocessions": 0.0,
+        "ca_net": 0.0,
+        "autres_produits": 0.0,
+        "total_produits": 0.0,
+        "frais_personnel": 0.0,
+        "honoraires": 0.0,
+        "frais_commerciaux": 0.0,
+        "impots_taxes": 0.0,
+        "fonctionnement": 0.0,
+        "autres_charges": 0.0,
+        "total_charges": 0.0,
+        "ebitda": 0.0,
+        "produits_financiers": 0.0,
+        "charges_financieres": 0.0,
+        "resultat_financier": 0.0,
+        "dotations": 0.0,
+        "resultat_avant_impot": 0.0,
+        "impot_societes": 0.0,
+        "resultat_net": 0.0,
+    }
 
     for row in rows:
         resume = row['resume'] if isinstance(row['resume'], dict) else json.loads(row['resume'])
@@ -302,6 +325,10 @@ def _get_bfc_stats(cursor):
             "total_produits": float(resume.get('total_produits', 0)),
             "total_charges": float(resume.get('total_charges', 0)),
         })
+
+        # Cumul réalisé sur toutes les périodes chargées
+        for key in resume_cumule.keys():
+            resume_cumule[key] += float(resume.get(key, 0) or 0)
 
         derniere_periode = periode_str
         dernier_resume = resume
@@ -334,9 +361,17 @@ def _get_bfc_stats(cursor):
             "resultat_net_pct": float(dernier_resume.get('resultat_net_pct', 0)),
         }
 
+    # ── P&L cumulé (cartes KPI dashboard) ──
+    pnl_cumule = {
+        **resume_cumule,
+        "ebitda_pct": ((resume_cumule["ebitda"] / resume_cumule["ca_net"]) * 100) if resume_cumule["ca_net"] else 0.0,
+        "resultat_net_pct": ((resume_cumule["resultat_net"] / resume_cumule["ca_net"]) * 100) if resume_cumule["ca_net"] else 0.0,
+    }
+
     return {
         "nb_periodes": nb_periodes,
         "tendance": tendance,
         "derniere_periode": derniere_periode,
         "pnl_detail": pnl_detail,
+        "pnl_cumule": pnl_cumule,
     }
