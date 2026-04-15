@@ -1,6 +1,7 @@
 // src/components/Login.js
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
+import oleaLogo from '../assets/olea-logo.svg';
 
 function Login() {
     const { login } = useAuth();
@@ -30,23 +31,11 @@ function Login() {
                 <div className="login-brand-panel">
                     <div className="login-brand-content">
                         <div className="login-logo">
-                            <span className="login-logo-letter">O</span>
-                        </div>
-                        <h1 className="login-brand-title">OLEA</h1>
-                        <p className="login-brand-subtitle">Finance Manager</p>
-                        <div className="login-brand-features">
-                            <div className="login-feature">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
-                                <span>Gestion de Caisse</span>
-                            </div>
-                            <div className="login-feature">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
-                                <span>Migration Sage</span>
-                            </div>
-                            <div className="login-feature">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
-                                <span>Reporting BFC</span>
-                            </div>
+                            <img
+                                src={oleaLogo}
+                                alt="OLEA Insurance Solutions Africa"
+                                className="login-logo-image"
+                            />
                         </div>
                     </div>
                 </div>
@@ -54,8 +43,10 @@ function Login() {
                 {/* Right: form */}
                 <div className="login-form-panel">
                     <div className="login-form-content">
-                        <h2 className="login-title">Connexion</h2>
-                        <p className="login-subtitle">Accédez à votre espace de gestion</p>
+                        <div className="login-form-header">
+                            <h2 className="login-title">Connexion</h2>
+                            <p className="login-subtitle">Accédez à votre espace de gestion</p>
+                        </div>
 
                         {error && (
                             <div className="login-error">
@@ -150,6 +141,7 @@ function Login() {
                         </form>
 
                         <div className="login-footer-text">
+                            <span className="login-footer-help">Besoin d’accès ? Contactez votre administrateur.</span>
                             <span>© 2026 OLEA Africa — Tous droits réservés</span>
                         </div>
                     </div>

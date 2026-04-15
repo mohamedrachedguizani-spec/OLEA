@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import useLiveUpdates from './hooks/useLiveUpdates';
 import Login from './components/Login';
@@ -11,11 +11,15 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import UserManagement from './components/UserManagement';
 import Reporting from './components/Reporting';
+import oleaLogo from './assets/olea-logo.svg';
 
 function App() {
     const { user, loading, hasPermission } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
-    const [darkMode, setDarkMode] = useState(false);
+    const [darkMode, setDarkMode] = useState(() => {
+        if (typeof window === 'undefined') return false;
+        return window.localStorage.getItem('olea-theme') === 'dark';
+    });
     const [sidebarOpen, setSidebarOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [refreshTrigger, setRefreshTrigger] = useState(0);
@@ -23,6 +27,16 @@ function App() {
     const [sageBfcRefresh, setSageBfcRefresh] = useState(0);
     const [forecastRefresh, setForecastRefresh] = useState(0);
     const [reportingRefresh, setReportingRefresh] = useState(0);
+
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            window.localStorage.setItem('olea-theme', darkMode ? 'dark' : 'light');
+        }
+        if (typeof document !== 'undefined') {
+            document.body.classList.toggle('dark-mode', darkMode);
+            document.body.classList.toggle('light-mode', !darkMode);
+        }
+    }, [darkMode]);
 
     const handleMigrationComplete = useCallback(() => {
         setRefreshTrigger(prev => prev + 1);
@@ -51,10 +65,13 @@ function App() {
     // Écran de chargement initial
     if (loading) {
         return (
-            <div className={`app light-mode`}>
+            <div className={`app ${darkMode ? 'dark-mode' : 'light-mode'}`}>
                 <div className="app-loading">
-                    <div className="app-loading-logo">O</div>
-                    <p>Chargement…</p>
+                    <img
+                        src={oleaLogo}
+                        alt="OLEA Insurance Solutions Africa"
+                        className="app-loading-logo"
+                    />
                 </div>
             </div>
         );

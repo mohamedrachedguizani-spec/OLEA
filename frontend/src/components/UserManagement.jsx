@@ -4,10 +4,10 @@ import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
 const ROLES = [
-    { value: 'comptable', label: 'Comptable', color: '#3b82f6' },
-    { value: 'financier', label: 'Financier', color: '#8b5cf6' },
-    { value: 'dirigeant', label: 'Dirigeant', color: '#e67e22' },
-    { value: 'superadmin', label: 'Super Admin', color: '#ef4444' },
+    { value: 'comptable', label: 'Comptable', color: '#2f343a' },
+    { value: 'financier', label: 'Financier', color: '#b7482b' },
+    { value: 'dirigeant', label: 'Dirigeant', color: '#d4a528' },
+    { value: 'superadmin', label: 'Super Admin', color: '#863421' },
 ];
 
 const MODULES = [

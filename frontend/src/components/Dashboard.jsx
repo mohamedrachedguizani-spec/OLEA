@@ -17,27 +17,27 @@ const WS_RECONNECT_DELAY = 3000;
 
 // ─── Section definitions ───
 const SECTIONS = [
-    { id: 'overview',   label: 'Vue d\'ensemble', icon: '🏠', desc: 'Résumé global',       badgeKey: null,       accent: '#6366f1' },
-    { id: 'tresorerie', label: 'Trésorerie',      icon: '💰', desc: 'Flux & solde caisse', badgeKey: 'ecritures', accent: '#2d8b4e' },
-    { id: 'bfc',        label: 'Analyse BFC',     icon: '📊', desc: 'Résultat financier',  badgeKey: 'periodes',  accent: '#8b5cf6' },
+    { id: 'overview',   label: 'Vue d\'ensemble', icon: '🏠', desc: 'Résumé global',       badgeKey: null,       accent: '#d4a528' },
+    { id: 'tresorerie', label: 'Trésorerie',      icon: '💰', desc: 'Flux & solde caisse', badgeKey: 'ecritures', accent: '#b7482b' },
+    { id: 'bfc',        label: 'Analyse BFC',     icon: '📊', desc: 'Résultat financier',  badgeKey: 'periodes',  accent: '#2f343a' },
 ];
 
 // ─── Couleurs thématiques ───
 const COLORS = {
-    primary: '#2d8b4e',
-    primaryLight: '#4caf6e',
-    debit: '#3b82f6',
-    debitLight: '#93c5fd',
-    credit: '#f97316',
-    creditLight: '#fdba74',
-    purple: '#8b5cf6',
-    success: '#10b981',
-    danger: '#ef4444',
-    neutral: '#94a3b8',
-    bg: '#f8fafc',
+    primary: '#b7482b',
+    primaryLight: '#cd7458',
+    debit: '#d4a528',
+    debitLight: '#f5d26d',
+    credit: '#b7482b',
+    creditLight: '#dc9880',
+    purple: '#2f343a',
+    success: '#8f7b2d',
+    danger: '#863421',
+    neutral: '#7a838d',
+    bg: '#f7f7f5',
 };
 
-const PIE_COLORS = ['#3b82f6', '#f97316', '#8b5cf6', '#10b981', '#f59e0b', '#ec4899', '#06b6d4'];
+const PIE_COLORS = ['#d4a528', '#b7482b', '#2f343a', '#cd7458', '#f5d26d', '#8f7b2d', '#7a838d'];
 
 // ─── Formatters ───
 const fmtMontant = (v) =>

@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/api';
+import oleaLogo from '../assets/olea-logo.svg';
 
 function Sidebar({
     activeTab,
@@ -128,11 +129,11 @@ function Sidebar({
                             }
                         }}
                     >
-                        <span className="logo-letter">O</span>
-                    </div>
-                    <div className="brand-info">
-                        <span className="brand-name">OLEA</span>
-                        <span className="brand-tagline">Finance Manager</span>
+                        <img
+                            src={oleaLogo}
+                            alt="OLEA Insurance Solutions Africa"
+                            className="brand-logo-image"
+                        />
                     </div>
                     <button className="sidebar-close" onClick={() => setSidebarOpen(false)}>
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -212,21 +213,29 @@ function Sidebar({
 
                         {showSettingsMenu && (
                             <div className="sidebar-settings-dropdown">
-                                <button className="sidebar-dropdown-item" onClick={() => { setShowPasswordModal(true); setShowSettingsMenu(false); }}>
+                                <button
+                                    className="sidebar-dropdown-item"
+                                    onClick={() => { setShowPasswordModal(true); setShowSettingsMenu(false); }}
+                                    title="Changer mot de passe"
+                                >
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                                         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
                                         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                                     </svg>
-                                    Changer mot de passe
+                                    {!sidebarCollapsed && <span>Changer mot de passe</span>}
                                 </button>
-                                <div className="sidebar-dropdown-divider"></div>
-                                <button className="sidebar-dropdown-item sidebar-dropdown-logout" onClick={() => { setShowSettingsMenu(false); logout(); }}>
+                                {!sidebarCollapsed && <div className="sidebar-dropdown-divider"></div>}
+                                <button
+                                    className="sidebar-dropdown-item sidebar-dropdown-logout"
+                                    onClick={() => { setShowSettingsMenu(false); logout(); }}
+                                    title="Déconnexion"
+                                >
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
                                         <polyline points="16 17 21 12 16 7"/>
                                         <line x1="21" y1="12" x2="9" y2="12"/>
                                     </svg>
-                                    Déconnexion
+                                    {!sidebarCollapsed && <span>Déconnexion</span>}
                                 </button>
                             </div>
                         )}
