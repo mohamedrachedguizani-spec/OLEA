@@ -142,7 +142,7 @@ function Login() {
 
                         <div className="login-footer-text">
                             <span className="login-footer-help">Besoin d’accès ? Contactez votre administrateur.</span>
-                            <span>© 2026 OLEA Africa — Tous droits réservés</span>
+                            <span>© 2026 OLEA Tunisie — Powered by Guizani Med Rached</span>
                         </div>
                     </div>
                 </div>

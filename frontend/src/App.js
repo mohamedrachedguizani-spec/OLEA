@@ -144,7 +144,7 @@ function App() {
                 <footer className="main-footer">
                     <div className="footer-content">
                         <span>Système de Gestion de Caisse - Format compatible Sage</span>
-                        <span className="footer-brand">Powered by OLEA Africa</span>
+                        <span className="footer-brand">© Powered by Guizani Med Rached</span>
                     </div>
                 </footer>
             </main>

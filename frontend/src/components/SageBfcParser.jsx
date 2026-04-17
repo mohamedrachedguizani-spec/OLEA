@@ -76,6 +76,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     const [loading, setLoading] = useState(false);
     const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState(null);
+    const [successMessage, setSuccessMessage] = useState(null);
     const [mappingStats, setMappingStats] = useState(null);
     const [fileName, setFileName] = useState('');
     const [closingYear, setClosingYear] = useState(false);
@@ -313,6 +314,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     const handleFileParse = useCallback(async (file, periode) => {
         setLoading(true);
         setError(null);
+        setSuccessMessage(null);
         setFileName(file.name);
 
         try {
@@ -343,6 +345,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     const handleNewUpload = useCallback(() => {
         setActiveStep('upload');
         setError(null);
+        setSuccessMessage(null);
         setFileName('');
     }, []);
 
@@ -450,6 +453,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
         try {
             setClosingYear(true);
             setError(null);
+            setSuccessMessage(null);
             const res = await ApiService.closeSageBfcYear(targetYear);
 
             // Réinitialisation complète du module côté UI
@@ -462,9 +466,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
 
             await loadMonthlyData();
             await loadClosedYears();
-            window.alert(
-                `Année ${res.closed_year} clôturée avec succès. Le module a été réinitialisé pour ${res.next_year}.`
-            );
+            setSuccessMessage(`Année ${res.closed_year} clôturée avec succès. Le module a été réinitialisé pour ${res.next_year}.`);
         } catch (err) {
             setError(err.message || 'Erreur lors de la clôture annuelle');
         } finally {
@@ -559,6 +561,30 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                         <p>{error}</p>
                     </div>
                     <button onClick={() => setError(null)} className="error-dismiss">✕</button>
+                </div>
+            )}
+
+            {successMessage && (
+                <div className="sage-bfc-success">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M20 6L9 17l-5-5"/>
+                    </svg>
+                    <div>
+                        <strong>Succès</strong>
+                        <p>{successMessage}</p>
+                    </div>
+                    <button onClick={() => setSuccessMessage(null)} className="success-dismiss">✕</button>
+                </div>
+            )}
+
+            {!!latestClosableYear && (
+                <div className="sage-close-ready-notice" role="status" aria-live="polite">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M20 6L9 17l-5-5"/>
+                    </svg>
+                    <span>
+                        La balance de décembre est disponible. Vous pouvez maintenant clôturer l’année <strong>{latestClosableYear}</strong> via le bouton <strong>Clôturer {latestClosableYear}</strong>.
+                    </span>
                 </div>
             )}
 
