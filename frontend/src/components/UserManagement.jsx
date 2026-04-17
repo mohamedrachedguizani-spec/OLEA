@@ -18,6 +18,9 @@ const MODULES = [
     { name: 'reporting', label: 'Reporting', icon: '📊' },
 ];
 
+const PASSWORD_POLICY_HINT = '8+ caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial, sans espaces';
+const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}$/;
+
 function UserManagement() {
     const { user: currentUser } = useAuth();
     const [users, setUsers] = useState([]);
@@ -76,6 +79,10 @@ function UserManagement() {
     const handleCreate = async (e) => {
         e.preventDefault();
         clearMessages();
+        if (!PASSWORD_POLICY_REGEX.test(createForm.password)) {
+            setError(`Mot de passe invalide: ${PASSWORD_POLICY_HINT}`);
+            return;
+        }
         try {
             await ApiService.createUser(createForm);
             setSuccess('Utilisateur créé avec succès');
@@ -158,6 +165,10 @@ function UserManagement() {
     const handleResetPassword = async (e) => {
         e.preventDefault();
         clearMessages();
+        if (!PASSWORD_POLICY_REGEX.test(newPassword)) {
+            setError(`Mot de passe invalide: ${PASSWORD_POLICY_HINT}`);
+            return;
+        }
         try {
             await ApiService.resetUserPassword(selectedUser.id, newPassword);
             setSuccess(`Mot de passe de ${selectedUser.full_name} réinitialisé`);
@@ -408,7 +419,16 @@ function UserManagement() {
                                 <div className="um-form-row">
                                     <div className="um-form-group">
                                         <label>Mot de passe</label>
-                                        <input type="password" value={createForm.password} onChange={e => setCreateForm({...createForm, password: e.target.value})} required minLength={6} placeholder="Min. 6 caractères" />
+                                        <input
+                                            type="password"
+                                            value={createForm.password}
+                                            onChange={e => setCreateForm({...createForm, password: e.target.value})}
+                                            required
+                                            minLength={8}
+                                            pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}"
+                                            title={PASSWORD_POLICY_HINT}
+                                            placeholder={PASSWORD_POLICY_HINT}
+                                        />
                                     </div>
                                     <div className="um-form-group">
                                         <label>Rôle</label>
@@ -546,7 +566,16 @@ function UserManagement() {
                                 <p className="um-text-muted">Pour : <strong>{selectedUser.full_name}</strong> (@{selectedUser.username})</p>
                                 <div className="um-form-group">
                                     <label>Nouveau mot de passe</label>
-                                    <input type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)} required minLength={6} placeholder="Min. 6 caractères" />
+                                    <input
+                                        type="password"
+                                        value={newPassword}
+                                        onChange={e => setNewPassword(e.target.value)}
+                                        required
+                                        minLength={8}
+                                        pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}"
+                                        title={PASSWORD_POLICY_HINT}
+                                        placeholder={PASSWORD_POLICY_HINT}
+                                    />
                                 </div>
                                 <p className="um-perm-hint">⚠️ Toutes les sessions existantes seront révoquées.</p>
                             </div>

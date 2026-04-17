@@ -4,6 +4,9 @@ import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/api';
 import oleaLogo from '../assets/olea-logo.svg';
 
+const PASSWORD_POLICY_HINT = '8+ caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial, sans espaces';
+const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}$/;
+
 function Sidebar({
     activeTab,
     setActiveTab,
@@ -284,6 +287,9 @@ function Sidebar({
                                 e.preventDefault();
                                 setPwdError(''); setPwdSuccess(''); setPwdLoading(true);
                                 try {
+                                    if (!PASSWORD_POLICY_REGEX.test(newPasswordVal)) {
+                                        throw new Error(`Mot de passe invalide: ${PASSWORD_POLICY_HINT}`);
+                                    }
                                     await ApiService.changeMyPassword(currentPassword, newPasswordVal);
                                     setPwdSuccess('Mot de passe modifié avec succès');
                                     setCurrentPassword(''); setNewPasswordVal('');
@@ -301,7 +307,16 @@ function Sidebar({
                                     </div>
                                     <div className="um-form-group">
                                         <label>Nouveau mot de passe</label>
-                                        <input type="password" value={newPasswordVal} onChange={e => setNewPasswordVal(e.target.value)} required minLength={6} placeholder="Min. 6 caractères" />
+                                        <input
+                                            type="password"
+                                            value={newPasswordVal}
+                                            onChange={e => setNewPasswordVal(e.target.value)}
+                                            required
+                                            minLength={8}
+                                            pattern="(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}"
+                                            title={PASSWORD_POLICY_HINT}
+                                            placeholder={PASSWORD_POLICY_HINT}
+                                        />
                                     </div>
                                 </div>
                                 <div className="um-modal-footer">

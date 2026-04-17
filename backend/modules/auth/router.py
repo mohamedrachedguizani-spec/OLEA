@@ -12,6 +12,8 @@ Sécurité :
 
 import os
 import hashlib
+import time
+import threading
 from typing import List
 
 from fastapi import APIRouter, HTTPException, Request, Response, Depends, status
@@ -46,6 +48,78 @@ router = APIRouter(
     tags=["Authentification"],
     responses={401: {"description": "Non authentifié"}},
 )
+
+
+# ════════════════════════════════════════════════════════════
+#  Protection brute-force login (in-memory)
+# ════════════════════════════════════════════════════════════
+
+_LOGIN_MAX_ATTEMPTS = int(os.getenv("AUTH_LOGIN_MAX_ATTEMPTS", "5"))
+_LOGIN_BLOCK_SECONDS = int(os.getenv("AUTH_LOGIN_BLOCK_SECONDS", "120"))
+_LOGIN_ATTEMPTS: dict[str, dict[str, float]] = {}
+_LOGIN_ATTEMPTS_LOCK = threading.Lock()
+
+
+def _login_attempts_key(username: str, ip: str) -> str:
+    return f"{username.strip().lower()}|{ip}"
+
+
+def _cleanup_login_attempts_locked(now: float):
+    stale_keys = []
+    for key, entry in _LOGIN_ATTEMPTS.items():
+        blocked_until = float(entry.get("blocked_until", 0.0) or 0.0)
+        last_attempt = float(entry.get("last_attempt", 0.0) or 0.0)
+        if blocked_until <= now and (now - last_attempt) > (_LOGIN_BLOCK_SECONDS * 3):
+            stale_keys.append(key)
+    for key in stale_keys:
+        _LOGIN_ATTEMPTS.pop(key, None)
+
+
+def _get_login_block_remaining(username: str, ip: str) -> int:
+    now = time.monotonic()
+    key = _login_attempts_key(username, ip)
+    with _LOGIN_ATTEMPTS_LOCK:
+        entry = _LOGIN_ATTEMPTS.get(key)
+        if not entry:
+            return 0
+        blocked_until = float(entry.get("blocked_until", 0.0) or 0.0)
+        if blocked_until <= now:
+            return 0
+        return max(1, int(blocked_until - now))
+
+
+def _register_login_failure(username: str, ip: str):
+    now = time.monotonic()
+    key = _login_attempts_key(username, ip)
+    with _LOGIN_ATTEMPTS_LOCK:
+        _cleanup_login_attempts_locked(now)
+
+        entry = _LOGIN_ATTEMPTS.get(key)
+        if not entry:
+            entry = {"count": 0.0, "last_attempt": now, "blocked_until": 0.0}
+            _LOGIN_ATTEMPTS[key] = entry
+
+        blocked_until = float(entry.get("blocked_until", 0.0) or 0.0)
+        if blocked_until > now:
+            return
+
+        last_attempt = float(entry.get("last_attempt", 0.0) or 0.0)
+        # Fenêtre glissante simplifiée : reset du compteur si inactivité >= durée de blocage
+        if (now - last_attempt) >= _LOGIN_BLOCK_SECONDS:
+            entry["count"] = 0.0
+
+        entry["count"] = float(entry.get("count", 0.0) or 0.0) + 1.0
+        entry["last_attempt"] = now
+
+        if int(entry["count"]) >= _LOGIN_MAX_ATTEMPTS:
+            entry["blocked_until"] = now + _LOGIN_BLOCK_SECONDS
+            entry["count"] = 0.0
+
+
+def _clear_login_failures(username: str, ip: str):
+    key = _login_attempts_key(username, ip)
+    with _LOGIN_ATTEMPTS_LOCK:
+        _LOGIN_ATTEMPTS.pop(key, None)
 
 
 # ════════════════════════════════════════════════════════════
@@ -134,21 +208,40 @@ def login(body: LoginRequest, request: Request, response: Response):
     Authentifie un utilisateur et place les tokens dans des cookies httpOnly.
     Aucun token n'est renvoyé dans le corps de la réponse.
     """
+    username = body.username.lower().strip()
+    ip = request.client.host if request.client else "unknown"
+
+    block_remaining = _get_login_block_remaining(username, ip)
+    if block_remaining > 0:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Trop de tentatives de connexion. Réessayez dans {block_remaining} secondes.",
+        )
+
     with db.get_connection() as conn:
         with db.get_cursor(conn) as cursor:
             cursor.execute(
                 "SELECT id, username, email, full_name, role, is_active, "
                 "hashed_password, token_version, created_at "
                 "FROM users WHERE username = %s",
-                (body.username.lower(),),
+                (username,),
             )
             user = cursor.fetchone()
 
     if not user or not verify_password(body.password, user["hashed_password"]):
+        _register_login_failure(username, ip)
+        block_remaining = _get_login_block_remaining(username, ip)
+        if block_remaining > 0:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=f"Trop de tentatives de connexion. Réessayez dans {block_remaining} secondes.",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Nom d'utilisateur ou mot de passe incorrect",
         )
+
+    _clear_login_failures(username, ip)
 
     if not user["is_active"]:
         raise HTTPException(

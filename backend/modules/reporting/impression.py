@@ -5,7 +5,7 @@ import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import HTMLResponse
 
-from modules.auth.dependencies import require_permission
+from modules.auth.dependencies import get_current_user, require_permission
 from modules.forecast.engine import get_annual_comparison, get_comparison, get_cycle_status, get_subagregats
 from .router import (
     _build_annual_forecast_export_rows,
@@ -20,7 +20,11 @@ from .router import (
     PNL_KEYS,
 )
 
-router = APIRouter(prefix="/reporting", tags=["Reporting"])
+router = APIRouter(
+    prefix="/reporting",
+    tags=["Reporting"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 def _fmt_cell(value) -> str:

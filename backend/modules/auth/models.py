@@ -6,6 +6,17 @@ from enum import Enum
 import re
 
 
+_PASSWORD_POLICY_REGEX = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}$")
+
+
+def _validate_password_policy(value: str, label: str = "Le mot de passe") -> str:
+    if not _PASSWORD_POLICY_REGEX.match(value):
+        raise ValueError(
+            f"{label} doit contenir 8 caractères minimum, avec au moins 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial (sans espaces)"
+        )
+    return value
+
+
 # ─── Enums ───
 
 class RoleEnum(str, Enum):
@@ -56,9 +67,7 @@ class UserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Le mot de passe doit contenir au moins 6 caractères")
-        return v
+        return _validate_password_policy(v, "Le mot de passe")
 
     @field_validator("email")
     @classmethod
@@ -101,9 +110,7 @@ class ChangePasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Le nouveau mot de passe doit contenir au moins 6 caractères")
-        return v
+        return _validate_password_policy(v, "Le nouveau mot de passe")
 
 
 class ResetPasswordRequest(BaseModel):
@@ -112,9 +119,7 @@ class ResetPasswordRequest(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_new_password(cls, v: str) -> str:
-        if len(v) < 6:
-            raise ValueError("Le nouveau mot de passe doit contenir au moins 6 caractères")
-        return v
+        return _validate_password_policy(v, "Le nouveau mot de passe")
 
 
 # ─── Permission Schemas ───

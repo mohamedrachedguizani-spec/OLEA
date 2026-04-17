@@ -4,15 +4,17 @@ Module dédié au tableau de bord global.
 Agrège les données de tous les modules : Caisse, Migration Sage, BFC.
 """
 import json
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from datetime import date, datetime, timedelta
 from typing import Optional
 
 from database import db
+from modules.auth.dependencies import get_current_user
 
 router = APIRouter(
     tags=["Dashboard Global"],
     responses={404: {"description": "Non trouvé"}},
+    dependencies=[Depends(get_current_user)],
 )
 
 

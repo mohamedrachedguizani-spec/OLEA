@@ -1,10 +1,11 @@
 # modules/saisie_caisse/router.py
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from database import db
 from ws_manager import manager as ws_manager
+from modules.auth.dependencies import get_current_user
 from .models import (
     EcritureCaisse,
     EcritureCaisseCreate,
@@ -14,6 +15,7 @@ from .models import (
 router = APIRouter(
     tags=["Saisie Caisse"],
     responses={404: {"description": "Non trouvé"}},
+    dependencies=[Depends(get_current_user)],
 )
 
 

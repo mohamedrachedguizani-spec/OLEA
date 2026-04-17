@@ -1,8 +1,9 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Depends
 
 from ws_manager import manager as ws_manager
+from modules.auth.dependencies import get_current_user
 from .engine import (
     generate_forecast,
     get_annual_comparison,
@@ -41,6 +42,7 @@ router = APIRouter(
     prefix="/forecast",
     tags=["Forecast Budget BFC"],
     responses={404: {"description": "Non trouvé"}},
+    dependencies=[Depends(get_current_user)],
 )
 
 

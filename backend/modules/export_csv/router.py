@@ -4,13 +4,15 @@ import io
 from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from database import db
+from modules.auth.dependencies import get_current_user
 
 router = APIRouter(
     tags=["Export CSV"],
     responses={404: {"description": "Non trouvé"}},
+    dependencies=[Depends(get_current_user)],
 )
 
 
