@@ -11,7 +11,8 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
     const [expandedSections, setExpandedSections] = useState({
         produits: true,
         charges: true,
-        financier: false,
+        financier: true,
+        exceptionnel: true,
         resultat: true
     });
     const [expandedAgregat, setExpandedAgregat] = useState(null);
@@ -148,6 +149,21 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
                 { label: 'Charges Financières', value: resume.charges_financieres, prevValue: previousResume?.charges_financieres, agregat: 'Charges Financières' },
                 { label: 'Résultat Financier', value: resume.resultat_financier, prevValue: previousResume?.resultat_financier, bold: true, isSubtotal: true },
                 { label: 'Dotations Amort. & Provisions', value: resume.dotations, prevValue: previousResume?.dotations, agregat: 'Dotations Amortissements & Provisions' }
+            ]
+        },
+        {
+            key: 'exceptionnel',
+            title: 'RÉSULTAT EXCEPTIONNEL',
+            icon: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2l2.9 6.26L22 9.27l-5 4.87L18.18 22 12 18.56 5.82 22 7 14.14l-5-4.87 7.1-1.01L12 2z"/>
+                </svg>
+            ),
+            color: 'blue',
+            lines: [
+                { label: 'Produits Exceptionnels', value: resume.produits_exceptionnels, prevValue: previousResume?.produits_exceptionnels, agregat: 'Produits Exceptionnels' },
+                { label: 'Charges Exceptionnelles', value: resume.charges_exceptionnelles, prevValue: previousResume?.charges_exceptionnelles, agregat: 'Charges Exceptionnelles' },
+                { label: 'Résultat Exceptionnel', value: resume.resultat_exceptionnel, prevValue: previousResume?.resultat_exceptionnel, bold: true, isSubtotal: true },
             ]
         },
         {

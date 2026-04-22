@@ -356,6 +356,7 @@ def _get_bfc_stats(cursor):
             "produits_financiers": float(dernier_resume.get('produits_financiers', 0)),
             "charges_financieres": float(dernier_resume.get('charges_financieres', 0)),
             "resultat_financier": float(dernier_resume.get('resultat_financier', 0)),
+            "resultat_exceptionnel": float(dernier_resume.get('resultat_exceptionnel', 0)),
             "dotations": float(dernier_resume.get('dotations', 0)),
             "resultat_avant_impot": float(dernier_resume.get('resultat_avant_impot', 0)),
             "impot_societes": float(dernier_resume.get('impot_societes', 0)),

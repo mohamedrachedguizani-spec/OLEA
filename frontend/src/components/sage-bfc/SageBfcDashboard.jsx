@@ -59,6 +59,7 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
         { key: 'ebitda', label: 'EBITDA', section: 'ebitda', bold: true, highlight: true },
         { key: 'ebitda_pct', label: 'Marge EBITDA %', section: 'ebitda', bold: false, isPct: true },
         { key: 'resultat_financier', label: 'Résultat Financier', section: 'financier', bold: false },
+        { key: 'resultat_exceptionnel', label: 'Résultat Exceptionnel', section: 'financier', bold: false },
         { key: 'dotations', label: 'Dotations', section: 'financier', bold: false },
         { key: 'resultat_avant_impot', label: 'Résultat avant IS', section: 'resultat', bold: true },
         { key: 'impot_societes', label: 'IS', section: 'resultat', bold: false },
@@ -124,7 +125,8 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
                         <polyline points="22,4 12,14.01 9,11.01"/>
                     </svg>
                 )
-            }
+            },
+            
         ];
     }, [currentResume, previousResume]);
 

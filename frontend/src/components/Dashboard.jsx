@@ -558,7 +558,9 @@ function Dashboard({ refreshTrigger }) {
                                             <div className="gd-pnl-sep" />
                                             <PnlRow label="EBITDA" value={bfc.pnl_detail.ebitda} bold pct={bfc.pnl_detail.ebitda_pct} />
                                             <PnlRow label="Rés. Financier" value={bfc.pnl_detail.resultat_financier} />
+                                            <PnlRow label="Résultat Exceptionnel" value={bfc.pnl_detail.resultat_exceptionnel} />
                                             <PnlRow label="Dotations" value={-Math.abs(bfc.pnl_detail.dotations)} />
+                                            <PnlRow label="Impôt sur les sociétés" value={-Math.abs(bfc.pnl_detail.impot_societes)} />
                                             <div className="gd-pnl-sep" />
                                             <PnlRow label="Résultat Net" value={bfc.pnl_detail.resultat_net} bold highlight pct={bfc.pnl_detail.resultat_net_pct} />
                                         </div>
