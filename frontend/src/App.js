@@ -60,7 +60,7 @@ function App() {
             setForecastRefresh(prev => prev + 1);
             setReportingRefresh(prev => prev + 1);
         },
-    });
+    }, { enabled: Boolean(user) });
 
     // Écran de chargement initial
     if (loading) {

@@ -9,10 +9,10 @@ import {
     XAxis, YAxis, CartesianGrid, Tooltip, Legend,
     ResponsiveContainer,
 } from 'recharts';
-import ApiService from '../services/api';
+import ApiService, { API_BASE_URL } from '../services/api';
 
 // ─── WebSocket URL ───
-const WS_URL = 'ws://127.0.0.1:8000/ws/live';
+const WS_URL = API_BASE_URL.replace(/^http/i, 'ws') + '/ws/live';
 const WS_RECONNECT_DELAY = 3000;
 
 // ─── Section definitions ───
@@ -175,10 +175,13 @@ function Dashboard({ refreshTrigger }) {
             }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
             console.log('[Dashboard WS] 🔌 Déconnecté — reconnexion…');
             setWsConnected(false);
             wsRef.current = null;
+            if (event?.code === 1008) {
+                return;
+            }
             reconnectTimer.current = setTimeout(connectWs, WS_RECONNECT_DELAY);
         };
 

@@ -12,11 +12,13 @@
 //   });
 
 import { useEffect, useRef, useCallback } from 'react';
+import { API_BASE_URL } from '../services/api';
 
-const WS_URL = 'ws://127.0.0.1:8000/ws/live';
+const WS_URL = API_BASE_URL.replace(/^http/i, 'ws') + '/ws/live';
 const RECONNECT_DELAY = 3000; // ms avant reconnexion
 
-export default function useLiveUpdates(handlers = {}) {
+export default function useLiveUpdates(handlers = {}, options = {}) {
+    const { enabled = true } = options;
     const wsRef = useRef(null);
     const handlersRef = useRef(handlers);
     const reconnectTimer = useRef(null);
@@ -55,11 +57,18 @@ export default function useLiveUpdates(handlers = {}) {
             }
         };
 
-        ws.onclose = () => {
+        ws.onclose = (event) => {
             console.log('[OLEA Live] 🔌 Déconnecté — reconnexion dans 3s…');
             wsRef.current = null;
+            if (event?.code === 1008) {
+                // Rejet explicite côté backend (auth/session invalide)
+                window.dispatchEvent(new CustomEvent('auth:session-expired'));
+                return;
+            }
             // Auto-reconnexion
-            reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY);
+            if (enabled) {
+                reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY);
+            }
         };
 
         ws.onerror = () => {
@@ -67,9 +76,18 @@ export default function useLiveUpdates(handlers = {}) {
         };
 
         wsRef.current = ws;
-    }, []);
+    }, [enabled]);
 
     useEffect(() => {
+        if (!enabled) {
+            clearTimeout(reconnectTimer.current);
+            if (wsRef.current) {
+                wsRef.current.close();
+                wsRef.current = null;
+            }
+            return;
+        }
+
         connect();
 
         return () => {
@@ -80,5 +98,5 @@ export default function useLiveUpdates(handlers = {}) {
                 wsRef.current = null;
             }
         };
-    }, [connect]);
+    }, [connect, enabled]);
 }

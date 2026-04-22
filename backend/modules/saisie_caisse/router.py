@@ -19,28 +19,70 @@ router = APIRouter(
 )
 
 
-# ─── Helper: recalculer TOUS les soldes de manière fiable ───
+# ─── Helpers: recalcul incrémental des soldes ───
 
-def recalculate_all_soldes(cursor):
-    """Recalcule le solde cumulé de toutes les écritures dans l'ordre chronologique.
-    C'est la seule méthode fiable car elle gère correctement :
-    - Les insertions à des dates passées
-    - Les modifications de date (changement de position)
-    - Les suppressions
+def _is_position_before(a_date, a_id: int, b_date, b_id: int) -> bool:
+    """Retourne True si (a_date, a_id) est avant (b_date, b_id) dans l'ordre chrono/id."""
+    if a_date < b_date:
+        return True
+    if a_date > b_date:
+        return False
+    return a_id < b_id
+
+
+def get_update_recalc_pivot(old_date, old_id: int, new_date, new_id: int):
+    """Retourne le pivot minimal à recalculer lors d'un UPDATE.
+
+    Si l'ancienne position est avant la nouvelle, on part de l'ancienne (zone déplacée + queue).
+    Sinon, on part de la nouvelle.
     """
-    cursor.execute("""
-        SELECT id, debit, credit 
-        FROM ecritures_caisse 
-        ORDER BY date_ecriture ASC, id ASC
-    """)
-    ecritures = cursor.fetchall()
+    if _is_position_before(old_date, old_id, new_date, new_id):
+        return old_date, old_id
+    return new_date, new_id
 
-    solde_cumul = 0
-    for ec in ecritures:
-        solde_cumul += float(ec['debit']) - float(ec['credit'])
+
+def recalculate_soldes_from(cursor, start_date, start_id: int):
+    """Recalcule les soldes de manière incrémentale à partir d'un pivot (date, id).
+
+    Couvre tous les scénarios :
+    - insertion dans le passé (recalcul de la queue impactée)
+    - modification de montant/date/libellé
+    - suppression
+    - déplacement d'une écriture (changement de date)
+    """
+    # Solde juste avant la zone à recalculer
+    cursor.execute(
+        """
+        SELECT solde
+        FROM ecritures_caisse
+        WHERE date_ecriture < %s
+           OR (date_ecriture = %s AND id < %s)
+        ORDER BY date_ecriture DESC, id DESC
+        LIMIT 1
+        """,
+        (start_date, start_date, start_id),
+    )
+    prev_row = cursor.fetchone()
+    solde_cumul = float(prev_row["solde"]) if prev_row else 0.0
+
+    # Recalcul uniquement de la partie impactée
+    cursor.execute(
+        """
+        SELECT id, debit, credit
+        FROM ecritures_caisse
+        WHERE date_ecriture > %s
+           OR (date_ecriture = %s AND id >= %s)
+        ORDER BY date_ecriture ASC, id ASC
+        """,
+        (start_date, start_date, start_id),
+    )
+    impacted_rows = cursor.fetchall()
+
+    for row in impacted_rows:
+        solde_cumul += float(row["debit"]) - float(row["credit"])
         cursor.execute(
             "UPDATE ecritures_caisse SET solde = %s WHERE id = %s",
-            (round(solde_cumul, 3), ec['id'])
+            (round(solde_cumul, 3), row["id"]),
         )
 
 
@@ -71,7 +113,7 @@ def create_ecriture_caisse(ecriture: EcritureCaisseCreate):
 
         ecriture_id = cursor.lastrowid
 
-        recalculate_all_soldes(cursor)
+        recalculate_soldes_from(cursor, ecriture.date_ecriture, ecriture_id)
 
         cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
         result = cursor.fetchone()
@@ -141,6 +183,9 @@ def update_ecriture_caisse(ecriture_id: int, ecriture: EcritureCaisseCreate):
         if existing['est_migree']:
             raise HTTPException(status_code=400, detail="Impossible de modifier une écriture migrée")
 
+        old_date = existing['date_ecriture']
+        old_id = int(existing['id'])
+
         cursor.execute("""
             UPDATE ecritures_caisse 
             SET date_ecriture = %s, libelle_ecriture = %s, debit = %s, credit = %s
@@ -148,7 +193,14 @@ def update_ecriture_caisse(ecriture_id: int, ecriture: EcritureCaisseCreate):
         """, (ecriture.date_ecriture, ecriture.libelle_ecriture,
               ecriture.debit, ecriture.credit, ecriture_id))
 
-        recalculate_all_soldes(cursor)
+        pivot_date, pivot_id = get_update_recalc_pivot(
+            old_date,
+            old_id,
+            ecriture.date_ecriture,
+            ecriture_id,
+        )
+
+        recalculate_soldes_from(cursor, pivot_date, pivot_id)
 
         cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
         result = cursor.fetchone()
@@ -171,9 +223,12 @@ def delete_ecriture_caisse(ecriture_id: int):
         if ecriture['est_migree']:
             raise HTTPException(status_code=400, detail="Impossible de supprimer une écriture migrée")
 
+        deleted_date = ecriture['date_ecriture']
+        deleted_id = int(ecriture['id'])
+
         cursor.execute("DELETE FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
 
-        recalculate_all_soldes(cursor)
+        recalculate_soldes_from(cursor, deleted_date, deleted_id)
 
         ws_manager.broadcast("caisse", "delete", {"id": ecriture_id})
 
@@ -240,6 +295,22 @@ def nettoyer_historique_migre():
         count_result = cursor.fetchone()
         count_migrees = count_result['count']
 
+        pivot_date = None
+        pivot_id = None
+        if count_migrees > 0:
+            cursor.execute("""
+                SELECT date_ecriture, MIN(id) AS min_id
+                FROM ecritures_caisse
+                WHERE est_migree = TRUE
+                GROUP BY date_ecriture
+                ORDER BY date_ecriture ASC
+                LIMIT 1
+            """)
+            pivot = cursor.fetchone()
+            if pivot:
+                pivot_date = pivot['date_ecriture']
+                pivot_id = int(pivot['min_id'])
+
         if count_migrees == 0:
             return {
                 "message": "Aucune écriture migrée à nettoyer",
@@ -265,7 +336,19 @@ def nettoyer_historique_migre():
                 solde_actuel,
             ))
         elif remaining > 0:
-            recalculate_all_soldes(cursor)
+            if pivot_date is not None and pivot_id is not None:
+                recalculate_soldes_from(cursor, pivot_date, pivot_id)
+            else:
+                # Fallback de sécurité (cas inattendu)
+                cursor.execute("""
+                    SELECT date_ecriture, id
+                    FROM ecritures_caisse
+                    ORDER BY date_ecriture ASC, id ASC
+                    LIMIT 1
+                """)
+                first_row = cursor.fetchone()
+                if first_row:
+                    recalculate_soldes_from(cursor, first_row['date_ecriture'], int(first_row['id']))
 
         ws_manager.broadcast("caisse", "cleanup", {"count": count_migrees})
 

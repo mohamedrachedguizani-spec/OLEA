@@ -2,8 +2,9 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from database import init_sage_bfc_tables, init_forecast_tables
+from database import db, init_sage_bfc_tables, init_forecast_tables
 from ws_manager import manager
+from modules.auth.security import decode_access_token
 
 # ─── Import des routers modulaires ───
 from modules.auth import router as auth_router, init_auth_tables
@@ -51,8 +52,49 @@ async def on_startup():
 
 
 # ─── WebSocket temps réel ───
+def _get_ws_current_user(ws: WebSocket):
+    """Valide l'utilisateur à partir du cookie access token pour la connexion WebSocket."""
+    token = ws.cookies.get("olea_access_token")
+    if not token:
+        return None
+
+    payload = decode_access_token(token)
+    if not payload:
+        return None
+
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+
+    try:
+        user_id = int(user_id)
+    except (TypeError, ValueError):
+        return None
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT id, is_active, token_version FROM users WHERE id = %s",
+            (user_id,),
+        )
+        user = cursor.fetchone()
+
+    if not user:
+        return None
+    if not user["is_active"]:
+        return None
+    if payload.get("tv") != user["token_version"]:
+        return None
+
+    return user
+
+
 @app.websocket("/ws/live")
 async def websocket_live(ws: WebSocket):
+    user = _get_ws_current_user(ws)
+    if not user:
+        await ws.close(code=1008)
+        return
+
     await manager.connect(ws)
     try:
         while True:
