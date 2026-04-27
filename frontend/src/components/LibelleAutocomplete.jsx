@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ApiService from '../services/api';
 
-function LibelleAutocomplete({ value, onChange, onSelect }) {
+function LibelleAutocomplete({ value, onChange, onSelect, onEditingComplete }) {
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const containerRef = useRef(null);
@@ -42,6 +42,18 @@ function LibelleAutocomplete({ value, onChange, onSelect }) {
         setShowSuggestions(false);
     };
 
+    const handleBlur = () => {
+        if (onEditingComplete) {
+            onEditingComplete(value);
+        }
+    };
+
+    const handleKeyDown = (e) => {
+        if (e.key === 'Enter' && onEditingComplete) {
+            onEditingComplete(value);
+        }
+    };
+
     return (
         <div className="autocomplete-container" ref={containerRef}>
             <input
@@ -49,6 +61,8 @@ function LibelleAutocomplete({ value, onChange, onSelect }) {
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 onFocus={() => suggestions.length > 0 && setShowSuggestions(true)}
+                onBlur={handleBlur}
+                onKeyDown={handleKeyDown}
                 className="form-control"
                 placeholder="Commencez à taper..."
             />

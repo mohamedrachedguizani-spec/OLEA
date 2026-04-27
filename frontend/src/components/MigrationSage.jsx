@@ -253,7 +253,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                                     </div>
                                     
                                     {/* Affichage du montant attendu pour ligne 1 */}
-                                    <div className="ligne-montant-preview">
+                                    {/* <div className="ligne-montant-preview">
                                         <div className={`montant-box ${ecriture.debit > 0 ? 'debit' : 'credit'}`}>
                                             <span className="montant-type">{ecriture.debit > 0 ? 'DÉBIT' : 'CRÉDIT'}</span>
                                             <span className="montant-value">
@@ -262,7 +262,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                                                     : ecriture.credit.toFixed(3)} TND
                                             </span>
                                         </div>
-                                    </div>
+                                    </div> */}
                                     
                                     <div className="ligne-fields">
                                         <div className="field-group">
@@ -304,7 +304,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                                 <div className="ligne-config">
                                     <div className="ligne-header">
                                         <span className="ligne-badge contrepartie">Ligne 2</span>
-                                        <span className="ligne-title">Contrepartie</span>
+                                        <span className="ligne-title">Contre partie</span>
                                         <label className="toggle-manual">
                                             <input
                                                 type="checkbox"
@@ -320,7 +320,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                                     </div>
                                     
                                     {/* Affichage du montant attendu pour ligne 2 (inversé) */}
-                                    <div className="ligne-montant-preview">
+                                    {/* <div className="ligne-montant-preview">
                                         <div className={`montant-box ${ecriture.credit > 0 ? 'debit' : 'credit'}`}>
                                             <span className="montant-type">{ecriture.credit > 0 ? 'DÉBIT' : 'CRÉDIT'}</span>
                                             <span className="montant-value">
@@ -329,7 +329,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                                                     : ecriture.debit.toFixed(3)} TND
                                             </span>
                                         </div>
-                                    </div>
+                                    </div> */}
                                     
                                     <div className="ligne-fields">
                                         <div className="field-group">

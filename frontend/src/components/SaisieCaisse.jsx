@@ -16,6 +16,143 @@ function SaisieCaisse({ refreshTrigger }) {
     const [message, setMessage] = useState('');
     const [editingId, setEditingId] = useState(null);
     const [editForm, setEditForm] = useState({});
+    const debitInputRef = useRef(null);
+    const creditInputRef = useRef(null);
+    const lastSuggestedFieldRef = useRef(null);
+
+    const normalizeText = (text = '') =>
+        text
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+    const splitWords = (text = '') =>
+        normalizeText(text)
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .split(/\s+/)
+            .filter(Boolean);
+
+    const detectTargetFieldFromLibelle = (libelle = '') => {
+        const value = normalizeText(libelle);
+        if (!value) return null;
+
+        const words = splitWords(libelle);
+        const hasWord = (word) => words.includes(word);
+        const hasAllWords = (neededWords) => neededWords.every((w) => hasWord(w));
+        const hasPhrase = (phrase) => value.includes(normalizeText(phrase));
+
+        const debitPhrases = [
+            'alimentation caisse',
+            'approvisionnement caisse',
+            'reapprovisionnement caisse',
+            'versement caisse',
+            'depot caisse',
+            'encaissement',
+            'fonds de caisse',
+            'ajout caisse',
+            'ALIM',
+            'fc',
+            'fct',
+            'enc',
+            'gain',
+            'recette',
+        ];
+
+        const debitWords = [
+            'alimentation',
+            'alimenter',
+            'approvisionnement',
+            'reapprovisionnement',
+            'versement',
+            'depot',
+            'encaissement',
+            'ajout',
+            'fonds',
+            'recette',
+        ];
+
+        const creditPhrases = [
+            'paiement par caisse',
+            'reglement charge',
+            'paiement charge',
+            'paiement facture',
+            'avance societe',
+            'avance salaire',
+            'avance fournisseur',
+            'sortie caisse',
+            'retrait caisse',
+            'depense caisse',
+            'achat ',
+            'charge ',
+            'salaire ',
+            'loyer ',
+            'impot ',
+            'frais ',
+            'reparation ',
+            'indemnite ',
+            'amende ',
+            'taxe ',
+            'amenagement ',
+            'essence ',
+            'carburant ',
+            'cnss ',
+        ];
+
+        const creditWords = [
+            'paiement',
+            'reglement',
+            'depense',
+            'achat',
+            'facture',
+            'frais',
+            'avance',
+            'charge',
+            'fournisseur',
+            'loyer',
+            'impot',
+            'salaire',
+            'reparation',
+            'INDEMNITE',
+            'amende',
+            'cnss',
+        ];
+
+        const matchedDebitByPhrase = debitPhrases.some(hasPhrase);
+        const matchedDebitByWord = debitWords.some(hasWord);
+
+        const matchedCreditByPhrase = creditPhrases.some(hasPhrase);
+        const matchedCreditByWord = creditWords.some(hasWord);
+        const matchedCreditSpecialCases =
+            hasAllWords(['avance', 'societe']) ||
+            hasAllWords(['avance', 'salaire']) ||
+            hasAllWords(['paiement', 'charge']) ||
+            hasAllWords(['reglement', 'facture']);
+
+        const isAlimentation = matchedDebitByPhrase || matchedDebitByWord;
+        const isPaiementCharge = matchedCreditByPhrase || matchedCreditByWord || matchedCreditSpecialCases;
+
+        if (isPaiementCharge) return 'credit';
+        if (isAlimentation) return 'debit';
+        return null;
+    };
+
+    const autoFocusMontantField = (libelle = '') => {
+        const targetField = detectTargetFieldFromLibelle(libelle);
+        if (!targetField) return;
+
+        const targetInput = targetField === 'debit' ? debitInputRef.current : creditInputRef.current;
+        const alreadyFocused = document.activeElement === targetInput;
+        if (lastSuggestedFieldRef.current === targetField && alreadyFocused) return;
+
+        if (targetField === 'debit') {
+            debitInputRef.current?.focus();
+        } else if (targetField === 'credit') {
+            creditInputRef.current?.focus();
+        }
+
+        lastSuggestedFieldRef.current = targetField;
+    };
 
     const loadEcritures = useCallback(async () => {
         try {
@@ -47,6 +184,15 @@ function SaisieCaisse({ refreshTrigger }) {
             ...prev,
             libelle_ecriture: libelle
         }));
+        autoFocusMontantField(libelle);
+    };
+
+    const handleLibelleChange = (value) => {
+        setFormData(prev => ({ ...prev, libelle_ecriture: value }));
+    };
+
+    const handleLibelleEditingComplete = (value) => {
+        autoFocusMontantField(value);
     };
 
     const handleSubmit = async (e) => {
@@ -67,6 +213,7 @@ function SaisieCaisse({ refreshTrigger }) {
                 debit: '',
                 credit: ''
             });
+            lastSuggestedFieldRef.current = null;
             loadEcritures();
         } catch (error) {
             setMessage('Erreur lors de l\'ajout: ' + error.message);
@@ -161,8 +308,9 @@ function SaisieCaisse({ refreshTrigger }) {
                             <label>Libellé écriture</label>
                             <LibelleAutocomplete
                                 value={formData.libelle_ecriture}
-                                onChange={(value) => setFormData(prev => ({ ...prev, libelle_ecriture: value }))}
+                                onChange={handleLibelleChange}
                                 onSelect={handleLibelleSelect}
+                                onEditingComplete={handleLibelleEditingComplete}
                             />
                         </div>
                     </div>
@@ -171,6 +319,7 @@ function SaisieCaisse({ refreshTrigger }) {
                         <div className="form-group">
                             <label>Débit</label>
                             <input
+                                ref={debitInputRef}
                                 type="number"
                                 name="debit"
                                 value={formData.debit}
@@ -186,6 +335,7 @@ function SaisieCaisse({ refreshTrigger }) {
                         <div className="form-group">
                             <label>Crédit</label>
                             <input
+                                ref={creditInputRef}
                                 type="number"
                                 name="credit"
                                 value={formData.credit}

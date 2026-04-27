@@ -88,6 +88,10 @@ def migrer_ecriture(migration: MigrationRequest):
             type_piece="OD",
         )
 
+        # Garantir l'existence des comptes avant insertion des écritures Sage
+        _ensure_compte_exists(cursor, ligne1.compte, "Caisse")
+        _ensure_compte_exists(cursor, ligne2.compte, _derive_compte_libelle(ligne2))
+
         _insert_ecriture_sage(cursor, ligne1)
         _insert_ecriture_sage(cursor, ligne2)
 
@@ -223,3 +227,31 @@ def _insert_ecriture_sage(cursor, ligne: EcritureSageCreate):
         ligne.section_analytique, ligne.numero_piece, ligne.libelle_ecriture,
         ligne.devise, ligne.type_piece,
     ))
+
+
+def _derive_compte_libelle(ligne: EcritureSageCreate) -> str:
+    """Construit le libellé de compte sans préfixe additionnel."""
+    if ligne.libelle_ecriture and ligne.libelle_ecriture.strip():
+        return ligne.libelle_ecriture.strip()
+    return ""
+
+
+def _ensure_compte_exists(cursor, code_compte: str, libelle_compte: str):
+    """Crée le compte s'il n'existe pas déjà (pré-requis FK ecritures_sage.compte)."""
+    code = (code_compte or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Le code compte est obligatoire")
+
+    cursor.execute("SELECT code_compte FROM comptes WHERE code_compte = %s LIMIT 1", (code,))
+    existing = cursor.fetchone()
+    if existing:
+        return
+
+    libelle = (libelle_compte or "").strip() or code
+    cursor.execute(
+        """
+        INSERT INTO comptes (code_compte, libelle_compte)
+        VALUES (%s, %s)
+        """,
+        (code, libelle),
+    )
