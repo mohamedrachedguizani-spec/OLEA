@@ -16,6 +16,7 @@ const MODULES = [
     { name: 'export_csv', label: 'Export CSV', icon: '📁' },
     { name: 'sage_bfc', label: 'SAGE → BFC', icon: '🔄' },
     { name: 'reporting', label: 'Reporting', icon: '📊' },
+    { name: 'configuration', label: 'Configuration', icon: '⚙️' },
 ];
 
 const PASSWORD_POLICY_HINT = '8+ caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial, sans espaces';

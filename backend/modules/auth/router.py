@@ -791,7 +791,7 @@ def set_user_permissions(
     Définit les permissions d'un utilisateur sur les modules de l'application.
     Remplace toutes les permissions existantes (upsert).
 
-    Modules disponibles : saisie_caisse, migration_sage, export_csv, sage_bfc, reporting
+    Modules disponibles : saisie_caisse, migration_sage, export_csv, sage_bfc, reporting, configuration
     Actions : can_read, can_write, can_delete
     """
     with db.get_connection() as conn:

@@ -15,6 +15,7 @@ from modules.sage_bfc import router as sage_bfc_router
 from modules.dashboard import router as dashboard_router
 from modules.forecast import router as forecast_router
 from modules.reporting import router as reporting_router
+from modules.configuration import router as configuration_router, init_configuration_tables
 
 
 app = FastAPI(title="Olea – Gestion de Caisse & BFC")
@@ -32,6 +33,7 @@ app.add_middleware(
 init_auth_tables()
 init_sage_bfc_tables()
 init_forecast_tables()
+init_configuration_tables()
 
 # ─── Enregistrement des routers ───
 app.include_router(auth_router)
@@ -42,6 +44,7 @@ app.include_router(sage_bfc_router)
 app.include_router(dashboard_router)
 app.include_router(forecast_router)
 app.include_router(reporting_router)
+app.include_router(configuration_router)
 
 
 # ─── Enregistrer la boucle asyncio au démarrage ───

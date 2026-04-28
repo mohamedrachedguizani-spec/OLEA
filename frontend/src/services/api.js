@@ -302,6 +302,33 @@ class ApiService {
         return response.json();
     }
 
+    // ===================== Configuration =====================
+
+    static async getConfigurationComptes(search = '', limit = 200) {
+        const params = new URLSearchParams({
+            search: String(search || ''),
+            limit: String(limit),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/comptes/?${params.toString()}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des comptes' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des comptes');
+        }
+        return response.json();
+    }
+
+    static async createOrUpdateConfigurationCompte(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/comptes/`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la sauvegarde du compte' }));
+            throw new Error(err.detail || 'Erreur lors de la sauvegarde du compte');
+        }
+        return response.json();
+    }
+
     // Vérification balance
     static async verifierBalance() {
         const response = await ApiService._fetch(`${API_BASE_URL}/verifier-balance/`);

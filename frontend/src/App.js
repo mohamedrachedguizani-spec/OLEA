@@ -11,6 +11,7 @@ import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import UserManagement from './components/UserManagement';
 import Reporting from './components/Reporting';
+import Configuration from './components/Configuration';
 import oleaLogo from './assets/olea-logo.svg';
 
 function App() {
@@ -138,6 +139,7 @@ function App() {
                     {activeTab === 'migration' && <MigrationSage onMigrationComplete={handleMigrationComplete} refreshTrigger={migrationRefresh} />}
                     {activeTab === 'export' && <ExportCSV />}
                     {activeTab === 'sage-bfc' && <SageBfcParser refreshTrigger={sageBfcRefresh} forecastRefresh={forecastRefresh} />}
+                    {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration />}
                     {activeTab === 'users' && <UserManagement />}
                 </div>
 
