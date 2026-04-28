@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 
 from database import db
+from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user, require_permission
-from .models import CompteConfiguration, CompteConfigurationCreate
+from .models import CompteConfiguration, CompteConfigurationCreate, CompteConfigurationUpdate, CompteConfigurationPage
 
 
 router = APIRouter(
@@ -13,15 +14,41 @@ router = APIRouter(
 )
 
 
-@router.get("/configuration/comptes/", response_model=List[CompteConfiguration])
+@router.get("/configuration/comptes/", response_model=CompteConfigurationPage)
 def get_configuration_comptes(
     search: str = "",
-    limit: int = 200,
+    page: int = 1,
+    page_size: int = 20,
     user: dict = Depends(require_permission("configuration", "read")),
 ):
     """Lister les comptes configurés (code + libellé)."""
-    safe_limit = max(1, min(limit, 500))
+    safe_page = max(1, int(page))
+    safe_page_size = max(1, min(int(page_size), 200))
+    offset = (safe_page - 1) * safe_page_size
     with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM (
+                SELECT c.code_compte, c.libelle_compte
+                FROM comptes c
+                INNER JOIN (
+                    SELECT code_compte, MAX(id) AS max_id
+                    FROM comptes
+                    GROUP BY code_compte
+                ) x ON x.code_compte = c.code_compte AND x.max_id = c.id
+                WHERE c.code_compte LIKE %s OR c.libelle_compte LIKE %s
+            ) t
+            """,
+            (f"%{search}%", f"%{search}%"),
+        )
+        total = int(cursor.fetchone()["total"])
+        pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+
+        if safe_page > pages:
+            safe_page = pages
+            offset = (safe_page - 1) * safe_page_size
+
         cursor.execute(
             """
             SELECT c.code_compte, c.libelle_compte
@@ -33,11 +60,19 @@ def get_configuration_comptes(
             ) x ON x.code_compte = c.code_compte AND x.max_id = c.id
             WHERE c.code_compte LIKE %s OR c.libelle_compte LIKE %s
             ORDER BY c.code_compte
-            LIMIT %s
+            LIMIT %s OFFSET %s
             """,
-            (f"%{search}%", f"%{search}%", safe_limit),
+            (f"%{search}%", f"%{search}%", safe_page_size, offset),
         )
-        return cursor.fetchall()
+        items = cursor.fetchall()
+
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "pages": pages,
+    }
 
 
 @router.post("/configuration/comptes/", response_model=CompteConfiguration)
@@ -102,4 +137,109 @@ def create_or_update_compte(
     if not created_or_updated:
         raise HTTPException(status_code=500, detail="Impossible de sauvegarder le compte")
 
+    ws_manager.broadcast(
+        "configuration",
+        "upsert",
+        {"code_compte": created_or_updated["code_compte"]},
+    )
+
     return created_or_updated
+
+
+@router.put("/configuration/comptes/{code_compte}", response_model=CompteConfiguration)
+def update_compte(
+    code_compte: str,
+    payload: CompteConfigurationUpdate,
+    user: dict = Depends(require_permission("configuration", "write")),
+):
+    """Modifier le libellé ET le code d'un compte existant."""
+    code = (code_compte or "").strip()
+    new_code = (payload.code_compte or "").strip()
+    libelle = (payload.libelle_compte or "").strip()
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Le code compte est obligatoire")
+    if not new_code:
+        raise HTTPException(status_code=400, detail="Le nouveau code compte est obligatoire")
+    if not libelle:
+        raise HTTPException(status_code=400, detail="Le libellé compte est obligatoire")
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id
+            FROM comptes
+            WHERE code_compte = %s
+            ORDER BY id DESC
+            LIMIT 1
+            """,
+            (code,),
+        )
+        existing = cursor.fetchone()
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Compte introuvable")
+
+        cursor.execute(
+            """
+            UPDATE comptes
+            SET code_compte = %s,
+                libelle_compte = %s
+            WHERE id = %s
+            """,
+            (new_code, libelle, existing["id"]),
+        )
+
+        cursor.execute(
+            """
+            SELECT code_compte, libelle_compte
+            FROM comptes
+            WHERE id = %s
+            """,
+            (existing["id"],),
+        )
+        updated = cursor.fetchone()
+
+    if not updated:
+        raise HTTPException(status_code=500, detail="Impossible de mettre à jour le compte")
+
+    ws_manager.broadcast(
+        "configuration",
+        "update",
+        {"code_compte": updated["code_compte"]},
+    )
+
+    return updated
+
+
+@router.delete("/configuration/comptes/{code_compte}")
+def delete_compte(
+    code_compte: str,
+    user: dict = Depends(require_permission("configuration", "delete")),
+):
+    """Supprimer un compte (toutes les lignes avec ce code)."""
+    code = (code_compte or "").strip()
+    if not code:
+        raise HTTPException(status_code=400, detail="Le code compte est obligatoire")
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM comptes WHERE code_compte = %s",
+            (code,),
+        )
+        row = cursor.fetchone()
+        if not row or row["cnt"] == 0:
+            raise HTTPException(status_code=404, detail="Compte introuvable")
+
+        cursor.execute(
+            "DELETE FROM comptes WHERE code_compte = %s",
+            (code,),
+        )
+
+    ws_manager.broadcast(
+        "configuration",
+        "delete",
+        {"code_compte": code},
+    )
+
+    return {"message": "Compte supprimé avec succès", "code_compte": code}

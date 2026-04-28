@@ -1023,6 +1023,40 @@ body {
     background: rgba(183, 72, 43, 0.1);
 }
 
+/* ==================== Configuration ==================== */
+.olea-table.config-table th:nth-child(1),
+.olea-table.config-table td:nth-child(1) {
+    width: 25%;
+    text-align: left;
+}
+
+.olea-table.config-table th:nth-child(2),
+.olea-table.config-table td:nth-child(2) {
+    width: 55%;
+    text-align: left;
+}
+
+.olea-table.config-table th:nth-child(3),
+.olea-table.config-table td:nth-child(3) {
+    width: 20%;
+    text-align: center;
+}
+
+.config-actions {
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.config-actions .btn {
+    padding: 0.45rem 0.85rem;
+    font-size: 0.82rem;
+    min-width: 110px;
+}
+
+.config-pagination {
+    padding: 0 2rem 1.5rem;
+}
+
 .text-right {
     text-align: right;
 }

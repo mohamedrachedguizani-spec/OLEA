@@ -28,6 +28,7 @@ function App() {
     const [sageBfcRefresh, setSageBfcRefresh] = useState(0);
     const [forecastRefresh, setForecastRefresh] = useState(0);
     const [reportingRefresh, setReportingRefresh] = useState(0);
+    const [configurationRefresh, setConfigurationRefresh] = useState(0);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -60,6 +61,10 @@ function App() {
         forecast: () => {
             setForecastRefresh(prev => prev + 1);
             setReportingRefresh(prev => prev + 1);
+        },
+        configuration: () => {
+            setConfigurationRefresh(prev => prev + 1);
+            setMigrationRefresh(prev => prev + 1);
         },
     }, { enabled: Boolean(user) });
 
@@ -136,7 +141,7 @@ function App() {
                     {activeTab === 'dashboard' && <Dashboard refreshTrigger={refreshTrigger} />}
                     {activeTab === 'reporting' && hasPermission('reporting', 'read') && <Reporting refreshTrigger={reportingRefresh} />}
                     {activeTab === 'saisie' && <SaisieCaisse refreshTrigger={refreshTrigger} />}
-                    {activeTab === 'migration' && <MigrationSage onMigrationComplete={handleMigrationComplete} refreshTrigger={migrationRefresh} />}
+                    {activeTab === 'migration' && <MigrationSage onMigrationComplete={handleMigrationComplete} refreshTrigger={migrationRefresh + configurationRefresh} />}
                     {activeTab === 'export' && <ExportCSV />}
                     {activeTab === 'sage-bfc' && <SageBfcParser refreshTrigger={sageBfcRefresh} forecastRefresh={forecastRefresh} />}
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration />}

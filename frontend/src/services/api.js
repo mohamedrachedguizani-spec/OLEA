@@ -304,10 +304,11 @@ class ApiService {
 
     // ===================== Configuration =====================
 
-    static async getConfigurationComptes(search = '', limit = 200) {
+    static async getConfigurationComptes(search = '', page = 1, pageSize = 20) {
         const params = new URLSearchParams({
             search: String(search || ''),
-            limit: String(limit),
+            page: String(page),
+            page_size: String(pageSize),
         });
         const response = await ApiService._fetch(`${API_BASE_URL}/configuration/comptes/?${params.toString()}`);
         if (!response.ok) {
@@ -325,6 +326,29 @@ class ApiService {
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: 'Erreur lors de la sauvegarde du compte' }));
             throw new Error(err.detail || 'Erreur lors de la sauvegarde du compte');
+        }
+        return response.json();
+    }
+
+    static async updateConfigurationCompte(codeCompte, payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/comptes/${encodeURIComponent(codeCompte)}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la mise à jour du compte' }));
+            throw new Error(err.detail || 'Erreur lors de la mise à jour du compte');
+        }
+        return response.json();
+    }
+
+    static async deleteConfigurationCompte(codeCompte) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/comptes/${encodeURIComponent(codeCompte)}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression du compte' }));
+            throw new Error(err.detail || 'Erreur lors de la suppression du compte');
         }
         return response.json();
     }
