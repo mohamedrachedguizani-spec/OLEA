@@ -380,6 +380,121 @@ class ApiService {
 
     // ===================== SAGE → BFC Parser =====================
 
+    // Mapping CRUD
+    static async getSageBfcMappingSections() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/sections`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async getSageBfcMappingMeta() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/meta`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async getSageBfcMappingEntries(search = '', page = 1, pageSize = 50) {
+        const params = new URLSearchParams({
+            search: String(search || ''),
+            page: String(page),
+            page_size: String(pageSize),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/entries?${params.toString()}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async createSageBfcMappingEntry(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/entries`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la création du mapping' }));
+            throw new Error(err.detail || 'Erreur lors de la création du mapping');
+        }
+        return response.json();
+    }
+
+    static async updateSageBfcMappingEntry(codeCompte, payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/entries/${encodeURIComponent(codeCompte)}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la mise à jour du mapping' }));
+            throw new Error(err.detail || 'Erreur lors de la mise à jour du mapping');
+        }
+        return response.json();
+    }
+
+    static async deleteSageBfcMappingEntry(codeCompte, mappingSection) {
+        const params = new URLSearchParams();
+        if (mappingSection) params.append('mapping_section', mappingSection);
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/entries/${encodeURIComponent(codeCompte)}?${params.toString()}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression du mapping' }));
+            throw new Error(err.detail || 'Erreur lors de la suppression du mapping');
+        }
+        return response.json();
+    }
+
+    static async getSageBfcReglesAgregation() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/regles-agregation`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async updateSageBfcReglesAgregation(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/regles-agregation`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la mise à jour des règles' }));
+            throw new Error(err.detail || 'Erreur lors de la mise à jour des règles');
+        }
+        return response.json();
+    }
+
+    static async getSageBfcValidationsInterco() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/validations-interco`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async updateSageBfcValidationsInterco(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/validations-interco`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la mise à jour des validations interco' }));
+            throw new Error(err.detail || 'Erreur lors de la mise à jour des validations interco');
+        }
+        return response.json();
+    }
+
+    static async getSageBfcCorrespondancesBpcBfc() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/correspondances-bpc-bfc`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async updateSageBfcCorrespondancesBpcBfc(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/correspondances-bpc-bfc`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la mise à jour des correspondances' }));
+            throw new Error(err.detail || 'Erreur lors de la mise à jour des correspondances');
+        }
+        return response.json();
+    }
+
     // Récupérer les stats du mapping
     static async getSageBfcMappingStats() {
         const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/mapping/stats`);

@@ -1,9 +1,10 @@
 import io
 import json
+import re
 import uuid
 from decimal import Decimal
 from datetime import date
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, File, UploadFile, HTTPException, Query, Depends
 from fastapi.responses import StreamingResponse
@@ -20,7 +21,7 @@ from modules.forecast.engine import (
     sync_closed_years_into_history,
     generate_forecast,
 )
-from .config import get_mapping_config
+from .config import get_mapping_config, save_mapping_config
 from .mapper import SageBFCMapper
 from .parser import SageBalanceParser
 from .models import (
@@ -30,7 +31,10 @@ from .models import (
     MappingStats, 
     ParseRequest,
     MonthlyDataSummary,
-    MonthlyDataFull
+    MonthlyDataFull,
+    MappingEntryBase,
+    MappingEntryResponse,
+    MappingConfigResponse
 )
 
 router = APIRouter(
@@ -85,6 +89,35 @@ _AGREGAT_ALIASES = {
     "charges exceptionnelles": "charges_exceptionnelles",
 }
 
+_MAPPING_SECTIONS = [
+    "mapping_chiffre_affaires",
+    "mapping_retrocessions",
+    "mapping_frais_personnel",
+    "mapping_interco_frais",
+    "mapping_honoraires",
+    "mapping_frais_commerciaux",
+    "mapping_impots",
+    "mapping_fonctionnement",
+    "mapping_autres_charges",
+    "mapping_produits_exploitation",
+    "mapping_produits_financiers",
+    "mapping_charges_financieres",
+    "mapping_dotations",
+    "mapping_produits_exceptionnels",
+    "mapping_charges_exceptionnelles",
+    "mapping_impots_societes",
+    "mapping_capex",
+]
+
+_CODE_COMPTE_RE = re.compile(r"^\d{5,7}[A-Z]?$")
+_TYPE_ALLOWED = {"Produit", "Charge", "Actif"}
+_SENS_ALLOWED = {"+", "-"}
+_TYPE_CANONICAL = {
+    "produit": "Produit",
+    "charge": "Charge",
+    "actif": "Actif",
+}
+
 
 def _normalize_agregat_name(value: str) -> str:
     key = " ".join(str(value).strip().lower().replace("_", " ").replace("-", " ").split())
@@ -96,6 +129,108 @@ def _normalize_agregat_name(value: str) -> str:
         )
     return mapped
 
+def _validate_code_compte(code: str) -> None:
+    if not code or not _CODE_COMPTE_RE.match(code.strip()):
+        raise HTTPException(status_code=400, detail=f"Code compte invalide: '{code}'")
+
+def _normalize_str(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    return str(value).strip()
+
+def _validate_mapping_entry(payload: MappingEntryBase) -> None:
+    payload.code_compte = _normalize_str(payload.code_compte) or ""
+    payload.libelle_sage = _normalize_str(payload.libelle_sage) or ""
+    payload.categorie = _normalize_str(payload.categorie) or ""
+    payload.agregat_bfc = _normalize_str(payload.agregat_bfc) or ""
+    payload.sens = _normalize_str(payload.sens) or ""
+    payload.type_ligne = _normalize_str(payload.type_ligne) or ""
+
+    _validate_code_compte(payload.code_compte)
+    if not payload.libelle_sage:
+        raise HTTPException(status_code=400, detail="libelle_sage est obligatoire")
+    if not payload.categorie:
+        raise HTTPException(status_code=400, detail="categorie est obligatoire")
+    if not payload.agregat_bfc:
+        raise HTTPException(status_code=400, detail="agregat_bfc est obligatoire")
+
+    if payload.sens not in _SENS_ALLOWED:
+        raise HTTPException(status_code=400, detail="sens doit être '+' ou '-'")
+
+    type_key = payload.type_ligne.lower()
+    payload.type_ligne = _TYPE_CANONICAL.get(type_key, payload.type_ligne)
+    if payload.type_ligne not in _TYPE_ALLOWED:
+        raise HTTPException(status_code=400, detail="type doit être Produit, Charge ou Actif")
+
+def _find_sections_for_code(config: Dict[str, Any], code_compte: str) -> List[str]:
+    sections = []
+    for section in _MAPPING_SECTIONS:
+        if code_compte in config.get(section, {}):
+            sections.append(section)
+    return sections
+
+def _entry_to_response(section: str, code: str, entry: Dict[str, Any]) -> MappingEntryResponse:
+    merged = {"code_compte": code, **entry, "mapping_section": section}
+    if "type" in merged:
+        merged["type"] = merged.pop("type")
+    return MappingEntryResponse(**merged)
+
+def _validate_regles_agregation_payload(payload: Dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="regles_agregation doit être un objet")
+
+    for key, rule in payload.items():
+        if not isinstance(rule, dict):
+            raise HTTPException(status_code=400, detail=f"Règle '{key}' invalide")
+
+        formule = rule.get("formule")
+        dependances = rule.get("dependances")
+
+        if not isinstance(formule, str) or not formule.strip():
+            raise HTTPException(status_code=400, detail=f"Règle '{key}': formule obligatoire")
+
+        if dependances is not None:
+            if not isinstance(dependances, list) or any(not isinstance(d, str) or not d.strip() for d in dependances):
+                raise HTTPException(status_code=400, detail=f"Règle '{key}': dependances doit être une liste de chaînes")
+
+def _validate_validations_interco_payload(payload: Dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="validations_interco doit être un objet")
+
+    for key, rule in payload.items():
+        if not isinstance(rule, dict):
+            raise HTTPException(status_code=400, detail=f"Validation '{key}' invalide")
+
+        if "taux" in rule and not isinstance(rule.get("taux"), (int, float)):
+            raise HTTPException(status_code=400, detail=f"Validation '{key}': taux doit être numérique")
+
+        if "taux_trimestriel" in rule:
+            taux = rule.get("taux_trimestriel")
+            if not isinstance(taux, list) or len(taux) != 4 or any(not isinstance(v, (int, float)) for v in taux):
+                raise HTTPException(status_code=400, detail=f"Validation '{key}': taux_trimestriel doit être une liste de 4 nombres")
+
+        for field in ["tolerance", "tolerance_absolue", "tolerance_relative"]:
+            if field in rule and not isinstance(rule.get(field), (int, float)):
+                raise HTTPException(status_code=400, detail=f"Validation '{key}': {field} doit être numérique")
+
+        if "actif" in rule and not isinstance(rule.get("actif"), bool):
+            raise HTTPException(status_code=400, detail=f"Validation '{key}': actif doit être booléen")
+
+def _validate_correspondances_bpc_bfc_payload(payload: Dict[str, Any]) -> None:
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="correspondances_bpc_bfc doit être un objet")
+
+    code_re = re.compile(r"^[A-Z]\d{3,5}$")
+    for key, value in payload.items():
+        if not isinstance(key, str) or not key.strip():
+            raise HTTPException(status_code=400, detail="Clé de correspondance invalide")
+        if not isinstance(value, str) or not value.strip():
+            raise HTTPException(status_code=400, detail=f"Valeur vide pour la clé '{key}'")
+        if not code_re.match(key.strip()):
+            raise HTTPException(status_code=400, detail=f"Code BPC invalide: '{key}'")
+        if not code_re.match(value.strip()):
+            raise HTTPException(status_code=400, detail=f"Code BFC invalide: '{value}'")
+
 def get_mapper():
     """Dependency pour obtenir le mapper"""
     config = get_mapping_config()
@@ -104,6 +239,238 @@ def get_mapper():
 def get_parser(mapper: SageBFCMapper = Depends(get_mapper)):
     """Dependency pour obtenir le parser"""
     return SageBalanceParser(mapper)
+
+@router.get("/mapping/sections")
+async def get_mapping_sections():
+    return {"sections": _MAPPING_SECTIONS}
+
+@router.get("/mapping/meta")
+async def get_mapping_meta():
+    config = get_mapping_config()
+    categories = set()
+    agregats = set()
+    for section in _MAPPING_SECTIONS:
+        entries = config.get(section, {})
+        for entry in entries.values():
+            if not isinstance(entry, dict):
+                continue
+            categorie = entry.get("categorie")
+            agregat = entry.get("agregat_bfc")
+            if categorie:
+                categories.add(categorie)
+            if agregat:
+                agregats.add(agregat)
+
+    return {
+        "sections": _MAPPING_SECTIONS,
+        "categories": sorted(categories),
+        "agregats": sorted(agregats),
+    }
+
+@router.get("/mapping/config", response_model=MappingConfigResponse)
+async def get_mapping_config_full():
+    config = get_mapping_config()
+    mapping = {section: config.get(section, {}) for section in _MAPPING_SECTIONS}
+    return MappingConfigResponse(
+        version=config.get("version"),
+        description=config.get("description"),
+        metadata=config.get("metadata"),
+        regles_agregation=config.get("regles_agregation"),
+        validations_interco=config.get("validations_interco"),
+        alertes_metier=config.get("alertes_metier"),
+        correspondances_bpc_bfc=config.get("correspondances_bpc_bfc"),
+        mapping=mapping,
+    )
+
+@router.put("/mapping/config")
+async def put_mapping_config_full(payload: Dict[str, Any]):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload JSON invalide")
+    save_mapping_config(payload)
+    ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "full"})
+    return {"status": "ok"}
+
+@router.get("/mapping/entries")
+async def list_mapping_entries(
+    search: str = "",
+    page: int = 1,
+    page_size: int = 50,
+):
+    config = get_mapping_config()
+    results: List[MappingEntryResponse] = []
+    for section in _MAPPING_SECTIONS:
+        entries = config.get(section, {})
+        for code, entry in entries.items():
+            if isinstance(entry, dict):
+                results.append(_entry_to_response(section, code, entry))
+
+    query = " ".join(str(search or "").lower().split())
+    if query:
+        filtered = []
+        for entry in results:
+            haystack = " ".join(
+                str(v).lower()
+                for v in [
+                    entry.code_compte,
+                    entry.libelle_sage,
+                    entry.categorie,
+                    entry.agregat_bfc,
+                    entry.mapping_section,
+                ]
+                if v is not None
+            )
+            if query in haystack:
+                filtered.append(entry)
+        results = filtered
+
+    results.sort(key=lambda e: (e.mapping_section or "", e.code_compte or ""))
+
+    safe_page = max(1, int(page))
+    safe_page_size = max(1, min(int(page_size), 500))
+    total = len(results)
+    pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+    if safe_page > pages:
+        safe_page = pages
+
+    start = (safe_page - 1) * safe_page_size
+    end = start + safe_page_size
+    items = results[start:end]
+
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "pages": pages,
+    }
+
+@router.post("/mapping/entries", response_model=MappingEntryResponse)
+async def create_mapping_entry(payload: MappingEntryBase):
+    _validate_mapping_entry(payload)
+    if not payload.mapping_section:
+        raise HTTPException(status_code=400, detail="mapping_section est obligatoire pour l'ajout")
+    if payload.mapping_section not in _MAPPING_SECTIONS:
+        raise HTTPException(status_code=400, detail="mapping_section invalide")
+
+    config = get_mapping_config()
+    existing_sections = _find_sections_for_code(config, payload.code_compte)
+    if existing_sections:
+        raise HTTPException(status_code=409, detail="Le code compte existe déjà dans le mapping")
+
+    entry_data = payload.dict(by_alias=True, exclude_none=True)
+    entry_data.pop("mapping_section", None)
+    config.setdefault(payload.mapping_section, {})[payload.code_compte] = entry_data
+    save_mapping_config(config)
+    ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "entry", "code_compte": payload.code_compte})
+    return _entry_to_response(payload.mapping_section, payload.code_compte, entry_data)
+
+@router.put("/mapping/entries/{code_compte}", response_model=MappingEntryResponse)
+async def update_mapping_entry(code_compte: str, payload: MappingEntryBase):
+    _validate_mapping_entry(payload)
+    original_code = code_compte
+    new_code = payload.code_compte
+    if not original_code:
+        raise HTTPException(status_code=400, detail="code_compte dans l'URL est obligatoire")
+
+    config = get_mapping_config()
+    sections = _find_sections_for_code(config, original_code)
+    if not sections:
+        raise HTTPException(status_code=404, detail="Code compte introuvable")
+
+    target_section = payload.mapping_section
+    if not target_section:
+        if len(sections) > 1:
+            raise HTTPException(status_code=400, detail="mapping_section requis (code présent dans plusieurs sections)")
+        target_section = sections[0]
+    if target_section not in _MAPPING_SECTIONS:
+        raise HTTPException(status_code=400, detail="mapping_section invalide")
+
+    if new_code != original_code:
+        existing_sections = _find_sections_for_code(config, new_code)
+        if existing_sections:
+            raise HTTPException(status_code=409, detail="Le nouveau code compte existe déjà dans le mapping")
+
+    for section in sections:
+        if original_code in config.get(section, {}):
+            del config[section][original_code]
+
+    entry_data = payload.dict(by_alias=True, exclude_none=True)
+    entry_data.pop("mapping_section", None)
+    config.setdefault(target_section, {})[new_code] = entry_data
+    save_mapping_config(config)
+    ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "entry", "code_compte": new_code})
+    return _entry_to_response(target_section, new_code, entry_data)
+
+@router.delete("/mapping/entries/{code_compte}")
+async def delete_mapping_entry(code_compte: str, mapping_section: Optional[str] = Query(None)):
+    _validate_code_compte(code_compte)
+    config = get_mapping_config()
+    sections = _find_sections_for_code(config, code_compte)
+    if not sections:
+        raise HTTPException(status_code=404, detail="Code compte introuvable")
+
+    target_section = mapping_section
+    if not target_section:
+        if len(sections) > 1:
+            raise HTTPException(status_code=400, detail="mapping_section requis (code présent dans plusieurs sections)")
+        target_section = sections[0]
+    if target_section not in _MAPPING_SECTIONS:
+        raise HTTPException(status_code=400, detail="mapping_section invalide")
+    if code_compte not in config.get(target_section, {}):
+        raise HTTPException(status_code=404, detail="Code compte introuvable dans cette section")
+
+    del config[target_section][code_compte]
+    save_mapping_config(config)
+    ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "entry", "code_compte": code_compte})
+    return {"status": "deleted", "code_compte": code_compte}
+
+@router.get("/mapping/regles-agregation")
+async def get_regles_agregation():
+    config = get_mapping_config()
+    return config.get("regles_agregation", {})
+
+@router.put("/mapping/regles-agregation")
+async def put_regles_agregation(payload: Dict[str, Any]):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload invalide")
+    _validate_regles_agregation_payload(payload)
+    config = get_mapping_config()
+    config["regles_agregation"] = payload
+    save_mapping_config(config)
+    ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "regles_agregation"})
+    return {"status": "ok"}
+
+@router.get("/mapping/validations-interco")
+async def get_validations_interco():
+    config = get_mapping_config()
+    return config.get("validations_interco", {})
+
+@router.put("/mapping/validations-interco")
+async def put_validations_interco(payload: Dict[str, Any]):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload invalide")
+    _validate_validations_interco_payload(payload)
+    config = get_mapping_config()
+    config["validations_interco"] = payload
+    save_mapping_config(config)
+    ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "validations_interco"})
+    return {"status": "ok"}
+
+@router.get("/mapping/correspondances-bpc-bfc")
+async def get_correspondances_bpc_bfc():
+    config = get_mapping_config()
+    return config.get("correspondances_bpc_bfc", {})
+
+@router.put("/mapping/correspondances-bpc-bfc")
+async def put_correspondances_bpc_bfc(payload: Dict[str, Any]):
+    if not isinstance(payload, dict):
+        raise HTTPException(status_code=400, detail="Payload invalide")
+    _validate_correspondances_bpc_bfc_payload(payload)
+    config = get_mapping_config()
+    config["correspondances_bpc_bfc"] = payload
+    save_mapping_config(config)
+    ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "correspondances_bpc_bfc"})
+    return {"status": "ok"}
 
 @router.get("/mapping/stats", response_model=MappingStats)
 async def get_mapping_stats(mapper: SageBFCMapper = Depends(get_mapper)):

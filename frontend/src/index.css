@@ -1024,6 +1024,48 @@ body {
 }
 
 /* ==================== Configuration ==================== */
+.config-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.config-tabs {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.3rem;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    box-shadow: var(--shadow-xs);
+}
+
+.config-tab {
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    padding: 0.5rem 1rem;
+    font-weight: 600;
+    font-size: 0.9rem;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: var(--transition-fast);
+}
+
+.config-tab:hover {
+    background: var(--bg-hover);
+    color: var(--text-primary);
+}
+
+.config-tab.active {
+    background: var(--gradient-primary);
+    color: var(--text-inverse);
+    box-shadow: var(--shadow-sm);
+}
+
 .olea-table.config-table th:nth-child(1),
 .olea-table.config-table td:nth-child(1) {
     width: 25%;
@@ -1039,6 +1081,58 @@ body {
 .olea-table.config-table th:nth-child(3),
 .olea-table.config-table td:nth-child(3) {
     width: 20%;
+    text-align: center;
+}
+
+.olea-table.mapping-table {
+    table-layout: auto;
+}
+
+.olea-table.mapping-table th,
+.olea-table.mapping-table td {
+    text-align: left;
+}
+
+.olea-table.mapping-table th:nth-child(1),
+.olea-table.mapping-table td:nth-child(1) {
+    width: 14%;
+}
+
+.olea-table.mapping-table th:nth-child(2),
+.olea-table.mapping-table td:nth-child(2) {
+    width: 12%;
+}
+
+.olea-table.mapping-table th:nth-child(3),
+.olea-table.mapping-table td:nth-child(3) {
+    width: 24%;
+}
+
+.olea-table.mapping-table th:nth-child(4),
+.olea-table.mapping-table td:nth-child(4) {
+    width: 14%;
+}
+
+.olea-table.mapping-table th:nth-child(5),
+.olea-table.mapping-table td:nth-child(5) {
+    width: 14%;
+}
+
+.olea-table.mapping-table th:nth-child(6),
+.olea-table.mapping-table td:nth-child(6) {
+    width: 10%;
+    text-align: center;
+}
+
+.olea-table.mapping-table th:nth-child(7),
+.olea-table.mapping-table td:nth-child(7) {
+    width: 6%;
+    text-align: center;
+}
+
+.olea-table.mapping-table th:nth-child(8),
+.olea-table.mapping-table td:nth-child(8) {
+    width: 6%;
     text-align: center;
 }
 

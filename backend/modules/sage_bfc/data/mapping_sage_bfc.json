@@ -1,14 +1,12 @@
 {
   "version": "2025.1-complete",
   "description": "Mapping COMPLET SAGE → BFC Budget OLEA Tunisia",
-  
   "metadata": {
     "derniere_verification": "2025-01-15",
     "nombre_comptes": 85,
     "entite": "OLEA Tunisia",
     "devise": "TND"
   },
-
   "mapping_chiffre_affaires": {
     "7050001T": {
       "libelle_sage": "COMMISSION COMPTANT/GMP IARDT",
@@ -48,7 +46,6 @@
       "bfc_mapping": "G706200"
     }
   },
-
   "mapping_retrocessions": {
     "62204T": {
       "libelle_sage": "Rétrocession Unirisc",
@@ -125,7 +122,6 @@
       "note": "Ne plus utiliser - archivé"
     }
   },
-
   "mapping_frais_personnel": {
     "6410000T": {
       "libelle_sage": "SIVP",
@@ -255,7 +251,6 @@
       "bfc_mapping": "G631100"
     }
   },
-
   "mapping_interco_frais": {
     "61104T": {
       "libelle_sage": "BRAND FEES OLEA HOLDING",
@@ -268,13 +263,18 @@
       "bfc_mapping": "G611104",
       "validation_interco": {
         "type": "pourcentage_ca_trimestriel",
-        "taux_trimestriel": [0, 0, 0, 0.0083],
+        "taux_trimestriel": [
+          0,
+          0,
+          0,
+          0.0083
+        ],
         "base_calculation": "CA Brut dernier trimestre",
         "tolerance": 100
       },
       "note": "0.83% sur le dernier trimestre uniquement"
     },
-      "6311000T": {
+    "6311000T": {
       "libelle_sage": "REDEVANCE / CONCESSION, MARQUE, LICENCE, PROCEDE, DROITS ET VALEURS SIMILAIRES",
       "agregat_bfc": "Honoraires & Sous-traitance",
       "categorie": "COÛTS",
@@ -285,7 +285,12 @@
       "bfc_mapping": "G611104",
       "validation_interco": {
         "type": "pourcentage_ca_trimestriel",
-        "taux_trimestriel": [0, 0, 0, 0.0083],
+        "taux_trimestriel": [
+          0,
+          0,
+          0,
+          0.0083
+        ],
         "base_calculation": "CA Brut dernier trimestre",
         "tolerance": 100
       },
@@ -309,7 +314,6 @@
       "note": "5% - Actuellement désactivé"
     }
   },
-
   "mapping_honoraires": {
     "6122000T": {
       "libelle_sage": "IT COST OLEA HOLDING",
@@ -389,7 +393,6 @@
       "bfc_mapping": "G622620"
     }
   },
-
   "mapping_frais_commerciaux": {
     "6230000T": {
       "libelle_sage": "Publicité, publications, relations",
@@ -452,7 +455,6 @@
       "bfc_mapping": "G625700"
     }
   },
-
   "mapping_impots": {
     "6360000T": {
       "libelle_sage": "PENALITE DE RETARD",
@@ -485,7 +487,6 @@
       "bfc_mapping": "G637800"
     }
   },
-
   "mapping_fonctionnement": {
     "6061000T": {
       "libelle_sage": "Eau, électricité ...",
@@ -708,7 +709,6 @@
       "bfc_mapping": "G627800"
     }
   },
-
   "mapping_autres_charges": {
     "6040001T": {
       "libelle_sage": "GESTE COMMERCIAL",
@@ -761,7 +761,6 @@
       "bfc_mapping": "G658000"
     }
   },
-
   "mapping_produits_exploitation": {
     "7300000T": {
       "libelle_sage": "gain divers",
@@ -782,7 +781,6 @@
       "bfc_mapping": "G708260"
     }
   },
-
   "mapping_produits_financiers": {
     "7600000T": {
       "libelle_sage": "Produits financiers divers",
@@ -822,37 +820,35 @@
       "note": "Interco - OHF"
     }
   },
-
   "mapping_charges_financieres": {
-  "6500000T": {
-    "libelle_sage": "Charge Financière",
-    "agregat_bfc": "Charges Financières",
-    "categorie": "COÛTS",
-    "type": "Charge",
-    "sens": "-",
-    "bpc_mapping": "R66820",
-    "bfc_mapping": "G668000"
+    "6500000T": {
+      "libelle_sage": "Charge Financière",
+      "agregat_bfc": "Charges Financières",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R66820",
+      "bfc_mapping": "G668000"
+    },
+    "6610000T": {
+      "libelle_sage": "Charges d'intérêts",
+      "agregat_bfc": "Charges Financières",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R66100",
+      "bfc_mapping": "G661000"
+    },
+    "6680000T": {
+      "libelle_sage": "Autres charges financières",
+      "agregat_bfc": "Charges Financières",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "sens": "-",
+      "bpc_mapping": "R66820",
+      "bfc_mapping": "G668000"
+    }
   },
-  "6610000T": {
-    "libelle_sage": "Charges d'intérêts",
-    "agregat_bfc": "Charges Financières",
-    "categorie": "COÛTS",
-    "type": "Charge",
-    "sens": "-",
-    "bpc_mapping": "R66100",
-    "bfc_mapping": "G661000"
-  },
-  "6680000T": {
-    "libelle_sage": "Autres charges financières",
-    "agregat_bfc": "Charges Financières",
-    "categorie": "COÛTS",
-    "type": "Charge",
-    "sens": "-",
-    "bpc_mapping": "R66820",
-    "bfc_mapping": "G668000"
-  }
-},
-
   "mapping_dotations": {
     "6811100T": {
       "libelle_sage": "Dot/amort. immob. incorporelles",
@@ -906,7 +902,6 @@
       "bfc_mapping": "G681124"
     }
   },
-
   "mapping_produits_exceptionnels": {
     "7710000T": {
       "libelle_sage": "Produits exceptionnels sur opérations de gestion",
@@ -925,9 +920,16 @@
       "sens": "+",
       "bpc_mapping": "R77500",
       "bfc_mapping": "G775000"
+    },
+    "777777": {
+      "code_compte": "777777",
+      "libelle_sage": "GAIN",
+      "categorie": "RESULTAT",
+      "type": "Produit",
+      "agregat_bfc": "Produits Exceptionnels",
+      "sens": "+"
     }
   },
-
   "mapping_charges_exceptionnelles": {
     "6720000T": {
       "libelle_sage": "Charges /exercices antérieurs",
@@ -948,7 +950,6 @@
       "bfc_mapping": "G675000"
     }
   },
-
   "mapping_impots_societes": {
     "6910000T": {
       "libelle_sage": "IMPOT SUR LES SOCIETE",
@@ -987,7 +988,6 @@
       "bfc_mapping": "G695100"
     }
   },
-
   "mapping_capex": {
     "2111000T": {
       "libelle_sage": "INVESTISSEMENT DE RECHERCHE & DEVELOPPEMENT",
@@ -1053,7 +1053,6 @@
       "bfc_mapping": "G228100"
     }
   },
-
   "regles_agregation": {
     "retrocessions": {
       "formule": "sum(mapping_retrocessions)",
@@ -1062,54 +1061,94 @@
     },
     "ca_net": {
       "formule": "CA Brut - Retrocessions",
-      "dependances": ["CA Brut", "Retrocessions"]
+      "dependances": [
+        "CA Brut",
+        "Retrocessions"
+      ]
     },
     "total_produits_exploitation": {
       "formule": "CA Net + Autres Produits d'Exploitation",
-      "dependances": ["CA Net", "Autres Produits d'Exploitation"]
+      "dependances": [
+        "CA Net",
+        "Autres Produits d'Exploitation"
+      ]
     },
     "total_charges_courantes": {
       "formule": "Frais de Personnel + Honoraires & Sous-traitance (incl. Brand Fees + Management Fees) + Frais Commerciaux + Impôts et taxes + Fonctionnement Courant + Autres Charges",
-      "dependances": ["Frais de Personnel", "Honoraires & Sous-traitance", "Frais Commerciaux", "Impôts et taxes", "Fonctionnement Courant", "Autres Charges"]
+      "dependances": [
+        "Frais de Personnel",
+        "Honoraires & Sous-traitance",
+        "Frais Commerciaux",
+        "Impôts et taxes",
+        "Fonctionnement Courant",
+        "Autres Charges"
+      ]
     },
     "ebitda": {
       "formule": "Total Produits d'Exploitation - Total Charges Courantes",
-      "dependances": ["Total Produits d'Exploitation", "Total Charges Courantes"]
+      "dependances": [
+        "Total Produits d'Exploitation",
+        "Total Charges Courantes"
+      ]
     },
     "ebitda_pct": {
       "formule": "EBITDA / CA Net * 100",
-      "dependances": ["EBITDA", "CA Net"],
+      "dependances": [
+        "EBITDA",
+        "CA Net"
+      ],
       "format": "pourcentage"
     },
     "resultat_financier": {
       "formule": "Produits Financiers - Charges Financières",
-      "dependances": ["Produits Financiers", "Charges Financières"]
+      "dependances": [
+        "Produits Financiers",
+        "Charges Financières"
+      ]
     },
     "resultat_exceptionnel": {
       "formule": "Produits Exceptionnels - Charges Exceptionnelles",
-      "dependances": ["Produits Exceptionnels", "Charges Exceptionnelles"]
+      "dependances": [
+        "Produits Exceptionnels",
+        "Charges Exceptionnelles"
+      ]
     },
     "resultat_avant_impot": {
       "formule": "EBITDA + Résultat Financier - Dotations Amortissements & Provisions + Résultat Exceptionnel",
-      "dependances": ["EBITDA", "Résultat Financier", "Dotations Amortissements & Provisions", "Résultat Exceptionnel"]
+      "dependances": [
+        "EBITDA",
+        "Résultat Financier",
+        "Dotations Amortissements & Provisions",
+        "Résultat Exceptionnel"
+      ]
     },
     "resultat_net": {
       "formule": "Résultat avant Impôt - Impôt sur les sociétés",
-      "dependances": ["Résultat avant Impôt", "Impôt sur les sociétés"]
+      "dependances": [
+        "Résultat avant Impôt",
+        "Impôt sur les sociétés"
+      ]
     },
     "resultat_net_pct": {
       "formule": "Résultat Net / CA Net * 100",
-      "dependances": ["Résultat Net", "CA Net"],
+      "dependances": [
+        "Résultat Net",
+        "CA Net"
+      ],
       "format": "pourcentage"
     }
   },
-
   "validations_interco": {
     "brand_fees": {
       "actif": true,
       "nom": "Brand Fees (Marque)",
       "description": "0.83% sur le CA du dernier trimestre",
-      "taux_trimestriel": [0, 0, 0, 0.0083],
+      "taux_trimestriel": [
+        0,
+        0,
+        0,
+        0.0083
+      ],
       "base_calculation": "CA Brut du trimestre en cours si T4",
       "tolerance_absolue": 500,
       "tolerance_relative": 0.05,
@@ -1130,7 +1169,11 @@
       "description": "3% du CA total",
       "taux": 0.03,
       "base_calculation": "CA Brut",
-      "codes_comptes": ["6122000T", "6122100T", "6122200T"],
+      "codes_comptes": [
+        "6122000T",
+        "6122100T",
+        "6122200T"
+      ],
       "tolerance_absolue": 1000,
       "tolerance_relative": 0.02
     },
@@ -1143,7 +1186,6 @@
       "raison_desactivation": "Non appliqué selon instructions fichier"
     }
   },
-
   "alertes_metier": {
     "seuils_ebitda": {
       "niveau_critique": -0.1,
@@ -1160,7 +1202,6 @@
       "description": "Alerte si consommation budget > 110% ou < 80% de la prévision temporelle"
     }
   },
-
   "correspondances_bpc_bfc": {
     "R70601": "G706200",
     "R70608": "G706200",
