@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import get_current_user, restrict_superadmin
 from modules.audit.service import log_audit_action
 from modules.forecast.engine import (
     sync_actuals_from_resume,
@@ -42,7 +42,7 @@ router = APIRouter(
     prefix="/sage-bfc",
     tags=["SAGE → BFC Parser"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(restrict_superadmin("sage_bfc"))],
 )
 
 # Stockage temporaire des tableaux générés (en production, utiliser Redis/DB)

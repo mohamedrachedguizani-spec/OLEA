@@ -5615,7 +5615,7 @@ body {
 
 .login-brand-panel {
     flex: 1;
-    background: var(--gradient-primary);
+    background: var(--bg-elevated);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -5631,13 +5631,13 @@ body {
     right: -50%;
     width: 100%;
     height: 100%;
-    background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 60%);
+    background: radial-gradient(circle, rgba(0,0,0,0.04) 0%, transparent 60%);
     pointer-events: none;
 }
 
 .login-brand-content {
     text-align: center;
-    color: white;
+    color: var(--text-primary);
     position: relative;
     z-index: 1;
 }

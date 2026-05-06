@@ -9,15 +9,22 @@ Stratégie de sécurité :
   - Le superadmin a toutes les permissions automatiquement
 
 Performance :
-  - Vérification JWT (cryptographique) sans DB = chemin rapide
-  - Requête DB uniquement pour vérifier is_active et token_version
-  - Le pool de connexions évite le coût d'ouverture/fermeture à chaque appel
+    - Vérification JWT (cryptographique) sans DB = chemin rapide
+    - Requête DB uniquement pour vérifier is_active et token_version
+    - Le pool de connexions évite le coût d'ouverture/fermeture à chaque appel
+
+Accès superadmin :
+    - Par défaut, le superadmin n'accède qu'à ses modules associés
+        (tableau de bord, utilisateurs, audit)
 """
 
 from fastapi import Request, HTTPException, status
 from database import db
 from .security import decode_access_token
 from .models import RoleEnum
+
+
+SUPERADMIN_ALLOWED_MODULES = {"dashboard", "users", "audit"}
 
 
 # ─── Récupérer l'utilisateur courant ───
@@ -112,10 +119,30 @@ def require_role(*roles: RoleEnum):
 
 # ─── Vérifier les permissions par module ───
 
+def restrict_superadmin(module_name: str):
+    """
+    Factory de dépendance : interdit au superadmin les modules non autorisés.
+    Ne change pas le comportement des autres rôles.
+
+    Usage : Depends(restrict_superadmin("saisie_caisse"))
+    """
+
+    def checker(request: Request) -> dict:
+        user = get_current_user(request)
+        if user["role"] == "superadmin" and module_name not in SUPERADMIN_ALLOWED_MODULES:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Accès interdit — module '{module_name}' non autorisé pour le superadmin",
+            )
+        return user
+
+    return checker
+
+
 def require_permission(module_name: str, action: str = "read"):
     """
     Factory de dépendance : exige une permission spécifique sur un module.
-    Le superadmin a automatiquement toutes les permissions.
+    Le superadmin n'a accès qu'aux modules autorisés.
 
     Usage : Depends(require_permission("saisie_caisse", "write"))
 
@@ -131,9 +158,14 @@ def require_permission(module_name: str, action: str = "read"):
     def checker(request: Request) -> dict:
         user = get_current_user(request)
 
-        # Le superadmin a accès à tout
+        # Le superadmin n'accède qu'aux modules autorisés
         if user["role"] == "superadmin":
-            return user
+            if module_name in SUPERADMIN_ALLOWED_MODULES:
+                return user
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Accès interdit — module '{module_name}' non autorisé pour le superadmin",
+            )
 
         with db.get_cursor() as cursor:
             cursor.execute(

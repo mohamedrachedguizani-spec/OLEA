@@ -7,14 +7,14 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 
 from database import db
-from modules.auth.dependencies import get_current_user, require_permission
+from modules.auth.dependencies import get_current_user, require_permission, restrict_superadmin
 from modules.forecast.engine import get_annual_comparison, get_comparison, get_cycle_status, get_subagregats
 
 router = APIRouter(
     prefix="/reporting",
     tags=["Reporting"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(restrict_superadmin("reporting"))],
 )
 
 

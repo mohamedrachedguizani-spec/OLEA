@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import get_current_user, restrict_superadmin
 from modules.audit.service import log_audit_action
 from .engine import (
     generate_forecast,
@@ -43,7 +43,7 @@ router = APIRouter(
     prefix="/forecast",
     tags=["Forecast Budget BFC"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(restrict_superadmin("forecast"))],
 )
 
 

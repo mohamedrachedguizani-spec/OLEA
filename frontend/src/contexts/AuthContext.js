@@ -4,6 +4,8 @@ import ApiService from '../services/api';
 
 const AuthContext = createContext(null);
 
+const SUPERADMIN_ALLOWED_MODULES = new Set(['dashboard', 'users', 'audit']);
+
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -83,7 +85,7 @@ export function AuthProvider({ children }) {
     // Vérifier si l'utilisateur a la permission sur un module
     const hasPermission = (moduleName, action = 'read') => {
         if (!user) return false;
-        if (user.role === 'superadmin') return true;
+        if (user.role === 'superadmin') return SUPERADMIN_ALLOWED_MODULES.has(moduleName);
         const perm = user.permissions?.find(p => p.module_name === moduleName);
         if (!perm) return false;
         if (action === 'read') return perm.can_read;

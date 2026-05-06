@@ -38,11 +38,11 @@ function Sidebar({
 
     ];
 
-    // Filtrer : superadmin voit tout, les autres selon permissions
+    // Filtrer : superadmin ne voit que le tableau de bord, les autres selon permissions
     const menuItems = allMenuItems.filter(item => {
         if (item.alwaysVisible) return true;
         if (item.superadminOnly) return isSuperAdmin;
-        if (isSuperAdmin) return true;
+        if (isSuperAdmin) return false;
         return hasPermission(item.module, 'read');
     });
 

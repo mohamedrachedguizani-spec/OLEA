@@ -3,7 +3,7 @@ from typing import List
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user, require_permission
+from modules.auth.dependencies import get_current_user, require_permission, restrict_superadmin
 from modules.audit.service import log_audit_action
 from .models import CompteConfiguration, CompteConfigurationCreate, CompteConfigurationUpdate, CompteConfigurationPage
 
@@ -11,7 +11,7 @@ from .models import CompteConfiguration, CompteConfigurationCreate, CompteConfig
 router = APIRouter(
     tags=["Configuration"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(restrict_superadmin("configuration"))],
 )
 
 

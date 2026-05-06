@@ -7,13 +7,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Request
 
 from database import db
-from modules.auth.dependencies import get_current_user
+from modules.auth.dependencies import get_current_user, restrict_superadmin
 from modules.audit.service import log_audit_action
 
 router = APIRouter(
     tags=["Export CSV"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(restrict_superadmin("export_csv"))],
 )
 
 
