@@ -519,7 +519,7 @@ function Configuration() {
                                                                 onClick={() => handleEdit(compte)}
                                                                 title="Modifier"
                                                             >
-                                                                ✏️ Modifier
+                                                                ✏️ 
                                                             </button>
                                                             <button
                                                                 className="btn btn-sm btn-danger"
@@ -527,7 +527,7 @@ function Configuration() {
                                                                 title="Supprimer"
                                                                 disabled={saving}
                                                             >
-                                                                🗑️ Supprimer
+                                                                🗑️ 
                                                             </button>
                                                         </div>
                                                     </td>
@@ -888,7 +888,7 @@ function Configuration() {
                                                                     onClick={() => handleMappingEdit(entry)}
                                                                     title="Modifier"
                                                                 >
-                                                                    ✏️ Modifier
+                                                                    ✏️ 
                                                                 </button>
                                                                 <button
                                                                     className="btn btn-sm btn-danger"
@@ -896,7 +896,7 @@ function Configuration() {
                                                                     title="Supprimer"
                                                                     disabled={mappingSaving}
                                                                 >
-                                                                    🗑️ Supprimer
+                                                                    🗑️ 
                                                                 </button>
                                                             </div>
                                                         </td>

@@ -1,11 +1,12 @@
 # modules/migration_sage/router.py
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from datetime import date
 from typing import List, Optional
 
 from database import db
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user
+from modules.audit.service import log_audit_action
 from .models import (
     EcritureSage,
     EcritureSageCreate,
@@ -40,7 +41,11 @@ def get_ecritures_a_migrer():
 # ═══════════════════════════════════════════════════════════
 
 @router.post("/migrer-ecriture/")
-def migrer_ecriture(migration: MigrationRequest):
+def migrer_ecriture(
+    migration: MigrationRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Migrer une écriture de caisse vers le format Sage (2 lignes)"""
     with db.get_cursor() as cursor:
         cursor.execute("""
@@ -106,6 +111,16 @@ def migrer_ecriture(migration: MigrationRequest):
         # Notifier aussi la caisse (l'écriture est passée en migrée)
         ws_manager.broadcast("caisse", "update", {"id": ecriture_caisse['id']})
 
+        log_audit_action(
+            user=user,
+            action="migrate",
+            module="migration_sage",
+            entity_type="ecriture_caisse",
+            entity_id=str(ecriture_caisse['id']),
+            detail={"numero_piece": numero_piece},
+            request=request,
+        )
+
         return {
             "message": "Écriture migrée avec succès",
             "ecriture_caisse_id": ecriture_caisse['id'],
@@ -115,7 +130,11 @@ def migrer_ecriture(migration: MigrationRequest):
 
 
 @router.post("/migrer-tout/")
-def migrer_tout(migrations: List[MigrationRequest]):
+def migrer_tout(
+    migrations: List[MigrationRequest],
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Migrer plusieurs écritures de caisse vers le format Sage"""
     resultats = []
     erreurs = []
@@ -133,6 +152,16 @@ def migrer_tout(migrations: List[MigrationRequest]):
     if resultats:
         ws_manager.broadcast("migration", "migrate_all", {"count": len(resultats)})
         ws_manager.broadcast("caisse", "update", {"bulk": True})
+
+    log_audit_action(
+        user=user,
+        action="migrate_bulk",
+        module="migration_sage",
+        entity_type="ecritures_caisse",
+        entity_id=None,
+        detail={"count": len(resultats), "errors": len(erreurs)},
+        request=request,
+    )
 
     return {
         "message": f"{len(resultats)} écritures migrées avec succès",

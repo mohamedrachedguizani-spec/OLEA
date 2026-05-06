@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import List
 
 from database import db
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user, require_permission
+from modules.audit.service import log_audit_action
 from .models import CompteConfiguration, CompteConfigurationCreate, CompteConfigurationUpdate, CompteConfigurationPage
 
 
@@ -78,6 +79,7 @@ def get_configuration_comptes(
 @router.post("/configuration/comptes/", response_model=CompteConfiguration)
 def create_or_update_compte(
     payload: CompteConfigurationCreate,
+    request: Request,
     user: dict = Depends(require_permission("configuration", "write")),
 ):
     """Créer un nouveau compte ou mettre à jour son libellé s'il existe."""
@@ -143,6 +145,16 @@ def create_or_update_compte(
         {"code_compte": created_or_updated["code_compte"]},
     )
 
+    log_audit_action(
+        user=user,
+        action="upsert",
+        module="configuration",
+        entity_type="compte",
+        entity_id=created_or_updated["code_compte"],
+        detail={"libelle_compte": created_or_updated["libelle_compte"]},
+        request=request,
+    )
+
     return created_or_updated
 
 
@@ -150,6 +162,7 @@ def create_or_update_compte(
 def update_compte(
     code_compte: str,
     payload: CompteConfigurationUpdate,
+    request: Request,
     user: dict = Depends(require_permission("configuration", "write")),
 ):
     """Modifier le libellé ET le code d'un compte existant."""
@@ -209,12 +222,23 @@ def update_compte(
         {"code_compte": updated["code_compte"]},
     )
 
+    log_audit_action(
+        user=user,
+        action="update",
+        module="configuration",
+        entity_type="compte",
+        entity_id=updated["code_compte"],
+        detail={"old_code": code, "libelle_compte": updated["libelle_compte"]},
+        request=request,
+    )
+
     return updated
 
 
 @router.delete("/configuration/comptes/{code_compte}")
 def delete_compte(
     code_compte: str,
+    request: Request,
     user: dict = Depends(require_permission("configuration", "delete")),
 ):
     """Supprimer un compte (toutes les lignes avec ce code)."""
@@ -240,6 +264,15 @@ def delete_compte(
         "configuration",
         "delete",
         {"code_compte": code},
+    )
+
+    log_audit_action(
+        user=user,
+        action="delete",
+        module="configuration",
+        entity_type="compte",
+        entity_id=code,
+        request=request,
     )
 
     return {"message": "Compte supprimé avec succès", "code_compte": code}

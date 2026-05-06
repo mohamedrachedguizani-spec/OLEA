@@ -1,11 +1,12 @@
 # modules/saisie_caisse/router.py
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from datetime import date, datetime, timedelta
 from typing import List, Optional
 
 from database import db
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user
+from modules.audit.service import log_audit_action
 from .models import (
     EcritureCaisse,
     EcritureCaisseCreate,
@@ -101,7 +102,11 @@ def update_libelle_frequent(libelle: str):
 # ═══════════════════════════════════════════════════════════
 
 @router.post("/ecritures-caisse/", response_model=EcritureCaisse)
-def create_ecriture_caisse(ecriture: EcritureCaisseCreate):
+def create_ecriture_caisse(
+    ecriture: EcritureCaisseCreate,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Ajouter une nouvelle écriture de caisse"""
     with db.get_cursor() as cursor:
         cursor.execute("""
@@ -121,6 +126,16 @@ def create_ecriture_caisse(ecriture: EcritureCaisseCreate):
         update_libelle_frequent(ecriture.libelle_ecriture)
 
         ws_manager.broadcast("caisse", "create", {"id": ecriture_id})
+
+        log_audit_action(
+            user=user,
+            action="create",
+            module="saisie_caisse",
+            entity_type="ecriture_caisse",
+            entity_id=str(ecriture_id),
+            detail={"date_ecriture": str(ecriture.date_ecriture), "libelle": ecriture.libelle_ecriture},
+            request=request,
+        )
 
         return result
 
@@ -171,7 +186,12 @@ def get_ecriture_caisse(ecriture_id: int):
 
 
 @router.put("/ecritures-caisse/{ecriture_id}")
-def update_ecriture_caisse(ecriture_id: int, ecriture: EcritureCaisseCreate):
+def update_ecriture_caisse(
+    ecriture_id: int,
+    ecriture: EcritureCaisseCreate,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Modifier une écriture de caisse"""
     with db.get_cursor() as cursor:
         cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
@@ -207,11 +227,25 @@ def update_ecriture_caisse(ecriture_id: int, ecriture: EcritureCaisseCreate):
 
         ws_manager.broadcast("caisse", "update", {"id": ecriture_id})
 
+        log_audit_action(
+            user=user,
+            action="update",
+            module="saisie_caisse",
+            entity_type="ecriture_caisse",
+            entity_id=str(ecriture_id),
+            detail={"date_ecriture": str(ecriture.date_ecriture), "libelle": ecriture.libelle_ecriture},
+            request=request,
+        )
+
         return result
 
 
 @router.delete("/ecritures-caisse/{ecriture_id}")
-def delete_ecriture_caisse(ecriture_id: int):
+def delete_ecriture_caisse(
+    ecriture_id: int,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Supprimer une écriture de caisse"""
     with db.get_cursor() as cursor:
         cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
@@ -231,6 +265,16 @@ def delete_ecriture_caisse(ecriture_id: int):
         recalculate_soldes_from(cursor, deleted_date, deleted_id)
 
         ws_manager.broadcast("caisse", "delete", {"id": ecriture_id})
+
+        log_audit_action(
+            user=user,
+            action="delete",
+            module="saisie_caisse",
+            entity_type="ecriture_caisse",
+            entity_id=str(ecriture_id),
+            detail={"date_ecriture": str(deleted_date)},
+            request=request,
+        )
 
         return {"message": "Écriture supprimée avec succès"}
 
@@ -276,7 +320,10 @@ def get_comptes(search: str = ""):
 # ═══════════════════════════════════════════════════════════
 
 @router.post("/nettoyer-historique-migre/")
-def nettoyer_historique_migre():
+def nettoyer_historique_migre(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """
     Supprimer automatiquement les écritures migrées tout en conservant le solde.
     Crée une écriture de report à nouveau si nécessaire.
@@ -351,6 +398,16 @@ def nettoyer_historique_migre():
                     recalculate_soldes_from(cursor, first_row['date_ecriture'], int(first_row['id']))
 
         ws_manager.broadcast("caisse", "cleanup", {"count": count_migrees})
+
+        log_audit_action(
+            user=user,
+            action="cleanup",
+            module="saisie_caisse",
+            entity_type="ecritures_caisse",
+            entity_id=None,
+            detail={"ecritures_supprimees": count_migrees},
+            request=request,
+        )
 
         return {
             "message": f"Historique nettoyé: {count_migrees} écritures supprimées",

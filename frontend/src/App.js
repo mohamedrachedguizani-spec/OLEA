@@ -10,6 +10,7 @@ import SageBfcParser from './components/SageBfcParser';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import UserManagement from './components/UserManagement';
+import AuditLogs from './components/AuditLogs';
 import Reporting from './components/Reporting';
 import Configuration from './components/Configuration';
 import oleaLogo from './assets/olea-logo.svg';
@@ -146,6 +147,7 @@ function App() {
                     {activeTab === 'sage-bfc' && <SageBfcParser refreshTrigger={sageBfcRefresh} forecastRefresh={forecastRefresh} />}
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration />}
                     {activeTab === 'users' && <UserManagement />}
+                    {activeTab === 'audit' && <AuditLogs />}
                 </div>
 
                 <footer className="main-footer">

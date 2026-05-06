@@ -6,12 +6,13 @@ from decimal import Decimal
 from datetime import date
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, File, UploadFile, HTTPException, Query, Depends
+from fastapi import APIRouter, File, UploadFile, HTTPException, Query, Depends, Request
 from fastapi.responses import StreamingResponse
 
 from database import db
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user
+from modules.audit.service import log_audit_action
 from modules.forecast.engine import (
     sync_actuals_from_resume,
     clear_actuals_for_month,
@@ -283,11 +284,24 @@ async def get_mapping_config_full():
     )
 
 @router.put("/mapping/config")
-async def put_mapping_config_full(payload: Dict[str, Any]):
+async def put_mapping_config_full(
+    payload: Dict[str, Any],
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload JSON invalide")
     save_mapping_config(payload)
     ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "full"})
+    log_audit_action(
+        user=user,
+        action="update",
+        module="sage_bfc_mapping",
+        entity_type="mapping_config",
+        entity_id=None,
+        detail={"scope": "full"},
+        request=request,
+    )
     return {"status": "ok"}
 
 @router.get("/mapping/entries")
@@ -345,7 +359,11 @@ async def list_mapping_entries(
     }
 
 @router.post("/mapping/entries", response_model=MappingEntryResponse)
-async def create_mapping_entry(payload: MappingEntryBase):
+async def create_mapping_entry(
+    payload: MappingEntryBase,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     _validate_mapping_entry(payload)
     if not payload.mapping_section:
         raise HTTPException(status_code=400, detail="mapping_section est obligatoire pour l'ajout")
@@ -362,10 +380,24 @@ async def create_mapping_entry(payload: MappingEntryBase):
     config.setdefault(payload.mapping_section, {})[payload.code_compte] = entry_data
     save_mapping_config(config)
     ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "entry", "code_compte": payload.code_compte})
+    log_audit_action(
+        user=user,
+        action="create",
+        module="sage_bfc_mapping",
+        entity_type="mapping_entry",
+        entity_id=payload.code_compte,
+        detail={"mapping_section": payload.mapping_section},
+        request=request,
+    )
     return _entry_to_response(payload.mapping_section, payload.code_compte, entry_data)
 
 @router.put("/mapping/entries/{code_compte}", response_model=MappingEntryResponse)
-async def update_mapping_entry(code_compte: str, payload: MappingEntryBase):
+async def update_mapping_entry(
+    code_compte: str,
+    payload: MappingEntryBase,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     _validate_mapping_entry(payload)
     original_code = code_compte
     new_code = payload.code_compte
@@ -399,10 +431,24 @@ async def update_mapping_entry(code_compte: str, payload: MappingEntryBase):
     config.setdefault(target_section, {})[new_code] = entry_data
     save_mapping_config(config)
     ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "entry", "code_compte": new_code})
+    log_audit_action(
+        user=user,
+        action="update",
+        module="sage_bfc_mapping",
+        entity_type="mapping_entry",
+        entity_id=new_code,
+        detail={"old_code": original_code, "mapping_section": target_section},
+        request=request,
+    )
     return _entry_to_response(target_section, new_code, entry_data)
 
 @router.delete("/mapping/entries/{code_compte}")
-async def delete_mapping_entry(code_compte: str, mapping_section: Optional[str] = Query(None)):
+async def delete_mapping_entry(
+    code_compte: str,
+    mapping_section: Optional[str] = Query(None),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
+):
     _validate_code_compte(code_compte)
     config = get_mapping_config()
     sections = _find_sections_for_code(config, code_compte)
@@ -422,6 +468,15 @@ async def delete_mapping_entry(code_compte: str, mapping_section: Optional[str] 
     del config[target_section][code_compte]
     save_mapping_config(config)
     ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "entry", "code_compte": code_compte})
+    log_audit_action(
+        user=user,
+        action="delete",
+        module="sage_bfc_mapping",
+        entity_type="mapping_entry",
+        entity_id=code_compte,
+        detail={"mapping_section": target_section},
+        request=request,
+    )
     return {"status": "deleted", "code_compte": code_compte}
 
 @router.get("/mapping/regles-agregation")
@@ -430,7 +485,11 @@ async def get_regles_agregation():
     return config.get("regles_agregation", {})
 
 @router.put("/mapping/regles-agregation")
-async def put_regles_agregation(payload: Dict[str, Any]):
+async def put_regles_agregation(
+    payload: Dict[str, Any],
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload invalide")
     _validate_regles_agregation_payload(payload)
@@ -438,6 +497,14 @@ async def put_regles_agregation(payload: Dict[str, Any]):
     config["regles_agregation"] = payload
     save_mapping_config(config)
     ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "regles_agregation"})
+    log_audit_action(
+        user=user,
+        action="update",
+        module="sage_bfc_mapping",
+        entity_type="regles_agregation",
+        entity_id=None,
+        request=request,
+    )
     return {"status": "ok"}
 
 @router.get("/mapping/validations-interco")
@@ -446,7 +513,11 @@ async def get_validations_interco():
     return config.get("validations_interco", {})
 
 @router.put("/mapping/validations-interco")
-async def put_validations_interco(payload: Dict[str, Any]):
+async def put_validations_interco(
+    payload: Dict[str, Any],
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload invalide")
     _validate_validations_interco_payload(payload)
@@ -454,6 +525,14 @@ async def put_validations_interco(payload: Dict[str, Any]):
     config["validations_interco"] = payload
     save_mapping_config(config)
     ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "validations_interco"})
+    log_audit_action(
+        user=user,
+        action="update",
+        module="sage_bfc_mapping",
+        entity_type="validations_interco",
+        entity_id=None,
+        request=request,
+    )
     return {"status": "ok"}
 
 @router.get("/mapping/correspondances-bpc-bfc")
@@ -462,7 +541,11 @@ async def get_correspondances_bpc_bfc():
     return config.get("correspondances_bpc_bfc", {})
 
 @router.put("/mapping/correspondances-bpc-bfc")
-async def put_correspondances_bpc_bfc(payload: Dict[str, Any]):
+async def put_correspondances_bpc_bfc(
+    payload: Dict[str, Any],
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     if not isinstance(payload, dict):
         raise HTTPException(status_code=400, detail="Payload invalide")
     _validate_correspondances_bpc_bfc_payload(payload)
@@ -470,6 +553,14 @@ async def put_correspondances_bpc_bfc(payload: Dict[str, Any]):
     config["correspondances_bpc_bfc"] = payload
     save_mapping_config(config)
     ws_manager.broadcast("sage_bfc", "mapping_updated", {"scope": "correspondances_bpc_bfc"})
+    log_audit_action(
+        user=user,
+        action="update",
+        module="sage_bfc_mapping",
+        entity_type="correspondances_bpc_bfc",
+        entity_id=None,
+        request=request,
+    )
     return {"status": "ok"}
 
 @router.get("/mapping/stats", response_model=MappingStats)
@@ -484,7 +575,9 @@ async def get_mapping_stats(mapper: SageBFCMapper = Depends(get_mapper)):
 async def parse_balance(
     file: UploadFile = File(..., description="Fichier balance SAGE (Excel ou CSV)"),
     periode: str = Query(..., description="Période comptable (YYYY-MM ou YYYY-MM-DD)"),
-    parser: SageBalanceParser = Depends(get_parser)
+    parser: SageBalanceParser = Depends(get_parser),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
 ):
     """
     Parse un fichier balance SAGE et retourne le tableau BFC.
@@ -542,6 +635,16 @@ async def parse_balance(
             "forecast",
             "annual_comparison_updated",
             {"year": resultat_reel.periode.year, "month": resultat_reel.periode.month},
+        )
+
+        log_audit_action(
+            user=user,
+            action="parse",
+            module="sage_bfc",
+            entity_type="balance",
+            entity_id=str(resultat_reel.periode),
+            detail={"filename": file.filename},
+            request=request,
         )
 
         return resultat_reel
@@ -930,7 +1033,11 @@ async def get_monthly_detail(periode: str):
 
 
 @router.delete("/monthly/{periode}")
-async def delete_monthly(periode: str):
+async def delete_monthly(
+    periode: str,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """
     Supprime les données d'un mois spécifique
     """
@@ -959,6 +1066,15 @@ async def delete_monthly(periode: str):
     ws_manager.broadcast("forecast", "actuals_cleared", {"year": periode.year, "month": periode.month})
     ws_manager.broadcast("forecast", "cycles_invalidated", invalidation_payload)
 
+    log_audit_action(
+        user=user,
+        action="delete",
+        module="sage_bfc",
+        entity_type="monthly",
+        entity_id=str(periode),
+        request=request,
+    )
+
     return {
         "status": "supprimé",
         "periode": str(periode),
@@ -967,7 +1083,10 @@ async def delete_monthly(periode: str):
 
 
 @router.delete("/monthly")
-async def delete_all_monthly():
+async def delete_all_monthly(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """
     Supprime toutes les données mensuelles
     """
@@ -985,6 +1104,16 @@ async def delete_all_monthly():
     ws_manager.broadcast("forecast", "actuals_cleared_all", {"count": count})
     ws_manager.broadcast("forecast", "cycles_purged", purge_payload)
 
+    log_audit_action(
+        user=user,
+        action="delete_all",
+        module="sage_bfc",
+        entity_type="monthly",
+        entity_id=None,
+        detail={"count": count},
+        request=request,
+    )
+
     return {
         "status": "supprimé",
         "count": count,
@@ -996,6 +1125,8 @@ async def delete_all_monthly():
 async def close_year(
     year: int = Query(..., ge=2000, le=2100, description="Année à clôturer"),
     force: bool = Query(False, description="Autorise la clôture sans 12 mois"),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
 ):
     """
     Clôture annuelle SAGE→BFC:
@@ -1096,6 +1227,16 @@ async def close_year(
     ws_manager.broadcast("sage_bfc", "year_closed", {"year": year, "next_year": next_year})
     ws_manager.broadcast("forecast", "generated", forecast_payload)
 
+    log_audit_action(
+        user=user,
+        action="close_year",
+        module="sage_bfc",
+        entity_type="year",
+        entity_id=str(year),
+        detail={"months_count": months_count, "force": force, "next_year": next_year},
+        request=request,
+    )
+
     return {
         "status": "closed",
         "closed_year": year,
@@ -1186,7 +1327,11 @@ async def get_audit_cumulative_delta(
 
 
 @router.post("/monthly/recompute-real")
-async def recompute_monthly_real_values(mapper: SageBFCMapper = Depends(get_mapper)):
+async def recompute_monthly_real_values(
+    mapper: SageBFCMapper = Depends(get_mapper),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
+):
     """
     Recalcule les mois stockés en réel mensuel (delta cumulé M - cumulé M-1)
     à partir des données déjà présentes dans sage_bfc_monthly.
@@ -1201,6 +1346,15 @@ async def recompute_monthly_real_values(mapper: SageBFCMapper = Depends(get_mapp
         rows = cursor.fetchall()
 
     if not rows:
+        log_audit_action(
+            user=user,
+            action="recompute_real",
+            module="sage_bfc",
+            entity_type="monthly",
+            entity_id=None,
+            detail={"updated_months": 0},
+            request=request,
+        )
         return {"status": "ok", "updated_months": 0, "message": "Aucune donnée à recalculer"}
 
     prev_cum_by_key: dict[str, Decimal] = {}
@@ -1294,4 +1448,13 @@ async def recompute_monthly_real_values(mapper: SageBFCMapper = Depends(get_mapp
     ws_manager.broadcast("sage_bfc", "recompute_real", {"updated_months": updated})
     ws_manager.broadcast("forecast", "recompute_real", {"updated_months": updated})
 
+    log_audit_action(
+        user=user,
+        action="recompute_real",
+        module="sage_bfc",
+        entity_type="monthly",
+        entity_id=None,
+        detail={"updated_months": updated},
+        request=request,
+    )
     return {"status": "ok", "updated_months": updated}

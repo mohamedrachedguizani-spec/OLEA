@@ -42,6 +42,7 @@ from .security import (
     IS_PRODUCTION,
 )
 from .dependencies import get_current_user, require_role
+from modules.audit.service import log_audit_action
 
 router = APIRouter(
     prefix="/auth",
@@ -517,6 +518,16 @@ def create_user(
             )
             new_user = cursor.fetchone()
 
+    log_audit_action(
+        user=admin,
+        action="create",
+        module="users",
+        entity_type="user",
+        entity_id=str(new_user["id"]),
+        detail={"username": new_user["username"], "role": new_user["role"]},
+        request=request,
+    )
+
     return _build_user_response(new_user, [])
 
 
@@ -598,6 +609,16 @@ def update_user(
             updated = cursor.fetchone()
             permissions = _fetch_user_permissions(cursor, user_id)
 
+    log_audit_action(
+        user=admin,
+        action="update",
+        module="users",
+        entity_type="user",
+        entity_id=str(user_id),
+        detail={"fields": [k for k, v in body.model_dump().items() if v is not None]},
+        request=request,
+    )
+
     return _build_user_response(updated, permissions)
 
 
@@ -631,6 +652,15 @@ def delete_user(
             )
             conn.commit()
 
+    log_audit_action(
+        user=admin,
+        action="deactivate",
+        module="users",
+        entity_type="user",
+        entity_id=str(user_id),
+        request=request,
+    )
+
     return {"message": "Utilisateur désactivé avec succès"}
 
 
@@ -663,6 +693,15 @@ def activate_user(
                 (user_id,),
             )
             conn.commit()
+
+    log_audit_action(
+        user=admin,
+        action="activate",
+        module="users",
+        entity_type="user",
+        entity_id=str(user_id),
+        request=request,
+    )
 
     return {"message": "Utilisateur activé avec succès"}
 
@@ -705,6 +744,15 @@ def permanent_delete_user(
             cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
             conn.commit()
 
+    log_audit_action(
+        user=admin,
+        action="delete",
+        module="users",
+        entity_type="user",
+        entity_id=str(user_id),
+        request=request,
+    )
+
     return {"message": "Utilisateur supprimé définitivement"}
 
 
@@ -729,6 +777,15 @@ def revoke_user_sessions(
                 (user_id,),
             )
             conn.commit()
+
+    log_audit_action(
+        user=admin,
+        action="revoke_sessions",
+        module="users",
+        entity_type="user",
+        entity_id=str(user_id),
+        request=request,
+    )
 
     return {"message": "Toutes les sessions de l'utilisateur ont été révoquées"}
 
@@ -757,6 +814,15 @@ def reset_user_password(
                 (new_hash, user_id),
             )
             conn.commit()
+
+    log_audit_action(
+        user=admin,
+        action="reset_password",
+        module="users",
+        entity_type="user",
+        entity_id=str(user_id),
+        request=request,
+    )
 
     return {"message": "Mot de passe réinitialisé avec succès"}
 
@@ -820,4 +886,16 @@ def set_user_permissions(
 
             conn.commit()
 
-            return _fetch_user_permissions(cursor, user_id)
+            perms = _fetch_user_permissions(cursor, user_id)
+
+        log_audit_action(
+            user=admin,
+            action="set_permissions",
+            module="users",
+            entity_type="user",
+            entity_id=str(user_id),
+            detail={"permissions": [p.model_dump() for p in body.permissions]},
+            request=request,
+        )
+
+        return perms

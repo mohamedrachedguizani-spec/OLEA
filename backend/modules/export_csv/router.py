@@ -4,10 +4,11 @@ import io
 from datetime import date, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from database import db
 from modules.auth.dependencies import get_current_user
+from modules.audit.service import log_audit_action
 
 router = APIRouter(
     tags=["Export CSV"],
@@ -21,7 +22,12 @@ router = APIRouter(
 # ═══════════════════════════════════════════════════════════
 
 @router.get("/export-csv/")
-def export_csv(date_debut: Optional[date] = None, date_fin: Optional[date] = None):
+def export_csv(
+    date_debut: Optional[date] = None,
+    date_fin: Optional[date] = None,
+    request: Request = None,
+    user: dict = Depends(get_current_user),
+):
     """Exporter les écritures Sage au format CSV compatible Sage"""
     with db.get_cursor() as cursor:
         query = "SELECT * FROM ecritures_sage WHERE 1=1"
@@ -69,6 +75,15 @@ def export_csv(date_debut: Optional[date] = None, date_fin: Optional[date] = Non
         ])
 
     output.seek(0)
+    log_audit_action(
+        user=user,
+        action="export",
+        module="export_csv",
+        entity_type="ecritures_sage",
+        entity_id=None,
+        detail={"date_debut": str(date_debut) if date_debut else None, "date_fin": str(date_fin) if date_fin else None},
+        request=request,
+    )
     return {
         "filename": f"export_sage_{date.today().strftime('%Y%m%d')}.csv",
         "content": output.getvalue(),
@@ -80,7 +95,12 @@ def export_csv(date_debut: Optional[date] = None, date_fin: Optional[date] = Non
 # ═══════════════════════════════════════════════════════════
 
 @router.get("/export-brouillard-caisse/")
-def export_brouillard_caisse(date_debut: Optional[date] = None, date_fin: Optional[date] = None):
+def export_brouillard_caisse(
+    date_debut: Optional[date] = None,
+    date_fin: Optional[date] = None,
+    request: Request = None,
+    user: dict = Depends(get_current_user),
+):
     """Exporter le brouillard de caisse au format CSV avec solde calculé"""
     with db.get_cursor() as cursor:
         # Solde initial
@@ -147,6 +167,15 @@ def export_brouillard_caisse(date_debut: Optional[date] = None, date_fin: Option
     total_credit = sum(float(e['credit']) for e in ecritures)
 
     output.seek(0)
+    log_audit_action(
+        user=user,
+        action="export",
+        module="export_csv",
+        entity_type="brouillard_caisse",
+        entity_id=None,
+        detail={"date_debut": str(date_debut) if date_debut else None, "date_fin": str(date_fin) if date_fin else None},
+        request=request,
+    )
 
     if date_debut:
         mois = date_debut.strftime('%m')

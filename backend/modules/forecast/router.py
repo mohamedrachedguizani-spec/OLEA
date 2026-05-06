@@ -1,9 +1,10 @@
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Request
 
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user
+from modules.audit.service import log_audit_action
 from .engine import (
     generate_forecast,
     get_annual_comparison,
@@ -47,7 +48,10 @@ router = APIRouter(
 
 
 @router.post("/historical/import", response_model=HistoricalImportResponse)
-def import_historical_data():
+def import_historical_data(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """
     Importe l'historique local CSV (2024/2025) vers la base pour l'entraînement forecast.
     """
@@ -58,6 +62,15 @@ def import_historical_data():
 
     try:
         rows_written, years = import_historical_csv(files)
+        log_audit_action(
+            user=user,
+            action="import_historical",
+            module="forecast",
+            entity_type="forecast_history",
+            entity_id=None,
+            detail={"files": files, "rows_written": rows_written, "years": years},
+            request=request,
+        )
         return HistoricalImportResponse(files=files, rows_written=rows_written, years=years)
     except FileNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -68,6 +81,8 @@ def import_historical_data():
 @router.post("/historical/sync-closed")
 def sync_closed_historical(
     before_year: int = Query(..., ge=2000, le=2100),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
 ):
     """
     Synchronise les années clôturées (12 mois réels dans sage_bfc_monthly)
@@ -75,6 +90,15 @@ def sync_closed_historical(
     """
     try:
         payload = sync_closed_years_into_history(before_year=before_year)
+        log_audit_action(
+            user=user,
+            action="sync_closed",
+            module="forecast",
+            entity_type="forecast_history",
+            entity_id=str(before_year),
+            detail={"before_year": before_year},
+            request=request,
+        )
         return payload
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur sync clôture historique: {str(e)}")
@@ -110,6 +134,8 @@ def generate_budget_forecast(
     target_year: int = Query(..., ge=2000, le=2100),
     cycle_code: str = Query("INITIAL", description="INITIAL, M03, M06, M08 ou custom"),
     cycle_month: int | None = Query(None, ge=1, le=12),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
 ):
     """
     Génère le budget prévisionnel pour tous les agrégats BFC.
@@ -126,6 +152,15 @@ def generate_budget_forecast(
             "forecast",
             "generated",
             {"target_year": target_year, "cycle_code": cycle_code, "cycle_month": cycle_month, "run_id": run_id},
+        )
+        log_audit_action(
+            user=user,
+            action="generate",
+            module="forecast",
+            entity_type="forecast_run",
+            entity_id=str(run_id),
+            detail={"target_year": target_year, "cycle_code": cycle_code, "cycle_month": cycle_month},
+            request=request,
         )
         return ForecastRunResponse(
             run_id=run_id,
@@ -200,7 +235,11 @@ def get_forecast_subagregats(
 
 
 @router.put("/manual/aggregate", response_model=ForecastManualAggregateUpdateResponse)
-def update_manual_aggregate_forecast(payload: ForecastManualAggregateUpdateRequest):
+def update_manual_aggregate_forecast(
+    payload: ForecastManualAggregateUpdateRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     try:
         result = set_manual_forecast_values(
             target_year=payload.target_year,
@@ -211,6 +250,15 @@ def update_manual_aggregate_forecast(payload: ForecastManualAggregateUpdateReque
             subagregats=[x.model_dump() for x in payload.subagregats],
         )
         ws_manager.broadcast("forecast", "manual_updated", result)
+        log_audit_action(
+            user=user,
+            action="manual_update",
+            module="forecast",
+            entity_type="aggregate",
+            entity_id=str(payload.agregat_key),
+            detail={"target_year": payload.target_year, "month": payload.month},
+            request=request,
+        )
         return ForecastManualAggregateUpdateResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -219,7 +267,11 @@ def update_manual_aggregate_forecast(payload: ForecastManualAggregateUpdateReque
 
 
 @router.put("/manual/aggregate-annual", response_model=ForecastManualAnnualAggregateUpdateResponse)
-def update_manual_aggregate_forecast_annual(payload: ForecastManualAnnualAggregateUpdateRequest):
+def update_manual_aggregate_forecast_annual(
+    payload: ForecastManualAnnualAggregateUpdateRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     try:
         result = set_manual_annual_forecast_values(
             target_year=payload.target_year,
@@ -229,6 +281,15 @@ def update_manual_aggregate_forecast_annual(payload: ForecastManualAnnualAggrega
             subagregats=[x.model_dump() for x in payload.subagregats],
         )
         ws_manager.broadcast("forecast", "manual_annual_updated", result)
+        log_audit_action(
+            user=user,
+            action="manual_update_annual",
+            module="forecast",
+            entity_type="aggregate",
+            entity_id=str(payload.agregat_key),
+            detail={"target_year": payload.target_year},
+            request=request,
+        )
         return ForecastManualAnnualAggregateUpdateResponse(**result)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -270,6 +331,8 @@ def run_adjustment_cycle(
     target_year: int = Query(..., ge=2000, le=2100),
     cycle_code: str = Query(..., description="M03, M06 ou M08"),
     force: bool = Query(False, description="Force l'exécution même si cycle non prêt"),
+    request: Request = None,
+    user: dict = Depends(get_current_user),
 ):
     """
     Déclenche l'ajustement de prévision d'un cycle (bouton fin de cycle).
@@ -277,6 +340,15 @@ def run_adjustment_cycle(
     try:
         payload = run_cycle_adjustment(target_year=target_year, cycle_code=cycle_code, force=force)
         ws_manager.broadcast("forecast", "cycle_run", payload)
+        log_audit_action(
+            user=user,
+            action="run_cycle",
+            module="forecast",
+            entity_type="cycle",
+            entity_id=str(cycle_code),
+            detail={"target_year": target_year, "force": force},
+            request=request,
+        )
         return ForecastCycleRunResponse(**payload)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

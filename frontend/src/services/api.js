@@ -209,6 +209,18 @@ class ApiService {
         }
         return response.json();
     }
+
+    // ===================== Audit (superadmin) =====================
+
+    static async getAuditLogs(params = {}) {
+        const queryParams = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/audit/logs?${queryParams}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des logs' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des logs');
+        }
+        return response.json();
+    }
     // Écritures de caisse
     static async createEcritureCaisse(ecriture) {
         const response = await ApiService._fetch(`${API_BASE_URL}/ecritures-caisse/`, {
