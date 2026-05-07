@@ -382,6 +382,17 @@ class ApiService {
         return response.json();
     }
 
+    // Dashboard superadmin — utilisateurs & audit
+    static async getAdminDashboard(dateDebut = null, dateFin = null) {
+        const params = {};
+        if (dateDebut) params.date_debut = dateDebut;
+        if (dateFin) params.date_fin = dateFin;
+
+        const queryParams = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/admin-dashboard/?${queryParams}`);
+        return response.json();
+    }
+
     // Nettoyage automatique après migration
     static async nettoyerHistoriqueMigre() {
         const response = await ApiService._fetch(`${API_BASE_URL}/nettoyer-historique-migre/`, {

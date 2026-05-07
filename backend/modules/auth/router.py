@@ -43,6 +43,7 @@ from .security import (
 )
 from .dependencies import get_current_user, require_role
 from modules.audit.service import log_audit_action
+from ws_manager import manager as ws_manager
 
 router = APIRouter(
     prefix="/auth",
@@ -272,6 +273,8 @@ def login(body: LoginRequest, request: Request, response: Response):
             )
             conn.commit()
 
+    ws_manager.broadcast("sessions", "login", {"user_id": user["id"]})
+
     return TokenResponse(
         message="Connexion réussie",
         user=_build_user_response(user, permissions),
@@ -319,6 +322,7 @@ def logout(request: Request, response: Response):
                     (session_key,),
                 )
                 conn.commit()
+        ws_manager.broadcast("sessions", "logout", {"user_id": user.get("id")})
     except Exception:
         pass  # Token déjà expiré ou invalide — on supprime quand même les cookies
     _clear_auth_cookies(response)
@@ -528,6 +532,8 @@ def create_user(
         request=request,
     )
 
+    ws_manager.broadcast("users", "create", {"id": new_user["id"]})
+
     return _build_user_response(new_user, [])
 
 
@@ -619,6 +625,8 @@ def update_user(
         request=request,
     )
 
+    ws_manager.broadcast("users", "update", {"id": user_id})
+
     return _build_user_response(updated, permissions)
 
 
@@ -661,6 +669,8 @@ def delete_user(
         request=request,
     )
 
+    ws_manager.broadcast("users", "deactivate", {"id": user_id})
+
     return {"message": "Utilisateur désactivé avec succès"}
 
 
@@ -702,6 +712,8 @@ def activate_user(
         entity_id=str(user_id),
         request=request,
     )
+
+    ws_manager.broadcast("users", "activate", {"id": user_id})
 
     return {"message": "Utilisateur activé avec succès"}
 
@@ -753,6 +765,8 @@ def permanent_delete_user(
         request=request,
     )
 
+    ws_manager.broadcast("users", "delete", {"id": user_id})
+
     return {"message": "Utilisateur supprimé définitivement"}
 
 
@@ -786,6 +800,8 @@ def revoke_user_sessions(
         entity_id=str(user_id),
         request=request,
     )
+
+    ws_manager.broadcast("sessions", "revoke", {"user_id": user_id})
 
     return {"message": "Toutes les sessions de l'utilisateur ont été révoquées"}
 

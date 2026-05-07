@@ -9,13 +9,125 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 
 from database import db
-from modules.auth.dependencies import get_current_user
+from ws_manager import manager as ws_manager
+from modules.auth.dependencies import get_current_user, require_role
+from modules.auth.models import RoleEnum
 
 router = APIRouter(
     tags=["Dashboard Global"],
     responses={404: {"description": "Non trouvé"}},
     dependencies=[Depends(get_current_user)],
 )
+
+
+def _get_users_stats(cursor):
+    cursor.execute(
+        "SELECT COUNT(*) AS total, "
+        "SUM(is_active = TRUE) AS active, "
+        "SUM(is_active = FALSE) AS inactive "
+        "FROM users"
+    )
+    totals = cursor.fetchone() or {"total": 0, "active": 0, "inactive": 0}
+
+    cursor.execute("SELECT role, COUNT(*) AS cnt FROM users GROUP BY role")
+    roles_rows = cursor.fetchall()
+    roles = {row["role"]: row["cnt"] for row in roles_rows}
+
+    cursor.execute(
+        "SELECT id, username, email, role, is_active, created_at "
+        "FROM users ORDER BY created_at DESC LIMIT 5"
+    )
+    recent_users = cursor.fetchall()
+
+    return {
+        "total": int(totals.get("total") or 0),
+        "active": int(totals.get("active") or 0),
+        "inactive": int(totals.get("inactive") or 0),
+        "roles": roles,
+        "recent_users": recent_users,
+    }
+
+
+def _get_sessions_stats(cursor):
+    cursor.execute(
+        "SELECT COUNT(*) AS total_sessions, COUNT(DISTINCT us.user_id) AS active_users "
+        "FROM user_sessions us "
+        "JOIN users u ON u.id = us.user_id "
+        "WHERE us.token_version = u.token_version "
+        "AND us.last_seen_at > NOW() - INTERVAL 45 SECOND"
+    )
+    row = cursor.fetchone() or {"total_sessions": 0, "active_users": 0}
+    return {
+        "total_sessions": int(row.get("total_sessions") or 0),
+        "active_users": int(row.get("active_users") or 0),
+    }
+
+
+def _build_audit_date_filter(date_debut: Optional[date], date_fin: Optional[date]):
+    where_clause = "WHERE 1=1"
+    params: list = []
+
+    if date_debut:
+        start_dt = datetime.combine(date_debut, datetime.min.time())
+        where_clause += " AND created_at >= %s"
+        params.append(start_dt)
+
+    if date_fin:
+        end_dt = datetime.combine(date_fin + timedelta(days=1), datetime.min.time())
+        where_clause += " AND created_at < %s"
+        params.append(end_dt)
+
+    return where_clause, params
+
+
+def _get_audit_stats(cursor, date_debut: Optional[date], date_fin: Optional[date]):
+    where_clause, params = _build_audit_date_filter(date_debut, date_fin)
+
+    cursor.execute(
+        f"SELECT COUNT(*) AS total_24h FROM audit_logs {where_clause} "
+        "AND created_at > NOW() - INTERVAL 1 DAY",
+        params,
+    )
+    total_24h = int((cursor.fetchone() or {}).get("total_24h") or 0)
+
+    cursor.execute(
+        f"SELECT COUNT(*) AS total_7d FROM audit_logs {where_clause} "
+        "AND created_at > NOW() - INTERVAL 7 DAY",
+        params,
+    )
+    total_7d = int((cursor.fetchone() or {}).get("total_7d") or 0)
+
+    cursor.execute(
+        f"SELECT module, COUNT(*) AS cnt FROM audit_logs {where_clause} "
+        "AND created_at > NOW() - INTERVAL 7 DAY "
+        "GROUP BY module ORDER BY cnt DESC",
+        params,
+    )
+    by_module = cursor.fetchall()
+
+    cursor.execute(
+        f"SELECT DATE(created_at) AS day, COUNT(*) AS cnt FROM audit_logs {where_clause} "
+        "AND created_at > NOW() - INTERVAL 14 DAY "
+        "GROUP BY DATE(created_at) ORDER BY day ASC",
+        params,
+    )
+    timeline = cursor.fetchall()
+
+    cursor.execute(
+        f"SELECT username, action, module, ip_address, created_at "
+        f"FROM audit_logs {where_clause} "
+        "ORDER BY created_at DESC LIMIT 10",
+        params,
+    )
+    recent = cursor.fetchall()
+
+    return {
+        "total_24h": total_24h,
+        "total_7d": total_7d,
+        "by_module": by_module,
+        "timeline": timeline,
+        "recent": recent,
+    }
 
 
 @router.get("/global-dashboard/")
@@ -39,6 +151,29 @@ def get_global_dashboard(
         "caisse": caisse,
         "migration": migration,
         "bfc": bfc,
+    }
+
+
+@router.get("/admin-dashboard/")
+def get_admin_dashboard(
+    _admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    date_debut: Optional[date] = None,
+    date_fin: Optional[date] = None,
+):
+    """
+    Tableau de bord dédié au superadmin.
+    Fournit des KPI utilisateurs, sessions et audit.
+    """
+    with db.get_cursor() as cursor:
+        users = _get_users_stats(cursor)
+        sessions = _get_sessions_stats(cursor)
+        audit = _get_audit_stats(cursor, date_debut, date_fin)
+
+    return {
+        "users": users,
+        "sessions": sessions,
+        "audit": audit,
+        "realtime": {"ws_clients": ws_manager.active_count},
     }
 
 

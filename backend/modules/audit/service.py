@@ -16,6 +16,8 @@ def log_audit_action(
 ) -> None:
     """Enregistre un événement d'audit (best-effort)."""
     try:
+        from ws_manager import manager as ws_manager
+
         ip_address = None
         user_agent = None
         if request is not None:
@@ -59,5 +61,11 @@ def log_audit_action(
                     user_agent,
                 ),
             )
+
+        ws_manager.broadcast(
+            "audit",
+            "create",
+            {"module": module, "action": action, "user": username, "entity_id": entity_id},
+        )
     except Exception:
         return

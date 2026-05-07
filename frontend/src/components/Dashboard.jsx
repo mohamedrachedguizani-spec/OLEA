@@ -10,6 +10,7 @@ import {
     ResponsiveContainer,
 } from 'recharts';
 import ApiService, { API_BASE_URL } from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 // ─── WebSocket URL ───
 const WS_URL = API_BASE_URL.replace(/^http/i, 'ws') + '/ws/live';
@@ -20,6 +21,12 @@ const SECTIONS = [
     { id: 'overview',   label: 'Vue d\'ensemble', icon: '🏠', desc: 'Résumé global',       badgeKey: null,       accent: '#d4a528' },
     { id: 'tresorerie', label: 'Trésorerie',      icon: '💰', desc: 'Flux & solde caisse', badgeKey: 'ecritures', accent: '#b7482b' },
     { id: 'bfc',        label: 'Analyse BFC',     icon: '📊', desc: 'Résultat financier',  badgeKey: 'periodes',  accent: '#2f343a' },
+];
+
+const ADMIN_SECTIONS = [
+    { id: 'overview', label: 'Vue d\'ensemble', icon: '🛡️', desc: 'Superadmin', badgeKey: 'users', accent: '#863421' },
+    { id: 'audit', label: 'Audit', icon: '🧾', desc: 'Activité & modules', badgeKey: 'audit', accent: '#b7482b' },
+    { id: 'users', label: 'Utilisateurs', icon: '👥', desc: 'Comptes & sessions', badgeKey: 'sessions', accent: '#2f343a' },
 ];
 
 // ─── Couleurs thématiques ───
@@ -96,6 +103,7 @@ function Section({ title, subtitle, icon, children, className = '' }) {
 // ═══════════════════════════════════════════════════════════
 
 function Dashboard({ refreshTrigger }) {
+    const { isSuperAdmin } = useAuth();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [filterType, setFilterType] = useState('month');
@@ -109,6 +117,7 @@ function Dashboard({ refreshTrigger }) {
     const wsRef = useRef(null);
     const reconnectTimer = useRef(null);
     const loadDataRef = useRef(null);
+    const isSuperAdminRef = useRef(isSuperAdmin);
 
     // ── Période ──
     const getDateRange = useCallback(() => {
@@ -138,7 +147,9 @@ function Dashboard({ refreshTrigger }) {
         setLoading(true);
         try {
             const { debut, fin } = getDateRange();
-            const res = await ApiService.getGlobalDashboard(debut, fin);
+            const res = isSuperAdmin
+                ? await ApiService.getAdminDashboard(debut, fin)
+                : await ApiService.getGlobalDashboard(debut, fin);
             setData(res);
             setLastUpdate(new Date());
         } catch (err) {
@@ -146,10 +157,11 @@ function Dashboard({ refreshTrigger }) {
         } finally {
             setLoading(false);
         }
-    }, [getDateRange]);
+    }, [getDateRange, isSuperAdmin]);
 
     // Keep loadDataRef in sync so the WebSocket callback always calls the latest version
     useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
+    useEffect(() => { isSuperAdminRef.current = isSuperAdmin; }, [isSuperAdmin]);
 
     // ── WebSocket connection ──
     const connectWs = useCallback(() => {
@@ -166,7 +178,10 @@ function Dashboard({ refreshTrigger }) {
             try {
                 const { channel } = JSON.parse(event.data);
                 // Reload the dashboard when any relevant channel fires
-                if (['caisse', 'migration', 'sage_bfc'].includes(channel)) {
+                const channels = isSuperAdminRef.current
+                    ? ['users', 'audit', 'sessions']
+                    : ['caisse', 'migration', 'sage_bfc', 'forecast'];
+                if (channels.includes(channel)) {
                     console.log(`[Dashboard WS] 📡 Refresh → ${channel}`);
                     loadDataRef.current?.();
                 }
@@ -210,11 +225,34 @@ function Dashboard({ refreshTrigger }) {
     const caisse = data?.caisse;
     const migration = data?.migration;
     const bfc = data?.bfc;
+    const adminUsers = data?.users;
+    const adminSessions = data?.sessions;
+    const adminAudit = data?.audit;
+    const adminRealtime = data?.realtime;
 
     const tauxMigration = useMemo(() => {
         if (!caisse || caisse.nombre_ecritures === 0) return 0;
         return Math.round((caisse.ecritures_migrees / caisse.nombre_ecritures) * 100);
     }, [caisse]);
+
+    const rolePieData = useMemo(() => {
+        if (!adminUsers?.roles) return [];
+        return Object.entries(adminUsers.roles).map(([name, value]) => ({ name, value }));
+    }, [adminUsers]);
+
+    const auditModuleData = useMemo(() => adminAudit?.by_module || [], [adminAudit]);
+    const auditTimelineData = useMemo(() => {
+        if (!adminAudit?.timeline) return [];
+        return adminAudit.timeline.map((row) => ({
+            ...row,
+            day: row.day,
+        }));
+    }, [adminAudit]);
+
+    const userStatusData = useMemo(() => ([
+        { name: 'Actifs', value: adminUsers?.active || 0 },
+        { name: 'Inactifs', value: adminUsers?.inactive || 0 },
+    ]), [adminUsers]);
 
     // ── Pie data ──
     const pieData = useMemo(() => {
@@ -230,6 +268,17 @@ function Dashboard({ refreshTrigger }) {
         year: 'Cette année', custom: 'Personnalisé', all: 'Toutes périodes'
     };
 
+    const navSections = isSuperAdmin ? ADMIN_SECTIONS : SECTIONS;
+
+    useEffect(() => {
+        if (isSuperAdmin && !['overview', 'audit', 'users'].includes(activeSection)) {
+            setActiveSection('overview');
+        }
+        if (!isSuperAdmin && ['audit', 'users'].includes(activeSection)) {
+            setActiveSection('overview');
+        }
+    }, [isSuperAdmin, activeSection]);
+
     if (loading && !data) {
         return (
             <div className="gd-loading">
@@ -244,7 +293,9 @@ function Dashboard({ refreshTrigger }) {
             {/* ══════ HEADER ══════ */}
             <div className="gd-header">
                 <div className="gd-header-left">
-                    <h2 className="gd-main-title">Tableau de Bord Global</h2>
+                    <h2 className="gd-main-title">
+                        {isSuperAdmin ? 'Tableau de Bord Superadmin' : 'Tableau de Bord Global'}
+                    </h2>
                     <div className="gd-header-meta">
                         <span className="gd-period-badge">{periodLabels[filterType]}</span>
                         <span className={`gd-ws-badge ${wsConnected ? 'connected' : 'disconnected'}`}>
@@ -277,11 +328,19 @@ function Dashboard({ refreshTrigger }) {
 
             {/* ══════ SECTION NAV ══════ */}
             <div className="gd-section-nav">
-                {SECTIONS.map(s => {
-                    const badge = s.badgeKey === 'ecritures' ? (caisse?.nombre_ecritures || 0)
-                                : s.badgeKey === 'pieces'    ? (migration?.nb_pieces || 0)
-                                : s.badgeKey === 'periodes'  ? (bfc?.nb_periodes || 0)
-                                : null;
+                {navSections.map(s => {
+                    let badge = null;
+                    if (isSuperAdmin) {
+                        badge = s.badgeKey === 'users' ? (adminUsers?.total || 0)
+                            : s.badgeKey === 'audit' ? (adminAudit?.total_24h || 0)
+                            : s.badgeKey === 'sessions' ? (adminSessions?.active_users || 0)
+                            : null;
+                    } else {
+                        badge = s.badgeKey === 'ecritures' ? (caisse?.nombre_ecritures || 0)
+                            : s.badgeKey === 'pieces'    ? (migration?.nb_pieces || 0)
+                            : s.badgeKey === 'periodes'  ? (bfc?.nb_periodes || 0)
+                            : null;
+                    }
                     const isActive = activeSection === s.id;
                     return (
                         <button key={s.id}
@@ -304,101 +363,241 @@ function Dashboard({ refreshTrigger }) {
                 })}
             </div>
 
-            {/* ══════ SECTION: VUE D'ENSEMBLE ══════ */}
-            {(activeSection === 'overview') && (
+            {isSuperAdmin ? (
                 <>
-                    {/* KPI GLOBAUX */}
-                    <div className="gd-kpi-row">
-                        <KpiCard icon="💰" label="Solde Caisse" color="primary"
-                            value={fmtMontant(caisse?.solde_actuel || 0)} unit="TND"
-                            trend={caisse?.solde_actuel >= 0 ? 'up' : 'down'}
-                            trendLabel={caisse?.solde_actuel >= 0 ? 'Positif' : 'Négatif'} loading={loading} />
-                        <KpiCard icon="📥" label="Total Entrées" color="debit"
-                            value={fmtMontant(caisse?.total_debit || 0)} unit="TND"
-                            sub={`${caisse?.nombre_ecritures || 0} écritures`} loading={loading} />
-                        <KpiCard icon="📤" label="Total Sorties" color="credit"
-                            value={fmtMontant(caisse?.total_credit || 0)} unit="TND" loading={loading} />
-                        <KpiCard icon="🔄" label="Taux Migration" color="purple"
-                            value={`${tauxMigration}%`}
-                            sub={`${caisse?.ecritures_migrees || 0} / ${caisse?.nombre_ecritures || 0}`} loading={loading} />
-                        <KpiCard icon="⚖️" label="Balance Sage" color={migration?.equilibre ? 'success' : 'danger'}
-                            value={migration?.equilibre ? 'Équilibrée' : 'Déséquilibrée'}
-                            sub={`${migration?.nb_pieces || 0} pièces`} loading={loading} />
-                        <KpiCard icon="📊" label="Périodes BFC" color="neutral"
-                            value={bfc?.nb_periodes || 0}
-                            sub={bfc?.derniere_periode ? `Dernier : ${bfc.derniere_periode}` : 'Aucune donnée'} loading={loading} />
-                    </div>
+                    {/* ══════ SECTION: SUPERADMIN OVERVIEW ══════ */}
+                    {(activeSection === 'overview') && (
+                        <>
+                            <div className="gd-kpi-row">
+                                <KpiCard icon="👥" label="Utilisateurs" color="primary"
+                                    value={adminUsers?.total || 0}
+                                    sub={`${adminUsers?.active || 0} actifs`} loading={loading} />
+                                <KpiCard icon="✅" label="Actifs" color="success"
+                                    value={adminUsers?.active || 0}
+                                    sub={`${adminUsers?.inactive || 0} inactifs`} loading={loading} />
+                                <KpiCard icon="🔒" label="Inactifs" color="danger"
+                                    value={adminUsers?.inactive || 0} loading={loading} />
+                                <KpiCard icon="🧠" label="Sessions actives" color="purple"
+                                    value={adminSessions?.total_sessions || 0}
+                                    sub={`Utilisateurs: ${adminSessions?.active_users || 0}`} loading={loading} />
+                                <KpiCard icon="🧾" label="Audit 24h" color="debit"
+                                    value={adminAudit?.total_24h || 0} loading={loading} />
+                                <KpiCard icon="📅" label="Audit 7j" color="neutral"
+                                    value={adminAudit?.total_7d || 0}
+                                    sub={`WS: ${adminRealtime?.ws_clients || 0}`} loading={loading} />
+                            </div>
 
-                    {/* Résumé rapide — Flux + Répartition */}
-                    <div className="gd-row-2col">
-                        <Section title="Flux de Trésorerie" subtitle="Évolution journalière" icon="📈" className="gd-col-large">
-                            {caisse?.evolution?.length > 0 ? (
-                                <ResponsiveContainer width="100%" height={280}>
-                                    <ComposedChart data={caisse.evolution} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                                        <defs>
-                                            <linearGradient id="gradDebit" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor={COLORS.debit} stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor={COLORS.debit} stopOpacity={0} />
-                                            </linearGradient>
-                                            <linearGradient id="gradCredit" x1="0" y1="0" x2="0" y2="1">
-                                                <stop offset="5%" stopColor={COLORS.credit} stopOpacity={0.3} />
-                                                <stop offset="95%" stopColor={COLORS.credit} stopOpacity={0} />
-                                            </linearGradient>
-                                        </defs>
-                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                                        <XAxis dataKey="jour" tickFormatter={fmtDate} fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
-                                        <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={55} />
-                                        <Tooltip content={<CustomTooltip />} />
-                                        <Legend wrapperStyle={{ fontSize: 12 }} />
-                                        <Area type="monotone" dataKey="debit" name="Débit" stroke={COLORS.debit} fill="url(#gradDebit)" strokeWidth={2} />
-                                        <Area type="monotone" dataKey="credit" name="Crédit" stroke={COLORS.credit} fill="url(#gradCredit)" strokeWidth={2} />
-                                        <Line type="monotone" dataKey="solde_cumul" name="Solde cumulé" stroke={COLORS.primary} strokeWidth={2.5} dot={false} strokeDasharray="6 3" />
-                                    </ComposedChart>
-                                </ResponsiveContainer>
-                            ) : <EmptyChart message="Aucune écriture sur cette période" />}
-                        </Section>
+                            <div className="gd-row-2col">
+                                <Section title="Activité d'audit" subtitle="Évolution des actions" icon="📈" className="gd-col-large">
+                                    {auditTimelineData.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={280}>
+                                            <LineChart data={auditTimelineData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                                <XAxis dataKey="day" tickFormatter={fmtDate} fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                                                <YAxis fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={45} allowDecimals={false} />
+                                                <Tooltip content={<CustomTooltip formatter={(v) => v} />} />
+                                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                                                <Line type="monotone" dataKey="cnt" name="Actions" stroke={COLORS.primary} strokeWidth={2.5} dot={false} />
+                                            </LineChart>
+                                        </ResponsiveContainer>
+                                    ) : <EmptyChart message="Aucune activité sur cette période" />}
+                                </Section>
 
-                        <Section title="Répartition" subtitle="Entrées vs Sorties" icon="🍩" className="gd-col-small">
-                            {pieData.length > 0 ? (
-                                <div className="gd-pie-wrap">
-                                    <ResponsiveContainer width="100%" height={200}>
-                                        <PieChart>
-                                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
-                                                paddingAngle={4} dataKey="value" strokeWidth={0}>
-                                                <Cell fill={COLORS.debit} />
-                                                <Cell fill={COLORS.credit} />
-                                            </Pie>
-                                            <Tooltip formatter={(v) => `${fmtMontant(v)} TND`} />
-                                        </PieChart>
+                                <Section title="Répartition des rôles" subtitle="Utilisateurs par rôle" icon="🥧" className="gd-col-small">
+                                    {rolePieData.length > 0 ? (
+                                        <div className="gd-pie-wrap">
+                                            <ResponsiveContainer width="100%" height={200}>
+                                                <PieChart>
+                                                    <Pie data={rolePieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
+                                                        paddingAngle={4} dataKey="value" strokeWidth={0}>
+                                                        {rolePieData.map((_, idx) => (
+                                                            <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                                        ))}
+                                                    </Pie>
+                                                    <Tooltip formatter={(v) => v} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                        </div>
+                                    ) : <EmptyChart message="Aucun utilisateur" />}
+                                </Section>
+                            </div>
+                        </>
+                    )}
+
+                    {/* ══════ SECTION: SUPERADMIN AUDIT ══════ */}
+                    {(activeSection === 'audit') && (
+                        <div className="gd-row-2col">
+                            <Section title="Activité par module" subtitle="Top modules sur la période" icon="🧩" className="gd-col-large">
+                                {auditModuleData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={280}>
+                                        <BarChart data={auditModuleData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                            <XAxis dataKey="module" fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                                            <YAxis fontSize={11} tick={{ fill: 'var(--text-muted)' }} allowDecimals={false} />
+                                            <Tooltip content={<CustomTooltip formatter={(v) => v} />} />
+                                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                                            <Bar dataKey="cnt" name="Actions" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                                        </BarChart>
                                     </ResponsiveContainer>
-                                    <div className="gd-pie-legend">
-                                        <div className="gd-pie-item">
-                                            <span className="gd-pie-dot" style={{ background: COLORS.debit }} />
-                                            <div>
-                                                <span className="gd-pie-lbl">Entrées</span>
-                                                <span className="gd-pie-val">{fmtMontant(caisse.total_debit)} TND</span>
-                                                <span className="gd-pie-pct">
-                                                    {((caisse.total_debit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
-                                                </span>
-                                            </div>
-                                        </div>
-                                        <div className="gd-pie-item">
-                                            <span className="gd-pie-dot" style={{ background: COLORS.credit }} />
-                                            <div>
-                                                <span className="gd-pie-lbl">Sorties</span>
-                                                <span className="gd-pie-val">{fmtMontant(caisse.total_credit)} TND</span>
-                                                <span className="gd-pie-pct">
-                                                    {((caisse.total_credit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
-                                                </span>
-                                            </div>
-                                        </div>
+                                ) : <EmptyChart message="Aucune activité" />}
+                            </Section>
+
+                            <Section title="Chronologie" subtitle="Flux d'actions" icon="📆" className="gd-col-small">
+                                {auditTimelineData.length > 0 ? (
+                                    <ResponsiveContainer width="100%" height={200}>
+                                        <AreaChart data={auditTimelineData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                                            <defs>
+                                                <linearGradient id="adminAuditGrad" x1="0" y1="0" x2="0" y2="1">
+                                                    <stop offset="5%" stopColor={COLORS.primary} stopOpacity={0.3} />
+                                                    <stop offset="95%" stopColor={COLORS.primary} stopOpacity={0} />
+                                                </linearGradient>
+                                            </defs>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                            <XAxis dataKey="day" tickFormatter={fmtDate} fontSize={10} tick={{ fill: 'var(--text-muted)' }} />
+                                            <YAxis fontSize={10} tick={{ fill: 'var(--text-muted)' }} allowDecimals={false} />
+                                            <Tooltip content={<CustomTooltip formatter={(v) => v} />} />
+                                            <Area type="monotone" dataKey="cnt" name="Actions" stroke={COLORS.primary} fill="url(#adminAuditGrad)" strokeWidth={2} />
+                                        </AreaChart>
+                                    </ResponsiveContainer>
+                                ) : <EmptyChart message="Aucune activité" />}
+                            </Section>
+                        </div>
+                    )}
+
+                    {/* ══════ SECTION: SUPERADMIN USERS ══════ */}
+                    {(activeSection === 'users') && (
+                        <div className="gd-row-2col">
+                            <Section title="Actifs vs Inactifs" subtitle="Statut des comptes" icon="👤" className="gd-col-large">
+                                {userStatusData.some(d => d.value > 0) ? (
+                                    <ResponsiveContainer width="100%" height={280}>
+                                        <BarChart data={userStatusData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                            <XAxis dataKey="name" fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                                            <YAxis fontSize={11} tick={{ fill: 'var(--text-muted)' }} allowDecimals={false} />
+                                            <Tooltip content={<CustomTooltip formatter={(v) => v} />} />
+                                            <Bar dataKey="value" name="Utilisateurs" fill={COLORS.debit} radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                ) : <EmptyChart message="Aucun compte" />}
+                            </Section>
+
+                            <Section title="Rôles" subtitle="Répartition par rôle" icon="🧩" className="gd-col-small">
+                                {rolePieData.length > 0 ? (
+                                    <div className="gd-pie-wrap">
+                                        <ResponsiveContainer width="100%" height={200}>
+                                            <PieChart>
+                                                <Pie data={rolePieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
+                                                    paddingAngle={4} dataKey="value" strokeWidth={0}>
+                                                    {rolePieData.map((_, idx) => (
+                                                        <Cell key={idx} fill={PIE_COLORS[idx % PIE_COLORS.length]} />
+                                                    ))}
+                                                </Pie>
+                                                <Tooltip formatter={(v) => v} />
+                                            </PieChart>
+                                        </ResponsiveContainer>
                                     </div>
-                                </div>
-                            ) : <EmptyChart message="Aucune donnée" />}
-                        </Section>
-                    </div>
+                                ) : <EmptyChart message="Aucun utilisateur" />}
+                            </Section>
+                        </div>
+                    )}
                 </>
-            )}
+            ) : (
+                <>
+                    {/* ══════ SECTION: VUE D'ENSEMBLE ══════ */}
+                    {(activeSection === 'overview') && (
+                        <>
+                            {/* KPI GLOBAUX */}
+                            <div className="gd-kpi-row">
+                                <KpiCard icon="💰" label="Solde Caisse" color="primary"
+                                    value={fmtMontant(caisse?.solde_actuel || 0)} unit="TND"
+                                    trend={caisse?.solde_actuel >= 0 ? 'up' : 'down'}
+                                    trendLabel={caisse?.solde_actuel >= 0 ? 'Positif' : 'Négatif'} loading={loading} />
+                                <KpiCard icon="📥" label="Total Entrées" color="debit"
+                                    value={fmtMontant(caisse?.total_debit || 0)} unit="TND"
+                                    sub={`${caisse?.nombre_ecritures || 0} écritures`} loading={loading} />
+                                <KpiCard icon="📤" label="Total Sorties" color="credit"
+                                    value={fmtMontant(caisse?.total_credit || 0)} unit="TND" loading={loading} />
+                                <KpiCard icon="🔄" label="Taux Migration" color="purple"
+                                    value={`${tauxMigration}%`}
+                                    sub={`${caisse?.ecritures_migrees || 0} / ${caisse?.nombre_ecritures || 0}`} loading={loading} />
+                                <KpiCard icon="⚖️" label="Balance Sage" color={migration?.equilibre ? 'success' : 'danger'}
+                                    value={migration?.equilibre ? 'Équilibrée' : 'Déséquilibrée'}
+                                    sub={`${migration?.nb_pieces || 0} pièces`} loading={loading} />
+                                <KpiCard icon="📊" label="Périodes BFC" color="neutral"
+                                    value={bfc?.nb_periodes || 0}
+                                    sub={bfc?.derniere_periode ? `Dernier : ${bfc.derniere_periode}` : 'Aucune donnée'} loading={loading} />
+                            </div>
+
+                            {/* Résumé rapide — Flux + Répartition */}
+                            <div className="gd-row-2col">
+                                <Section title="Flux de Trésorerie" subtitle="Évolution journalière" icon="📈" className="gd-col-large">
+                                    {caisse?.evolution?.length > 0 ? (
+                                        <ResponsiveContainer width="100%" height={280}>
+                                            <ComposedChart data={caisse.evolution} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                                                <defs>
+                                                    <linearGradient id="gradDebit" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor={COLORS.debit} stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor={COLORS.debit} stopOpacity={0} />
+                                                    </linearGradient>
+                                                    <linearGradient id="gradCredit" x1="0" y1="0" x2="0" y2="1">
+                                                        <stop offset="5%" stopColor={COLORS.credit} stopOpacity={0.3} />
+                                                        <stop offset="95%" stopColor={COLORS.credit} stopOpacity={0} />
+                                                    </linearGradient>
+                                                </defs>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                                <XAxis dataKey="jour" tickFormatter={fmtDate} fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                                                <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={55} />
+                                                <Tooltip content={<CustomTooltip />} />
+                                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                                                <Area type="monotone" dataKey="debit" name="Débit" stroke={COLORS.debit} fill="url(#gradDebit)" strokeWidth={2} />
+                                                <Area type="monotone" dataKey="credit" name="Crédit" stroke={COLORS.credit} fill="url(#gradCredit)" strokeWidth={2} />
+                                                <Line type="monotone" dataKey="solde_cumul" name="Solde cumulé" stroke={COLORS.primary} strokeWidth={2.5} dot={false} strokeDasharray="6 3" />
+                                            </ComposedChart>
+                                        </ResponsiveContainer>
+                                    ) : <EmptyChart message="Aucune écriture sur cette période" />}
+                                </Section>
+
+                                <Section title="Répartition" subtitle="Entrées vs Sorties" icon="🍩" className="gd-col-small">
+                                    {pieData.length > 0 ? (
+                                        <div className="gd-pie-wrap">
+                                            <ResponsiveContainer width="100%" height={200}>
+                                                <PieChart>
+                                                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
+                                                        paddingAngle={4} dataKey="value" strokeWidth={0}>
+                                                        <Cell fill={COLORS.debit} />
+                                                        <Cell fill={COLORS.credit} />
+                                                    </Pie>
+                                                    <Tooltip formatter={(v) => `${fmtMontant(v)} TND`} />
+                                                </PieChart>
+                                            </ResponsiveContainer>
+                                            <div className="gd-pie-legend">
+                                                <div className="gd-pie-item">
+                                                    <span className="gd-pie-dot" style={{ background: COLORS.debit }} />
+                                                    <div>
+                                                        <span className="gd-pie-lbl">Entrées</span>
+                                                        <span className="gd-pie-val">{fmtMontant(caisse.total_debit)} TND</span>
+                                                        <span className="gd-pie-pct">
+                                                            {((caisse.total_debit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <div className="gd-pie-item">
+                                                    <span className="gd-pie-dot" style={{ background: COLORS.credit }} />
+                                                    <div>
+                                                        <span className="gd-pie-lbl">Sorties</span>
+                                                        <span className="gd-pie-val">{fmtMontant(caisse.total_credit)} TND</span>
+                                                        <span className="gd-pie-pct">
+                                                            {((caisse.total_credit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : <EmptyChart message="Aucune donnée" />}
+                                </Section>
+                            </div>
+                        </>
+                    )}
 
             {/* ══════ SECTION: TRÉSORERIE ══════ */}
             {(activeSection === 'tresorerie') && (
@@ -593,34 +792,65 @@ function Dashboard({ refreshTrigger }) {
                 </>
             )}
 
+                </>
+            )}
+
             {/* ══════ FOOTER ══════ */}
-            <div className="gd-footer-stats">
-                <div className="gd-footer-tile">
-                    <span className="gd-footer-icon">💹</span>
-                    <div>
-                        <span className="gd-footer-label">Différence Nette</span>
-                        <span className={`gd-footer-val ${(caisse?.total_debit - caisse?.total_credit) >= 0 ? 'positive' : 'negative'}`}>
-                            {fmtMontant((caisse?.total_debit || 0) - (caisse?.total_credit || 0))} TND
+            {isSuperAdmin ? (
+                <div className="gd-footer-stats">
+                    <div className="gd-footer-tile">
+                        <span className="gd-footer-icon">👥</span>
+                        <div>
+                            <span className="gd-footer-label">Utilisateurs actifs</span>
+                            <span className="gd-footer-val">{adminUsers?.active || 0}</span>
+                        </div>
+                    </div>
+                    <div className="gd-footer-tile">
+                        <span className="gd-footer-icon">🧾</span>
+                        <div>
+                            <span className="gd-footer-label">Audit 24h</span>
+                            <span className="gd-footer-val">{adminAudit?.total_24h || 0} actions</span>
+                        </div>
+                    </div>
+                    <div className="gd-footer-tile">
+                        <span className={`gd-footer-icon ${wsConnected ? 'gd-pulse' : ''}`}>
+                            {wsConnected ? '🟢' : '🔴'}
                         </span>
+                        <div>
+                            <span className="gd-footer-label">Connexion</span>
+                            <span className="gd-footer-val">{wsConnected ? 'Temps réel actif' : 'Reconnexion…'}</span>
+                        </div>
                     </div>
                 </div>
-                <div className="gd-footer-tile">
-                    <span className="gd-footer-icon">📦</span>
-                    <div>
-                        <span className="gd-footer-label">Écritures Sage</span>
-                        <span className="gd-footer-val">{migration?.total_ecritures || 0} lignes</span>
+            ) : (
+                <div className="gd-footer-stats">
+                    <div className="gd-footer-tile">
+                        <span className="gd-footer-icon">💹</span>
+                        <div>
+                            <span className="gd-footer-label">Différence Nette</span>
+                            <span className={`gd-footer-val ${(caisse?.total_debit - caisse?.total_credit) >= 0 ? 'positive' : 'negative'}`}>
+                                {fmtMontant((caisse?.total_debit || 0) - (caisse?.total_credit || 0))} TND
+                            </span>
+                        </div>
+                    </div>
+                    <div className="gd-footer-tile">
+                        <span className="gd-footer-icon">📦</span>
+                        <div>
+                            <span className="gd-footer-label">Écritures Sage</span>
+                            <span className="gd-footer-val">{migration?.total_ecritures || 0} lignes</span>
+                        </div>
+                    </div>
+                    <div className="gd-footer-tile">
+                        <span className={`gd-footer-icon ${wsConnected ? 'gd-pulse' : ''}`}>
+                            {wsConnected ? '🟢' : '🔴'}
+                        </span>
+                        <div>
+                            <span className="gd-footer-label">Connexion</span>
+                            <span className="gd-footer-val">{wsConnected ? 'Temps réel actif' : 'Reconnexion…'}</span>
+                        </div>
                     </div>
                 </div>
-                <div className="gd-footer-tile">
-                    <span className={`gd-footer-icon ${wsConnected ? 'gd-pulse' : ''}`}>
-                        {wsConnected ? '🟢' : '🔴'}
-                    </span>
-                    <div>
-                        <span className="gd-footer-label">Connexion</span>
-                        <span className="gd-footer-val">{wsConnected ? 'Temps réel actif' : 'Reconnexion…'}</span>
-                    </div>
-                </div>
-            </div>
+            )}
         </div>
     );
 }
