@@ -233,7 +233,20 @@ def update_ecriture_caisse(
             module="saisie_caisse",
             entity_type="ecriture_caisse",
             entity_id=str(ecriture_id),
-            detail={"date_ecriture": str(ecriture.date_ecriture), "libelle": ecriture.libelle_ecriture},
+            detail={
+                "before": {
+                    "date_ecriture": str(existing.get("date_ecriture")) if existing else None,
+                    "libelle_ecriture": existing.get("libelle_ecriture") if existing else None,
+                    "debit": float(existing.get("debit")) if existing else None,
+                    "credit": float(existing.get("credit")) if existing else None,
+                },
+                "after": {
+                    "date_ecriture": str(ecriture.date_ecriture),
+                    "libelle_ecriture": ecriture.libelle_ecriture,
+                    "debit": float(ecriture.debit),
+                    "credit": float(ecriture.credit),
+                },
+            },
             request=request,
         )
 

@@ -1,6 +1,9 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import ApiService from '../services/api';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ApiService, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+
+const WS_URL = API_BASE_URL.replace(/^http/i, 'ws') + '/ws/live';
+const WS_RECONNECT_DELAY = 3000;
 
 function AuditLogs() {
     const { isSuperAdmin } = useAuth();
@@ -21,6 +24,10 @@ function AuditLogs() {
     const [pages, setPages] = useState(1);
 
     const [selectedLog, setSelectedLog] = useState(null);
+
+    const wsRef = useRef(null);
+    const reconnectTimer = useRef(null);
+    const loadLogsRef = useRef(null);
 
     const loadLogs = useCallback(async () => {
         if (!isSuperAdmin) return;
@@ -51,9 +58,47 @@ function AuditLogs() {
         }
     }, [isSuperAdmin, search, page, pageSize, moduleFilter, actionFilter, userIdFilter, dateFrom, dateTo]);
 
+    useEffect(() => { loadLogsRef.current = loadLogs; }, [loadLogs]);
+
     useEffect(() => {
         loadLogs();
     }, [loadLogs]);
+
+    const connectWs = useCallback(() => {
+        if (!isSuperAdmin) return;
+        if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) return;
+
+        const ws = new WebSocket(WS_URL);
+
+        ws.onmessage = (event) => {
+            try {
+                const { channel } = JSON.parse(event.data);
+                if (channel === 'audit') {
+                    loadLogsRef.current?.();
+                }
+            } catch {
+                // ignore invalid messages
+            }
+        };
+
+        ws.onclose = (event) => {
+            wsRef.current = null;
+            if (event?.code === 1008) return;
+            reconnectTimer.current = setTimeout(connectWs, WS_RECONNECT_DELAY);
+        };
+
+        ws.onerror = () => { /* onclose handled */ };
+
+        wsRef.current = ws;
+    }, [isSuperAdmin]);
+
+    useEffect(() => {
+        connectWs();
+        return () => {
+            clearTimeout(reconnectTimer.current);
+            if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+        };
+    }, [connectWs]);
 
     const moduleOptions = useMemo(() => {
         const values = new Set(logs.map((log) => log.module).filter(Boolean));

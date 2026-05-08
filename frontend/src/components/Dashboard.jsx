@@ -294,7 +294,7 @@ function Dashboard({ refreshTrigger }) {
             <div className="gd-header">
                 <div className="gd-header-left">
                     <h2 className="gd-main-title">
-                        {isSuperAdmin ? 'Tableau de Bord Superadmin' : 'Tableau de Bord Global'}
+                        {isSuperAdmin ? 'Tableau de Bord ' : 'Tableau de Bord Global'}
                     </h2>
                     <div className="gd-header-meta">
                         <span className="gd-period-badge">{periodLabels[filterType]}</span>
@@ -796,7 +796,7 @@ function Dashboard({ refreshTrigger }) {
             )}
 
             {/* ══════ FOOTER ══════ */}
-            {isSuperAdmin ? (
+            {/* {isSuperAdmin ? (
                 <div className="gd-footer-stats">
                     <div className="gd-footer-tile">
                         <span className="gd-footer-icon">👥</span>
@@ -850,7 +850,7 @@ function Dashboard({ refreshTrigger }) {
                         </div>
                     </div>
                 </div>
-            )}
+            )} */}
         </div>
     );
 }

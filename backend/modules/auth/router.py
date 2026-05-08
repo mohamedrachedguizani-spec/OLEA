@@ -570,8 +570,12 @@ def update_user(
     """Met à jour un utilisateur (superadmin uniquement)."""
     with db.get_connection() as conn:
         with db.get_cursor(conn) as cursor:
-            cursor.execute("SELECT id FROM users WHERE id = %s", (user_id,))
-            if not cursor.fetchone():
+            cursor.execute(
+                "SELECT id, email, full_name, role, is_active FROM users WHERE id = %s",
+                (user_id,),
+            )
+            existing = cursor.fetchone()
+            if not existing:
                 raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
 
             # Construire la requête de mise à jour dynamiquement
@@ -621,7 +625,21 @@ def update_user(
         module="users",
         entity_type="user",
         entity_id=str(user_id),
-        detail={"fields": [k for k, v in body.model_dump().items() if v is not None]},
+        detail={
+            "fields": [k for k, v in body.model_dump().items() if v is not None],
+            "before": {
+                "email": existing.get("email") if existing else None,
+                "full_name": existing.get("full_name") if existing else None,
+                "role": existing.get("role") if existing else None,
+                "is_active": bool(existing.get("is_active")) if existing else None,
+            },
+            "after": {
+                "email": updated.get("email") if updated else None,
+                "full_name": updated.get("full_name") if updated else None,
+                "role": updated.get("role") if updated else None,
+                "is_active": bool(updated.get("is_active")) if updated else None,
+            },
+        },
         request=request,
     )
 

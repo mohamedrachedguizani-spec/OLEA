@@ -180,7 +180,7 @@ def update_compte(
     with db.get_cursor() as cursor:
         cursor.execute(
             """
-            SELECT id
+            SELECT id, code_compte, libelle_compte
             FROM comptes
             WHERE code_compte = %s
             ORDER BY id DESC
@@ -228,7 +228,16 @@ def update_compte(
         module="configuration",
         entity_type="compte",
         entity_id=updated["code_compte"],
-        detail={"old_code": code, "libelle_compte": updated["libelle_compte"]},
+        detail={
+            "before": {
+                "code_compte": existing.get("code_compte") if existing else code,
+                "libelle_compte": existing.get("libelle_compte") if existing else None,
+            },
+            "after": {
+                "code_compte": updated["code_compte"],
+                "libelle_compte": updated["libelle_compte"],
+            },
+        },
         request=request,
     )
 
