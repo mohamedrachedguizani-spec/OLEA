@@ -626,7 +626,6 @@ def update_user(
         entity_type="user",
         entity_id=str(user_id),
         detail={
-            "fields": [k for k, v in body.model_dump().items() if v is not None],
             "before": {
                 "email": existing.get("email") if existing else None,
                 "full_name": existing.get("full_name") if existing else None,

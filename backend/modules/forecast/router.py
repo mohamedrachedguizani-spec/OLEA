@@ -241,6 +241,35 @@ def update_manual_aggregate_forecast(
     user: dict = Depends(get_current_user),
 ):
     try:
+        old_value = None
+        old_subagregats_map = {}
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT forecast_value
+                FROM bfc_forecast_values
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s AND month = %s
+                LIMIT 1
+                """,
+                (payload.target_year, payload.cycle_code, payload.agregat_key, payload.month),
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                old_value = round(float(row.get("forecast_value") or 0.0), 3)
+
+            cursor.execute(
+                """
+                SELECT subagregat_key, subagregat_label, forecast_value
+                FROM bfc_forecast_manual_subvalues
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s AND month = %s
+                """,
+                (payload.target_year, payload.cycle_code, payload.agregat_key, payload.month),
+            )
+            rows = cursor.fetchall()
+            for r in rows:
+                key = r.get("subagregat_key") or r.get("subagregat_label")
+                old_subagregats_map[str(key)] = round(float(r.get("forecast_value") or 0.0), 3)
+
         result = set_manual_forecast_values(
             target_year=payload.target_year,
             cycle_code=payload.cycle_code,
@@ -256,7 +285,22 @@ def update_manual_aggregate_forecast(
             module="forecast",
             entity_type="aggregate",
             entity_id=str(payload.agregat_key),
-            detail={"target_year": payload.target_year, "month": payload.month},
+            detail={
+                "target_year": payload.target_year,
+                "cycle_code": payload.cycle_code,
+                "month": payload.month,
+                "old_value": old_value,
+                "new_value": payload.forecast_value,
+                "subagregats": [
+                    {
+                        **x.model_dump(),
+                        "old_value": old_subagregats_map.get(
+                            str(x.subagregat_key or x.subagregat_label)
+                        ),
+                    }
+                    for x in payload.subagregats
+                ] if payload.subagregats else [],
+            },
             request=request,
         )
         return ForecastManualAggregateUpdateResponse(**result)
@@ -273,6 +317,35 @@ def update_manual_aggregate_forecast_annual(
     user: dict = Depends(get_current_user),
 ):
     try:
+        old_value = None
+        old_subagregats_map = {}
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT SUM(forecast_value) AS total
+                FROM bfc_forecast_values
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s
+                """,
+                (payload.target_year, payload.cycle_code, payload.agregat_key),
+            )
+            row = cursor.fetchone()
+            if row is not None:
+                old_value = round(float(row.get("total") or 0.0), 3)
+
+            cursor.execute(
+                """
+                SELECT subagregat_key, subagregat_label, SUM(forecast_value) AS total
+                FROM bfc_forecast_manual_subvalues
+                WHERE forecast_year = %s AND cycle_code = %s AND agregat_key = %s
+                GROUP BY subagregat_key, subagregat_label
+                """,
+                (payload.target_year, payload.cycle_code, payload.agregat_key),
+            )
+            rows = cursor.fetchall()
+            for r in rows:
+                key = r.get("subagregat_key") or r.get("subagregat_label")
+                old_subagregats_map[str(key)] = round(float(r.get("total") or 0.0), 3)
+
         result = set_manual_annual_forecast_values(
             target_year=payload.target_year,
             cycle_code=payload.cycle_code,
@@ -287,7 +360,21 @@ def update_manual_aggregate_forecast_annual(
             module="forecast",
             entity_type="aggregate",
             entity_id=str(payload.agregat_key),
-            detail={"target_year": payload.target_year},
+            detail={
+                "target_year": payload.target_year,
+                "cycle_code": payload.cycle_code,
+                "old_value": old_value,
+                "new_value": payload.forecast_annual_value,
+                "subagregats": [
+                    {
+                        **x.model_dump(),
+                        "old_value": old_subagregats_map.get(
+                            str(x.subagregat_key or x.subagregat_label)
+                        ),
+                    }
+                    for x in payload.subagregats
+                ] if payload.subagregats else [],
+            },
             request=request,
         )
         return ForecastManualAnnualAggregateUpdateResponse(**result)
