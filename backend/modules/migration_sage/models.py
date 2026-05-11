@@ -33,9 +33,25 @@ class EcritureSage(EcritureSageCreate):
         from_attributes = True
 
 
+class EcritureSagePage(BaseModel):
+    items: List[EcritureSage]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
 # ─── Migration ───
 
 class MigrationRequest(BaseModel):
     ecriture_caisse_id: int
     ligne1: EcritureSageBase
     ligne2: EcritureSageBase
+
+
+class EcrituresAMigrerPage(BaseModel):
+    items: List[dict]
+    total: int
+    page: int
+    page_size: int
+    pages: int

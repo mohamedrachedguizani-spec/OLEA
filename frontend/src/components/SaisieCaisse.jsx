@@ -20,12 +20,20 @@ function SaisieCaisse({ refreshTrigger }) {
     const creditInputRef = useRef(null);
     const lastSuggestedFieldRef = useRef(null);
 
+    const [page, setPage] = useState(1);
+    const [pageSize] = useState(20);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalEcritures, setTotalEcritures] = useState(0);
+
     const normalizeText = (text = '') =>
         text
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .toLowerCase()
             .trim();
+
+    const canGoPrev = page > 1;
+    const canGoNext = page < totalPages;
 
     const splitWords = (text = '') =>
         normalizeText(text)
@@ -156,14 +164,20 @@ function SaisieCaisse({ refreshTrigger }) {
 
     const loadEcritures = useCallback(async () => {
         try {
-            const data = await ApiService.getEcrituresCaisse({ limit: 500 });
-            // Filtrer les écritures migrées et inverser l'ordre: ancien vers récent
-            const ecrituresNonMigrees = data.filter(e => !e.est_migree);
-            setEcritures(ecrituresNonMigrees.reverse());
+            const data = await ApiService.getEcrituresCaisse({
+                page,
+                page_size: pageSize,
+                migree: false,
+                order: 'asc',
+            });
+            const items = Array.isArray(data?.items) ? data.items : [];
+            setEcritures(items);
+            setTotalEcritures(Number(data?.total ?? 0));
+            setTotalPages(Number(data?.pages ?? 1));
         } catch (error) {
             console.error('Erreur lors du chargement:', error);
         }
-    }, []);
+    }, [page, pageSize]);
 
     useEffect(() => {
         loadEcritures();
@@ -280,7 +294,7 @@ function SaisieCaisse({ refreshTrigger }) {
                     Saisie des Écritures de Caisse
                 </h2>
             </div>
-            
+
             {message && (
                 <div className={`alert ${message.includes('Erreur') ? 'alert-danger' : 'alert-success'} slide-down`}>
                     {message}
@@ -360,7 +374,7 @@ function SaisieCaisse({ refreshTrigger }) {
                     <span className="icon">📋</span>
                     Écritures en Attente de Migration
                 </h3>
-                <span className="badge badge-warning">{ecritures.length} en attente</span>
+                <span className="badge badge-warning">{totalEcritures} en attente</span>
             </div>
             
             <div className="table-responsive">
@@ -479,6 +493,32 @@ function SaisieCaisse({ refreshTrigger }) {
                         )}
                     </tbody>
                 </table>
+            </div>
+
+            <div className="form-row config-pagination" style={{ marginTop: '1rem', alignItems: 'center' }}>
+                <div className="form-col">
+                    <span className="text-muted">
+                        Page {page} / {totalPages}
+                    </span>
+                </div>
+                <div className="form-col form-col-btn" style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={!canGoPrev || loading}
+                    >
+                        Précédent
+                    </button>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={!canGoNext || loading}
+                    >
+                        Suivant
+                    </button>
+                </div>
             </div>
         </div>
     );

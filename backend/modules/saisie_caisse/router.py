@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from datetime import date, datetime, timedelta
 from typing import List, Optional
+import math
 
 from database import db
 from ws_manager import manager as ws_manager
@@ -10,6 +11,7 @@ from modules.audit.service import log_audit_action
 from .models import (
     EcritureCaisse,
     EcritureCaisseCreate,
+    EcritureCaissePage,
     LibelleSuggestion,
 )
 
@@ -140,36 +142,55 @@ def create_ecriture_caisse(
         return result
 
 
-@router.get("/ecritures-caisse/", response_model=List[EcritureCaisse])
+@router.get("/ecritures-caisse/", response_model=EcritureCaissePage)
 def get_ecritures_caisse(
-    skip: int = 0,
-    limit: int = 100,
+    page: int = 1,
+    page_size: int = 20,
+    order: str = "desc",
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
     migree: Optional[bool] = None,
 ):
-    """Récupérer les écritures de caisse"""
-    query = "SELECT * FROM ecritures_caisse WHERE 1=1"
+    """Récupérer les écritures de caisse (paginé)"""
+    safe_page = max(1, page)
+    safe_page_size = max(1, page_size)
+    offset = (safe_page - 1) * safe_page_size
+    safe_order = "ASC" if order.lower() == "asc" else "DESC"
+
+    base_query = "FROM ecritures_caisse WHERE 1=1"
     params = []
 
     if date_debut:
-        query += " AND date_ecriture >= %s"
+        base_query += " AND date_ecriture >= %s"
         params.append(date_debut)
 
     if date_fin:
-        query += " AND date_ecriture <= %s"
+        base_query += " AND date_ecriture <= %s"
         params.append(date_fin)
 
     if migree is not None:
-        query += " AND est_migree = %s"
+        base_query += " AND est_migree = %s"
         params.append(migree)
 
-    query += " ORDER BY date_ecriture DESC, id DESC LIMIT %s OFFSET %s"
-    params.extend([limit, skip])
-
     with db.get_cursor() as cursor:
-        cursor.execute(query, params)
-        return cursor.fetchall()
+        cursor.execute(f"SELECT COUNT(*) as cnt {base_query}", params)
+        row = cursor.fetchone()
+        total = int(row["cnt"] if row else 0)
+
+        cursor.execute(
+            f"SELECT * {base_query} ORDER BY date_ecriture {safe_order}, id {safe_order} LIMIT %s OFFSET %s",
+            params + [safe_page_size, offset],
+        )
+        items = cursor.fetchall()
+
+    pages = max(1, math.ceil(total / safe_page_size))
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "pages": pages,
+    }
 
 
 @router.get("/ecritures-caisse/{ecriture_id}", response_model=EcritureCaisse)

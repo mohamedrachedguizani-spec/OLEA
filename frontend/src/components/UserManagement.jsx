@@ -29,6 +29,11 @@ function UserManagement() {
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
 
+    const [page, setPage] = useState(1);
+    const [pageSize] = useState(20);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalUsers, setTotalUsers] = useState(0);
+
     // Modals
     const [showCreateModal, setShowCreateModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -54,17 +59,22 @@ function UserManagement() {
 
     const clearMessages = () => { setError(''); setSuccess(''); };
 
+    const canGoPrev = page > 1;
+    const canGoNext = page < totalPages;
+
     const loadUsers = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await ApiService.getUsers();
-            setUsers(data);
+            const data = await ApiService.getUsers({ page, page_size: pageSize });
+            setUsers(Array.isArray(data?.items) ? data.items : []);
+            setTotalUsers(Number(data?.total ?? 0));
+            setTotalPages(Number(data?.pages ?? 1));
         } catch (err) {
             setError('Erreur lors du chargement des utilisateurs');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [page, pageSize]);
 
     useEffect(() => { loadUsers(); }, [loadUsers]);
 
@@ -261,7 +271,7 @@ function UserManagement() {
                         </svg>
                         Gestion des Utilisateurs
                     </h2>
-                    <p className="um-subtitle">{users.length} utilisateur{users.length > 1 ? 's' : ''} enregistré{users.length > 1 ? 's' : ''}</p>
+                    <p className="um-subtitle">{totalUsers} utilisateur{totalUsers > 1 ? 's' : ''} enregistré{totalUsers > 1 ? 's' : ''}</p>
                 </div>
                 <button className="um-btn um-btn-primary" onClick={() => { clearMessages(); setShowCreateModal(true); }}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
@@ -391,6 +401,32 @@ function UserManagement() {
                         ))}
                     </tbody>
                 </table>
+            </div>
+
+            <div className="form-row config-pagination" style={{ marginTop: '1rem', alignItems: 'center' }}>
+                <div className="form-col">
+                    <span className="text-muted">
+                        Page {page} / {totalPages}
+                    </span>
+                </div>
+                <div className="form-col form-col-btn" style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        disabled={!canGoPrev || loading}
+                    >
+                        Précédent
+                    </button>
+                    <button
+                        type="button"
+                        className="btn btn-secondary"
+                        onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                        disabled={!canGoNext || loading}
+                    >
+                        Suivant
+                    </button>
+                </div>
             </div>
 
             {/* ═══ Modal : Créer ═══ */}

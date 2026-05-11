@@ -1,14 +1,14 @@
-from datetime import date
+from datetime import date, timedelta
 from typing import Optional
 
 import json
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, HTTPException, status
 
 from database import db
 from modules.auth.dependencies import get_current_user, require_role
 from modules.auth.models import RoleEnum
-from .models import AuditLogPage
+from .models import AuditLogPage, AuditLogDeleteRequest, AuditLogDeleteResponse
 
 
 router = APIRouter(
@@ -16,6 +16,16 @@ router = APIRouter(
     responses={404: {"description": "Non trouvé"}},
     dependencies=[Depends(get_current_user), Depends(require_role(RoleEnum.superadmin))],
 )
+
+
+@router.get("/audit/modules")
+def list_audit_modules():
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT DISTINCT module FROM audit_logs WHERE module IS NOT NULL ORDER BY module ASC"
+        )
+        rows = cursor.fetchall()
+    return {"items": [row["module"] for row in rows if row.get("module")]}
 
 
 @router.get("/audit/logs", response_model=AuditLogPage)
@@ -53,8 +63,8 @@ def list_audit_logs(
         params.append(date_from)
 
     if date_to:
-        filters.append("created_at <= %s")
-        params.append(date_to)
+        filters.append("created_at < %s")
+        params.append(date_to + timedelta(days=1))
 
     if search:
         filters.append(
@@ -105,3 +115,27 @@ def list_audit_logs(
         "page_size": safe_page_size,
         "pages": pages,
     }
+
+
+@router.delete("/audit/logs", response_model=AuditLogDeleteResponse)
+def delete_audit_logs(
+    payload: AuditLogDeleteRequest,
+    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+):
+    ids = [int(i) for i in payload.ids if i]
+    unique_ids = sorted(set(ids))
+    if not unique_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Aucun log sélectionné",
+        )
+
+    placeholders = ", ".join(["%s"] * len(unique_ids))
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            f"DELETE FROM audit_logs WHERE id IN ({placeholders})",
+            tuple(unique_ids),
+        )
+        deleted = int(cursor.rowcount or 0)
+
+    return {"deleted": deleted}

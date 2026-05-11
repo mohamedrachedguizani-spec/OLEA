@@ -13,15 +13,22 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
     const [useCustomCompte1, setUseCustomCompte1] = useState({});
     const [useCustomCompte2, setUseCustomCompte2] = useState({});
 
+    const [page, setPage] = useState(1);
+    const [pageSize] = useState(20);
+    const [totalPages, setTotalPages] = useState(1);
+    const [totalEcritures, setTotalEcritures] = useState(0);
+
     useEffect(() => {
         loadEcrituresAMigrer();
         loadComptes();
-    }, [refreshTrigger]);
+    }, [refreshTrigger, page, pageSize]);
 
     const loadEcrituresAMigrer = async () => {
         try {
-            const data = await ApiService.getEcrituresAMigrer();
-            setEcrituresAMigrer(data);
+            const data = await ApiService.getEcrituresAMigrer({ page, page_size: pageSize });
+            setEcrituresAMigrer(Array.isArray(data?.items) ? data.items : []);
+            setTotalEcritures(Number(data?.total ?? 0));
+            setTotalPages(Number(data?.pages ?? 1));
         } catch (error) {
             console.error('Erreur lors du chargement:', error);
         }
@@ -35,6 +42,9 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
             console.error('Erreur lors du chargement des comptes:', error);
         }
     };
+
+    const canGoPrev = page > 1;
+    const canGoNext = page < totalPages;
 
     const handleMigrationChange = (ecritureId, ligne, field, value) => {
         setMigrationForm(prev => ({
@@ -189,7 +199,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                 </h2>
                 {ecrituresAMigrer.length > 0 && (
                     <div className="header-actions">
-                        <span className="badge badge-primary">{ecrituresAMigrer.length} écriture(s)</span>
+                        <span className="badge badge-primary">{totalEcritures} écriture(s)</span>
                         <button
                             className="btn btn-primary"
                             onClick={handleMigrerTout}
@@ -402,6 +412,34 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                             </div>
                         </div>
                     ))}
+                </div>
+            )}
+
+            {ecrituresAMigrer.length > 0 && (
+                <div className="form-row config-pagination" style={{ marginTop: '1rem', alignItems: 'center' }}>
+                    <div className="form-col">
+                        <span className="text-muted">
+                            Page {page} / {totalPages}
+                        </span>
+                    </div>
+                    <div className="form-col form-col-btn" style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => setPage((p) => Math.max(1, p - 1))}
+                            disabled={!canGoPrev || loading}
+                        >
+                            Précédent
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={!canGoNext || loading}
+                        >
+                            Suivant
+                        </button>
+                    </div>
                 </div>
             )}
         </div>

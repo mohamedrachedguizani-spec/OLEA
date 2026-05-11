@@ -104,6 +104,14 @@ class UserResponse(BaseModel):
     active_sessions: Optional[int] = None
 
 
+class UserPage(BaseModel):
+    items: List[UserResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str

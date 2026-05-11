@@ -23,3 +23,11 @@ class AuditLogPage(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class AuditLogDeleteRequest(BaseModel):
+    ids: List[int]
+
+
+class AuditLogDeleteResponse(BaseModel):
+    deleted: int

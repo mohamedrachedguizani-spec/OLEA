@@ -14,7 +14,6 @@ function AuditLogs() {
     const [search, setSearch] = useState('');
     const [moduleFilter, setModuleFilter] = useState('');
     const [actionFilter, setActionFilter] = useState('');
-    const [userIdFilter, setUserIdFilter] = useState('');
     const [dateFrom, setDateFrom] = useState('');
     const [dateTo, setDateTo] = useState('');
 
@@ -24,6 +23,8 @@ function AuditLogs() {
     const [pages, setPages] = useState(1);
 
     const [selectedLog, setSelectedLog] = useState(null);
+    const [selectedIds, setSelectedIds] = useState([]);
+    const [moduleOptions, setModuleOptions] = useState([]);
 
     const wsRef = useRef(null);
     const reconnectTimer = useRef(null);
@@ -41,7 +42,6 @@ function AuditLogs() {
             };
             if (moduleFilter) params.module = moduleFilter;
             if (actionFilter) params.action = actionFilter;
-            if (userIdFilter) params.user_id = userIdFilter;
             if (dateFrom) params.date_from = dateFrom;
             if (dateTo) params.date_to = dateTo;
 
@@ -56,13 +56,29 @@ function AuditLogs() {
         } finally {
             setLoading(false);
         }
-    }, [isSuperAdmin, search, page, pageSize, moduleFilter, actionFilter, userIdFilter, dateFrom, dateTo]);
+    }, [isSuperAdmin, search, page, pageSize, moduleFilter, actionFilter, dateFrom, dateTo]);
 
     useEffect(() => { loadLogsRef.current = loadLogs; }, [loadLogs]);
 
     useEffect(() => {
         loadLogs();
     }, [loadLogs]);
+
+    useEffect(() => {
+        if (!isSuperAdmin) return;
+        ApiService.getAuditModules()
+            .then((data) => {
+                const items = Array.isArray(data?.items) ? data.items : [];
+                setModuleOptions(items);
+            })
+            .catch(() => {
+                setModuleOptions([]);
+            });
+    }, [isSuperAdmin]);
+
+    useEffect(() => {
+        setSelectedIds([]);
+    }, [logs]);
 
     const connectWs = useCallback(() => {
         if (!isSuperAdmin) return;
@@ -100,15 +116,43 @@ function AuditLogs() {
         };
     }, [connectWs]);
 
-    const moduleOptions = useMemo(() => {
-        const values = new Set(logs.map((log) => log.module).filter(Boolean));
-        return Array.from(values).sort();
-    }, [logs]);
-
     const actionOptions = useMemo(() => {
         const values = new Set(logs.map((log) => log.action).filter(Boolean));
         return Array.from(values).sort();
     }, [logs]);
+
+    const allSelected = logs.length > 0 && selectedIds.length === logs.length;
+
+    const toggleSelectAll = () => {
+        if (allSelected) {
+            setSelectedIds([]);
+        } else {
+            setSelectedIds(logs.map((log) => log.id));
+        }
+    };
+
+    const toggleSelectOne = (id) => {
+        setSelectedIds((prev) => (
+            prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]
+        ));
+    };
+
+    const handleDeleteSelected = async () => {
+        if (!selectedIds.length) return;
+        if (!window.confirm(`Supprimer ${selectedIds.length} log(s) sélectionné(s) ?`)) return;
+        setLoading(true);
+        setMessage('');
+        try {
+            const result = await ApiService.deleteAuditLogs(selectedIds);
+            setMessage(`${result.deleted} log(s) supprimé(s)`);
+            setSelectedIds([]);
+            await loadLogs();
+        } catch (error) {
+            setMessage(`Erreur lors de la suppression: ${error.message}`);
+        } finally {
+            setLoading(false);
+        }
+    };
 
     if (!isSuperAdmin) {
         return (
@@ -182,15 +226,16 @@ function AuditLogs() {
                             ))}
                         </select>
                     </div>
-                    <div className="form-col">
-                        <label>ID utilisateur</label>
-                        <input
-                            type="number"
-                            className="form-control"
-                            value={userIdFilter}
-                            onChange={(e) => { setUserIdFilter(e.target.value); setPage(1); }}
-                            placeholder="Ex: 12"
-                        />
+                    <div className="form-col form-col-btn" style={{ display: 'flex', alignItems: 'flex-end' }}>
+                        <button
+                            className="btn btn-danger"
+                            type="button"
+                            title="Supprimer la sélection"
+                            onClick={handleDeleteSelected}
+                            disabled={loading || selectedIds.length === 0}
+                        >
+                            🗑️
+                        </button>
                     </div>
                 </div>
                 <div className="form-row" style={{ marginTop: '0.75rem' }}>
@@ -219,6 +264,13 @@ function AuditLogs() {
                 <table className="olea-table">
                     <thead>
                         <tr>
+                            <th className="text-center">
+                                <input
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    onChange={toggleSelectAll}
+                                />
+                            </th>
                             <th>Date</th>
                             <th>Utilisateur</th>
                             <th>Module</th>
@@ -230,19 +282,26 @@ function AuditLogs() {
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan="6" style={{ textAlign: 'center', padding: '1rem' }}>
+                                <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
                                     Chargement...
                                 </td>
                             </tr>
                         ) : logs.length === 0 ? (
                             <tr>
-                                <td colSpan="6" style={{ textAlign: 'center', padding: '1rem' }}>
+                                <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
                                     Aucun log trouvé
                                 </td>
                             </tr>
                         ) : (
                             logs.map((log) => (
                                 <tr key={log.id}>
+                                    <td className="text-center">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedIds.includes(log.id)}
+                                            onChange={() => toggleSelectOne(log.id)}
+                                        />
+                                    </td>
                                     <td>{log.created_at ? new Date(log.created_at).toLocaleString('fr-FR') : '-'}</td>
                                     <td>{log.username || log.user_id || '-'}</td>
                                     <td>{log.module}</td>

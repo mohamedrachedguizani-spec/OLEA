@@ -2,6 +2,7 @@
 from fastapi import APIRouter, HTTPException, Depends, Request
 from datetime import date
 from typing import List, Optional
+import math
 
 from database import db
 from ws_manager import manager as ws_manager
@@ -10,6 +11,8 @@ from modules.audit.service import log_audit_action
 from .models import (
     EcritureSage,
     EcritureSageCreate,
+    EcritureSagePage,
+    EcrituresAMigrerPage,
     MigrationRequest,
 )
 
@@ -24,16 +27,38 @@ router = APIRouter(
 # 1. Écritures à migrer
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/ecritures-a-migrer/", response_model=List[dict])
-def get_ecritures_a_migrer():
-    """Récupérer les écritures de caisse non migrées"""
+@router.get("/ecritures-a-migrer/", response_model=EcrituresAMigrerPage)
+def get_ecritures_a_migrer(
+    page: int = 1,
+    page_size: int = 20,
+):
+    """Récupérer les écritures de caisse non migrées (paginé)"""
+    safe_page = max(1, page)
+    safe_page_size = max(1, page_size)
+    offset = (safe_page - 1) * safe_page_size
+
     with db.get_cursor() as cursor:
-        cursor.execute("""
-            SELECT * FROM ecritures_caisse 
-            WHERE est_migree = FALSE 
-            ORDER BY date_ecriture ASC, id ASC
-        """)
-        return cursor.fetchall()
+        cursor.execute(
+            "SELECT COUNT(*) as cnt FROM ecritures_caisse WHERE est_migree = FALSE"
+        )
+        row = cursor.fetchone()
+        total = int(row["cnt"] if row else 0)
+
+        cursor.execute(
+            "SELECT * FROM ecritures_caisse WHERE est_migree = FALSE "
+            "ORDER BY date_ecriture ASC, id ASC LIMIT %s OFFSET %s",
+            (safe_page_size, offset),
+        )
+        items = cursor.fetchall()
+
+    pages = max(1, math.ceil(total / safe_page_size))
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "pages": pages,
+    }
 
 
 # ═══════════════════════════════════════════════════════════
@@ -174,31 +199,48 @@ def migrer_tout(
 # 3. Écritures Sage (lecture)
 # ═══════════════════════════════════════════════════════════
 
-@router.get("/ecritures-sage/", response_model=List[EcritureSage])
+@router.get("/ecritures-sage/", response_model=EcritureSagePage)
 def get_ecritures_sage(
-    skip: int = 0,
-    limit: int = 100,
+    page: int = 1,
+    page_size: int = 20,
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
 ):
-    """Récupérer les écritures au format Sage"""
-    query = "SELECT * FROM ecritures_sage WHERE 1=1"
+    """Récupérer les écritures au format Sage (paginé)"""
+    safe_page = max(1, page)
+    safe_page_size = max(1, page_size)
+    offset = (safe_page - 1) * safe_page_size
+
+    base_query = "FROM ecritures_sage WHERE 1=1"
     params = []
 
     if date_debut:
-        query += " AND date_compta >= %s"
+        base_query += " AND date_compta >= %s"
         params.append(date_debut)
 
     if date_fin:
-        query += " AND date_compta <= %s"
+        base_query += " AND date_compta <= %s"
         params.append(date_fin)
 
-    query += " ORDER BY date_compta DESC, id DESC LIMIT %s OFFSET %s"
-    params.extend([limit, skip])
-
     with db.get_cursor() as cursor:
-        cursor.execute(query, params)
-        return cursor.fetchall()
+        cursor.execute(f"SELECT COUNT(*) as cnt {base_query}", params)
+        row = cursor.fetchone()
+        total = int(row["cnt"] if row else 0)
+
+        cursor.execute(
+            f"SELECT * {base_query} ORDER BY date_compta DESC, id DESC LIMIT %s OFFSET %s",
+            params + [safe_page_size, offset],
+        )
+        items = cursor.fetchall()
+
+    pages = max(1, math.ceil(total / safe_page_size))
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "pages": pages,
+    }
 
 
 # ═══════════════════════════════════════════════════════════

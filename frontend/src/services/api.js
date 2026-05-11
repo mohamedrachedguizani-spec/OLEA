@@ -109,8 +109,9 @@ class ApiService {
 
     // ===================== GESTION UTILISATEURS (superadmin) =====================
 
-    static async getUsers() {
-        const response = await ApiService._fetch(`${API_BASE_URL}/auth/users`);
+    static async getUsers(params = {}) {
+        const queryParams = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/auth/users?${queryParams}`);
         if (!response.ok) throw new Error('Erreur lors du chargement des utilisateurs');
         return response.json();
     }
@@ -221,6 +222,27 @@ class ApiService {
         }
         return response.json();
     }
+
+    static async getAuditModules() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/audit/modules`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des modules' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des modules');
+        }
+        return response.json();
+    }
+
+    static async deleteAuditLogs(ids = []) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/audit/logs`, {
+            method: 'DELETE',
+            body: JSON.stringify({ ids }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression des logs' }));
+            throw new Error(err.detail || 'Erreur lors de la suppression des logs');
+        }
+        return response.json();
+    }
     // Écritures de caisse
     static async createEcritureCaisse(ecriture) {
         const response = await ApiService._fetch(`${API_BASE_URL}/ecritures-caisse/`, {
@@ -250,8 +272,9 @@ class ApiService {
     }
 
     // Migration
-    static async getEcrituresAMigrer() {
-        const response = await ApiService._fetch(`${API_BASE_URL}/ecritures-a-migrer/`);
+    static async getEcrituresAMigrer(params = {}) {
+        const queryParams = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/ecritures-a-migrer/?${queryParams}`);
         return response.json();
     }
 

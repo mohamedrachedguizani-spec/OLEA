@@ -14,6 +14,7 @@ import os
 import hashlib
 import time
 import threading
+import math
 from typing import List
 
 from fastapi import APIRouter, HTTPException, Request, Response, Depends, status
@@ -25,6 +26,7 @@ from .models import (
     UserCreate,
     UserUpdate,
     UserResponse,
+    UserPage,
     ChangePasswordRequest,
     ResetPasswordRequest,
     PermissionResponse,
@@ -463,27 +465,45 @@ def change_my_password(body: ChangePasswordRequest, request: Request, response: 
 #  GESTION DES UTILISATEURS (superadmin uniquement)
 # ════════════════════════════════════════════════════════════
 
-@router.get("/users", response_model=List[UserResponse])
+@router.get("/users", response_model=UserPage)
 def list_users(
-    request: Request,
+    page: int = 1,
+    page_size: int = 20,
+    request: Request = None,
     admin: dict = Depends(require_role(RoleEnum.superadmin)),
 ):
-    """Liste tous les utilisateurs (superadmin uniquement)."""
+    """Liste tous les utilisateurs (superadmin uniquement, paginé)."""
+    safe_page = max(1, page)
+    safe_page_size = max(1, page_size)
+    offset = (safe_page - 1) * safe_page_size
+
     with db.get_connection() as conn:
         with db.get_cursor(conn) as cursor:
+            cursor.execute("SELECT COUNT(*) as cnt FROM users")
+            row = cursor.fetchone()
+            total = int(row["cnt"] if row else 0)
+
             cursor.execute(
                 "SELECT id, username, email, full_name, role, is_active, created_at "
-                "FROM users ORDER BY created_at DESC"
+                "FROM users ORDER BY created_at DESC LIMIT %s OFFSET %s",
+                (safe_page_size, offset),
             )
             users = cursor.fetchall()
 
-            result = []
+            items = []
             for u in users:
                 permissions = _fetch_user_permissions(cursor, u["id"])
                 active_sessions = _count_active_sessions(cursor, u["id"])
-                result.append(_build_user_response(u, permissions, active_sessions))
+                items.append(_build_user_response(u, permissions, active_sessions))
 
-    return result
+    pages = max(1, math.ceil(total / safe_page_size))
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "pages": pages,
+    }
 
 
 @router.post("/users", response_model=UserResponse, status_code=status.HTTP_201_CREATED)

@@ -27,6 +27,14 @@ class EcritureCaisse(EcritureCaisseBase):
         from_attributes = True
 
 
+class EcritureCaissePage(BaseModel):
+    items: List[EcritureCaisse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+
+
 # ─── Suggestions de libellés ───
 
 class LibelleSuggestion(BaseModel):
