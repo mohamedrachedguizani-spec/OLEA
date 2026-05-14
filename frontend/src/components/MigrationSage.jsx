@@ -415,31 +415,76 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                 </div>
             )}
 
-            {ecrituresAMigrer.length > 0 && (
-                <div className="form-row config-pagination" style={{ marginTop: '1rem', alignItems: 'center' }}>
-                    <div className="form-col">
-                        <span className="text-muted">
-                            Page {page} / {totalPages}
-                        </span>
+            {ecrituresAMigrer.length > 0 && totalPages > 1 && (
+                <div className="lignes-pagination">
+                    <button
+                        className="pagination-btn"
+                        disabled={page === 1 || loading}
+                        onClick={() => setPage(1)}
+                        title="Première page"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="11 17 6 12 11 7" />
+                            <polyline points="18 17 13 12 18 7" />
+                        </svg>
+                    </button>
+                    <button
+                        className="pagination-btn"
+                        disabled={!canGoPrev || loading}
+                        onClick={() => setPage((p) => p - 1)}
+                        title="Page précédente"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
+
+                    <div className="pagination-pages">
+                        {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                            let pageNumber;
+                            if (totalPages <= 5) {
+                                pageNumber = i + 1;
+                            } else if (page <= 3) {
+                                pageNumber = i + 1;
+                            } else if (page >= totalPages - 2) {
+                                pageNumber = totalPages - 4 + i;
+                            } else {
+                                pageNumber = page - 2 + i;
+                            }
+                            return (
+                                <button
+                                    key={pageNumber}
+                                    className={`pagination-page ${page === pageNumber ? 'active' : ''}`}
+                                    onClick={() => setPage(pageNumber)}
+                                    disabled={loading}
+                                >
+                                    {pageNumber}
+                                </button>
+                            );
+                        })}
                     </div>
-                    <div className="form-col form-col-btn" style={{ display: 'flex', gap: '0.5rem' }}>
-                        <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => setPage((p) => Math.max(1, p - 1))}
-                            disabled={!canGoPrev || loading}
-                        >
-                            Précédent
-                        </button>
-                        <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                            disabled={!canGoNext || loading}
-                        >
-                            Suivant
-                        </button>
-                    </div>
+
+                    <button
+                        className="pagination-btn"
+                        disabled={!canGoNext || loading}
+                        onClick={() => setPage((p) => p + 1)}
+                        title="Page suivante"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="9 18 15 12 9 6" />
+                        </svg>
+                    </button>
+                    <button
+                        className="pagination-btn"
+                        disabled={page === totalPages || loading}
+                        onClick={() => setPage(totalPages)}
+                        title="Dernière page"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="13 17 18 12 13 7" />
+                            <polyline points="6 17 11 12 6 7" />
+                        </svg>
+                    </button>
                 </div>
             )}
         </div>

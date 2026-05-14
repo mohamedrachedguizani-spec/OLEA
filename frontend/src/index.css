@@ -1029,7 +1029,8 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    width: 100%;
 }
 
 .config-tabs {
@@ -1037,6 +1038,7 @@ body {
     align-items: center;
     gap: 0.25rem;
     padding: 0.3rem;
+    margin-left: auto;
     background: var(--bg-tertiary);
     border: 1px solid var(--border-color);
     border-radius: 999px;
@@ -1149,6 +1151,79 @@ body {
 
 .config-pagination {
     padding: 0 2rem 1.5rem;
+}
+
+/* ==================== Shared Pagination (SageBfcLignes style) ==================== */
+.lignes-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 1.25rem;
+    background: var(--bg-muted);
+    border-top: 1px solid var(--border-light);
+}
+
+.pagination-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.pagination-btn:hover:not(:disabled) {
+    border-color: var(--primary-500);
+    color: var(--primary-500);
+    background: rgba(183, 72, 43, 0.08);
+    transform: translateY(-1px);
+}
+
+.pagination-btn:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+}
+
+.pagination-pages {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0 0.5rem;
+}
+
+.pagination-page {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    background: none;
+    color: var(--text-secondary);
+    transition: all 0.2s ease;
+}
+
+.pagination-page:hover {
+    background: var(--bg-card);
+    border-color: var(--border-light);
+}
+
+.pagination-page.active {
+    background: var(--gradient-primary);
+    color: white;
+    border-color: transparent;
+    font-weight: 700;
+    box-shadow: 0 4px 12px rgba(183, 72, 43, 0.3);
 }
 
 .text-right {

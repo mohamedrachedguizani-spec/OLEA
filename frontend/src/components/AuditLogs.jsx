@@ -322,31 +322,78 @@ function AuditLogs() {
                 </table>
             </div>
 
-            <div className="form-row config-pagination" style={{ marginTop: '1rem', alignItems: 'center' }}>
-                <div className="form-col">
-                    <span className="text-muted">
-                        Page {page} / {pages}
-                    </span>
-                </div>
-                <div className="form-col form-col-btn" style={{ display: 'flex', gap: '0.5rem' }}>
+            {pages > 1 && (
+                <div className="lignes-pagination">
                     <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setPage((p) => Math.max(1, p - 1))}
+                        className="pagination-btn"
+                        disabled={page === 1 || loading}
+                        onClick={() => setPage(1)}
+                        title="Première page"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="11 17 6 12 11 7" />
+                            <polyline points="18 17 13 12 18 7" />
+                        </svg>
+                    </button>
+                    <button
+                        className="pagination-btn"
                         disabled={page <= 1 || loading}
+                        onClick={() => setPage((p) => p - 1)}
+                        title="Page précédente"
                     >
-                        Précédent
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="15 18 9 12 15 6" />
+                        </svg>
+                    </button>
+
+                    <div className="pagination-pages">
+                        {Array.from({ length: Math.min(5, pages) }, (_, i) => {
+                            let pageNumber;
+                            if (pages <= 5) {
+                                pageNumber = i + 1;
+                            } else if (page <= 3) {
+                                pageNumber = i + 1;
+                            } else if (page >= pages - 2) {
+                                pageNumber = pages - 4 + i;
+                            } else {
+                                pageNumber = page - 2 + i;
+                            }
+                            return (
+                                <button
+                                    key={pageNumber}
+                                    className={`pagination-page ${page === pageNumber ? 'active' : ''}`}
+                                    onClick={() => setPage(pageNumber)}
+                                    disabled={loading}
+                                >
+                                    {pageNumber}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <button
+                        className="pagination-btn"
+                        disabled={page >= pages || loading}
+                        onClick={() => setPage((p) => p + 1)}
+                        title="Page suivante"
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="9 18 15 12 9 6" />
+                        </svg>
                     </button>
                     <button
-                        type="button"
-                        className="btn btn-secondary"
-                        onClick={() => setPage((p) => Math.min(pages, p + 1))}
-                        disabled={page >= pages || loading}
+                        className="pagination-btn"
+                        disabled={page === pages || loading}
+                        onClick={() => setPage(pages)}
+                        title="Dernière page"
                     >
-                        Suivant
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                            <polyline points="13 17 18 12 13 7" />
+                            <polyline points="6 17 11 12 6 7" />
+                        </svg>
                     </button>
                 </div>
-            </div>
+            )}
 
             {selectedLog && (
                 <div className="um-modal-overlay" onClick={() => setSelectedLog(null)}>
