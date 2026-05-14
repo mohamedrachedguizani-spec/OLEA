@@ -12,6 +12,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
     const [customCompte2, setCustomCompte2] = useState({});
     const [useCustomCompte1, setUseCustomCompte1] = useState({});
     const [useCustomCompte2, setUseCustomCompte2] = useState({});
+    const [activeCompteInput, setActiveCompteInput] = useState(null);
 
     const [page, setPage] = useState(1);
     const [pageSize] = useState(20);
@@ -190,6 +191,15 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
         }
     };
 
+    const filterComptes = (query = '') => {
+        const value = query.toLowerCase().trim();
+        if (!value) return comptes;
+        return comptes.filter((compte) =>
+            compte.code_compte.toLowerCase().includes(value) ||
+            compte.libelle_compte.toLowerCase().includes(value)
+        );
+    };
+
     return (
         <div className="olea-card fade-in">
             <div className="card-header">
@@ -356,19 +366,44 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                                                     }))}
                                                 />
                                             ) : (
-                                                <select
-                                                    className="form-control"
-                                                    value={migrationForm[ecriture.id]?.ligne2?.compte || ''}
-                                                    onChange={(e) => handleMigrationChange(ecriture.id, 'ligne2', 'compte', e.target.value)}
-                                                    required
-                                                >
-                                                    <option value="">-- Sélectionner --</option>
-                                                    {comptes.map(compte => (
-                                                        <option key={compte.code_compte} value={compte.code_compte}>
-                                                            {compte.code_compte} - {compte.libelle_compte}
-                                                        </option>
-                                                    ))}
-                                                </select>
+                                                <div className="compte-suggest">
+                                                    <input
+                                                        type="text"
+                                                        className="form-control"
+                                                        value={migrationForm[ecriture.id]?.ligne2?.compte || ''}
+                                                        onChange={(e) => handleMigrationChange(ecriture.id, 'ligne2', 'compte', e.target.value)}
+                                                        onFocus={() => setActiveCompteInput(ecriture.id)}
+                                                        onBlur={() => {
+                                                            setTimeout(() => {
+                                                                setActiveCompteInput((prev) => (prev === ecriture.id ? null : prev));
+                                                            }, 150);
+                                                        }}
+                                                        placeholder="Saisir code ou libellé"
+                                                        required
+                                                    />
+                                                    {activeCompteInput === ecriture.id && (
+                                                        <div className="compte-suggest-list">
+                                                            {filterComptes(migrationForm[ecriture.id]?.ligne2?.compte || '')
+                                                                .map((compte) => (
+                                                                    <button
+                                                                        key={compte.code_compte}
+                                                                        type="button"
+                                                                        className="compte-suggest-item"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            handleMigrationChange(ecriture.id, 'ligne2', 'compte', compte.code_compte);
+                                                                            setActiveCompteInput(null);
+                                                                        }}
+                                                                    >
+                                                                        <strong>{compte.code_compte}</strong> — {compte.libelle_compte}
+                                                                    </button>
+                                                                ))}
+                                                            {filterComptes(migrationForm[ecriture.id]?.ligne2?.compte || '').length === 0 && (
+                                                                <div className="compte-suggest-empty">Aucun compte trouvé</div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                         <div className="field-group">
