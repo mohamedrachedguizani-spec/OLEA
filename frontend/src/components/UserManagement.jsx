@@ -14,6 +14,7 @@ const MODULES = [
     { name: 'saisie_caisse', label: 'Saisie Caisse', icon: '✏️' },
     { name: 'migration_sage', label: 'Migration Sage', icon: '📤' },
     { name: 'export_csv', label: 'Export CSV', icon: '📁' },
+    { name: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: '🏦' },
     { name: 'sage_bfc', label: 'SAGE → BFC', icon: '🔄' },
     { name: 'reporting', label: 'Reporting', icon: '📊' },
     { name: 'configuration', label: 'Configuration', icon: '⚙️' },

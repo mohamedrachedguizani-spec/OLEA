@@ -17,6 +17,7 @@ from modules.forecast import router as forecast_router
 from modules.reporting import router as reporting_router
 from modules.configuration import router as configuration_router, init_configuration_tables
 from modules.audit import router as audit_router, init_audit_tables
+from modules.rapprochement_bancaire import router as rapprochement_bancaire_router, init_rapprochement_tables
 
 
 app = FastAPI(title="Olea – Gestion de Caisse & BFC")
@@ -36,6 +37,7 @@ init_sage_bfc_tables()
 init_forecast_tables()
 init_configuration_tables()
 init_audit_tables()
+init_rapprochement_tables()
 
 # ─── Enregistrement des routers ───
 app.include_router(auth_router)
@@ -48,6 +50,7 @@ app.include_router(forecast_router)
 app.include_router(reporting_router)
 app.include_router(configuration_router)
 app.include_router(audit_router)
+app.include_router(rapprochement_bancaire_router)
 
 
 # ─── Enregistrer la boucle asyncio au démarrage ───

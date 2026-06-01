@@ -337,6 +337,62 @@ class ApiService {
         return response.json();
     }
 
+    // ===================== Rapprochement Bancaire =====================
+
+    static async uploadBankReconciliation(formData) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/upload`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de l\'import' }));
+            throw new Error(err.detail || 'Erreur lors de l\'import');
+        }
+        return response.json();
+    }
+
+    static async getBankReconciliationMovements(batchId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/movements`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des mouvements' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des mouvements');
+        }
+        return response.json();
+    }
+
+    static async getBankReconciliationBatch(batchId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement du batch' }));
+            throw new Error(err.detail || 'Erreur lors du chargement du batch');
+        }
+        return response.json();
+    }
+
+    static async generateBankReconciliationSageLines(batchId, payload = {}) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/sage-lines`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la génération' }));
+            throw new Error(err.detail || 'Erreur lors de la génération');
+        }
+        return response.json();
+    }
+
+    static async saveBankReconciliationSageLines(batchId, payload = {}) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/sage-lines/save`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la sauvegarde' }));
+            throw new Error(err.detail || 'Erreur lors de la sauvegarde');
+        }
+        return response.json();
+    }
+
     // ===================== Configuration =====================
 
     static async getConfigurationComptes(search = '', page = 1, pageSize = 20) {

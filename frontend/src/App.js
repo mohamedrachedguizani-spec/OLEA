@@ -13,6 +13,7 @@ import UserManagement from './components/UserManagement';
 import AuditLogs from './components/AuditLogs';
 import Reporting from './components/Reporting';
 import Configuration from './components/Configuration';
+import RapprochementBancaire from './components/RapprochementBancaire';
 import oleaLogo from './assets/olea-logo.svg';
 
 function App() {
@@ -146,6 +147,7 @@ function App() {
                     {activeTab === 'export' && <ExportCSV />}
                     {activeTab === 'sage-bfc' && <SageBfcParser refreshTrigger={sageBfcRefresh} forecastRefresh={forecastRefresh} />}
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration />}
+                    {activeTab === 'rapprochement' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire />}
                     {activeTab === 'users' && <UserManagement />}
                     {activeTab === 'audit' && <AuditLogs />}
                 </div>
