@@ -393,6 +393,18 @@ class ApiService {
         return response.json();
     }
 
+    static async exportBankReconciliationSageCsv(batchId, payload = {}) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/sage-lines/export-csv`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de l\'export CSV' }));
+            throw new Error(err.detail || 'Erreur lors de l\'export CSV');
+        }
+        return response.json();
+    }
+
     // ===================== Configuration =====================
 
     static async getConfigurationComptes(search = '', page = 1, pageSize = 20) {

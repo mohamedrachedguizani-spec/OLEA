@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from datetime import date, datetime
 from typing import List, Optional
+import csv
 import io
 import re
 import unicodedata
@@ -497,6 +498,76 @@ def generate_sage_lines(
     return {
         "batch_id": batch_id,
         "lines": lines,
+    }
+
+
+def _format_amount(value: float) -> str:
+    return str(value or 0).replace(".", ",")
+
+
+def _build_sage_csv(lines: List[BankReconciliationSageLine]) -> str:
+    output = io.StringIO()
+    output.write("\ufeff")
+    writer = csv.writer(output, delimiter=";")
+    writer.writerow([
+        "Societe",
+        "Journal",
+        "Date ecriture",
+        "Compte",
+        "Tiers",
+        "Montant debit",
+        "Montant credit",
+        "Section analytique",
+        "Numero de piece",
+        "Libelle ecriture",
+        "Devise",
+        "Type de piece",
+    ])
+    for line in lines:
+        writer.writerow([
+            line.societe,
+            line.journal,
+            line.date_ecriture.strftime("%d/%m/%Y"),
+            line.compte or "",
+            line.tiers or "",
+            _format_amount(line.debit),
+            _format_amount(line.credit),
+            line.section_analytique or "",
+            line.numero_piece,
+            line.libelle,
+            line.devise,
+            line.type_piece,
+        ])
+    output.seek(0)
+    return output.getvalue()
+
+
+@router.post("/rapprochement-bancaire/batches/{batch_id}/sage-lines/export-csv")
+def export_bank_reconciliation_sage_csv(
+    batch_id: int,
+    payload: BankReconciliationSageGenerationRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    generated = generate_sage_lines(batch_id, payload)
+    lines: List[BankReconciliationSageLine] = generated["lines"]
+
+    content = _build_sage_csv(lines)
+    filename = f"rapprochement_sage_batch_{batch_id}_{date.today():%Y%m%d}.csv"
+
+    log_audit_action(
+        user=user,
+        action="export",
+        module="rapprochement_bancaire",
+        entity_type="bank_reconciliation_batch",
+        entity_id=str(batch_id),
+        detail={"filename": filename, "lines": len(lines)},
+        request=request,
+    )
+
+    return {
+        "filename": filename,
+        "content": content,
     }
 
 

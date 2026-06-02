@@ -6,12 +6,14 @@ import ApiService from '../services/api';
 function RapprochementBancaire() {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [exportLoading, setExportLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [comptes, setComptes] = useState([]);
     const [batch, setBatch] = useState(null);
     const [movements, setMovements] = useState([]);
     const [showPreview, setShowPreview] = useState(false);
+    const [activeCompteInput, setActiveCompteInput] = useState(null);
 
     const [formData, setFormData] = useState({
         periode_debut: '',
@@ -22,6 +24,17 @@ function RapprochementBancaire() {
     });
 
     const [ligne2ByMovement, setLigne2ByMovement] = useState({});
+
+    const journalOptions = ['BI1', 'BI2', 'BI3', 'TN-ATB1', 'UB1', 'UB2', 'UB3'];
+    const journalToCompte = {
+        BI1: '5320000T',
+        BI2: '5320003T',
+        BI3: '5320002T',
+        'TN-ATB1': '5320001T',
+        UB1: '5320007T',
+        UB2: '5320009T',
+        UB3: '5320008T',
+    };
 
     useEffect(() => {
         const loadComptes = async () => {
@@ -35,6 +48,24 @@ function RapprochementBancaire() {
         loadComptes();
     }, []);
 
+    useEffect(() => {
+        if (message) {
+            const timer = setTimeout(() => {
+                setMessage('');
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [message]);
+
+    useEffect(() => {
+        if (error) {
+            const timer = setTimeout(() => {
+                setError('');
+            }, 5000);
+            return () => clearTimeout(timer);
+        }
+    }, [error]);
+
     const comptesOptions = useMemo(
         () => comptes.map((c) => `${c.code_compte} - ${c.libelle_compte}`),
         [comptes]
@@ -44,6 +75,14 @@ function RapprochementBancaire() {
         const { name, value, files } = e.target;
         if (name === 'file') {
             setFormData((prev) => ({ ...prev, file: files?.[0] || null }));
+            return;
+        }
+        if (name === 'compte_banque') {
+            setFormData((prev) => ({
+                ...prev,
+                compte_banque: value,
+                compte_comptable: journalToCompte[value] || prev.compte_comptable,
+            }));
             return;
         }
         setFormData((prev) => ({ ...prev, [name]: value }));
@@ -143,6 +182,42 @@ function RapprochementBancaire() {
         }
     };
 
+    const filterComptes = (query = '') => {
+        const value = query.toLowerCase().trim();
+        if (!value) return comptes;
+        return comptes.filter((compte) =>
+            compte.code_compte.toLowerCase().includes(value) ||
+            compte.libelle_compte.toLowerCase().includes(value)
+        );
+    };
+
+    const downloadCsv = (filename, content) => {
+        const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+    };
+
+    const handleExportSageCsv = async () => {
+        if (!batch?.id) return;
+        resetMessages();
+        setExportLoading(true);
+        try {
+            const payload = buildSavePayload();
+            const result = await ApiService.exportBankReconciliationSageCsv(batch.id, payload);
+            downloadCsv(result.filename, result.content);
+            setMessage('Export CSV généré avec succès.');
+        } catch (err) {
+            setError(err.message || 'Erreur lors de l\'export CSV.');
+        } finally {
+            setExportLoading(false);
+        }
+    };
+
     const renderStep1 = () => (
         <form onSubmit={handleUpload} className="olea-form mb-4">
             <div className="form-row">
@@ -173,15 +248,18 @@ function RapprochementBancaire() {
                 <div className="form-col">
                     <div className="form-group">
                         <label>Compte bancaire (journal)</label>
-                        <input
-                            list="comptes-list"
+                        <select
                             name="compte_banque"
                             value={formData.compte_banque}
                             onChange={handleFormChange}
                             className="form-control"
-                            placeholder="Ex: 521000"
                             required
-                        />
+                        >
+                            <option value="">Sélectionner</option>
+                            {journalOptions.map((journal) => (
+                                <option key={journal} value={journal}>{journal}</option>
+                            ))}
+                        </select>
                     </div>
                 </div>
                 <div className="form-col">
@@ -193,7 +271,7 @@ function RapprochementBancaire() {
                             value={formData.compte_comptable}
                             onChange={handleFormChange}
                             className="form-control"
-                            placeholder="Ex: 521000"
+                            placeholder="Ex: 5320000T"
                             required
                         />
                     </div>
@@ -262,6 +340,7 @@ function RapprochementBancaire() {
             <div className="table-responsive sage-table-scroll">
                 <table className="olea-table sage-table">
                     <colgroup>
+                        <col style={{ width: '80px' }} />
                         <col style={{ width: '130px' }} />
                         <col style={{ width: '140px' }} />
                         <col style={{ width: '140px' }} />
@@ -272,6 +351,7 @@ function RapprochementBancaire() {
                     </colgroup>
                     <thead>
                         <tr>
+                            <th>Ligne</th>
                             <th>Date écriture</th>
                             <th>Compte</th>
                             <th>Tiers</th>
@@ -284,7 +364,7 @@ function RapprochementBancaire() {
                     <tbody>
                         {movements.length === 0 ? (
                             <tr>
-                                <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                                     Aucun mouvement importé.
                                 </td>
                             </tr>
@@ -294,6 +374,7 @@ function RapprochementBancaire() {
                                 return (
                                     <React.Fragment key={mov.id}>
                                         <tr className="fade-in">
+                                            <td className="font-bold">L1</td>
                                             <td>{mov.date_operation}</td>
                                             <td>
                                                 <input
@@ -322,16 +403,47 @@ function RapprochementBancaire() {
                                             </td>
                                             <td>{mov.libelle}</td>
                                         </tr>
-                                        <tr className="fade-in sage-row-secondary">
+                                        <tr className={`fade-in sage-row-secondary ${activeCompteInput === mov.id ? 'active-suggest-row' : ''}`}>
+                                            <td className="font-bold">L2</td>
                                             <td>{mov.date_operation}</td>
-                                            <td>
-                                                <input
-                                                    list="comptes-list"
-                                                    value={ligne2.compte || ''}
-                                                    onChange={(e) => updateLigne2(mov.id, 'compte', e.target.value)}
-                                                    className="form-control form-control-sm compte-input"
-                                                    placeholder="Compte"
-                                                />
+                                            <td className="compte-suggest-cell" style={{ zIndex: activeCompteInput === mov.id ? 100 : 1 }}>
+                                                <div className="compte-suggest">
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm compte-input"
+                                                        value={ligne2.compte || ''}
+                                                        onChange={(e) => updateLigne2(mov.id, 'compte', e.target.value)}
+                                                        onFocus={() => setActiveCompteInput(mov.id)}
+                                                        onBlur={() => {
+                                                            setTimeout(() => {
+                                                                setActiveCompteInput((prev) => (prev === mov.id ? null : prev));
+                                                            }, 150);
+                                                        }}
+                                                        placeholder="Saisir code ou libellé"
+                                                    />
+                                                    {activeCompteInput === mov.id && (
+                                                        <div className="compte-suggest-list">
+                                                            {filterComptes(ligne2.compte || '')
+                                                                .map((compte) => (
+                                                                    <button
+                                                                        key={compte.code_compte}
+                                                                        type="button"
+                                                                        className="compte-suggest-item"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            updateLigne2(mov.id, 'compte', compte.code_compte);
+                                                                            setActiveCompteInput(null);
+                                                                        }}
+                                                                    >
+                                                                        <strong>{compte.code_compte}</strong> — {compte.libelle_compte}
+                                                                    </button>
+                                                                ))}
+                                                            {filterComptes(ligne2.compte || '').length === 0 && (
+                                                                <div className="compte-suggest-empty">Aucun compte trouvé</div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             <td>
                                                 <input
@@ -462,6 +574,13 @@ function RapprochementBancaire() {
                         </table>
                     </div>
                     <div className="csv-preview-footer">
+                        <button
+                            className="btn btn-primary"
+                            onClick={handleExportSageCsv}
+                            disabled={exportLoading}
+                        >
+                            {exportLoading ? 'Export…' : 'Exporter CSV'}
+                        </button>
                         <button className="btn btn-secondary" onClick={() => setShowPreview(false)}>
                             ✕ Fermer
                         </button>
