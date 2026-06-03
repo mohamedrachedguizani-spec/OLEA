@@ -1,5 +1,5 @@
 // src/components/RapprochementBancaire.jsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import ApiService from '../services/api';
 
@@ -14,6 +14,8 @@ function RapprochementBancaire() {
     const [movements, setMovements] = useState([]);
     const [showPreview, setShowPreview] = useState(false);
     const [activeCompteInput, setActiveCompteInput] = useState(null);
+    const [dragActive, setDragActive] = useState(false);
+    const fileInputRef = useRef(null);
 
     const [formData, setFormData] = useState({
         periode_debut: '',
@@ -88,6 +90,40 @@ function RapprochementBancaire() {
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
+    // Drag and Drop support
+    const handleDrag = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === "dragenter" || e.type === "dragover") {
+            setDragActive(true);
+        } else if (e.type === "dragleave") {
+            setDragActive(false);
+        }
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragActive(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            setFormData((prev) => ({ ...prev, file: e.dataTransfer.files[0] }));
+        }
+    };
+
+    const handleRemoveFile = () => {
+        setFormData((prev) => ({ ...prev, file: null }));
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
+    const formatFileSize = (bytes) => {
+        if (!bytes) return '0 B';
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    };
+
     const resetMessages = () => {
         setMessage('');
         setError('');
@@ -143,6 +179,34 @@ function RapprochementBancaire() {
             },
         }));
     };
+
+    // Calcul des statistiques de débit, crédit et équilibre en temps réel
+    const stats = useMemo(() => {
+        let totalDebit = 0;
+        let totalCredit = 0;
+
+        movements.forEach((mov) => {
+            const ligne2 = ligne2ByMovement[mov.id] || {};
+            
+            // Ligne 1 (Banque)
+            totalDebit += Number(mov.debit || 0);
+            totalCredit += Number(mov.credit || 0);
+
+            // Ligne 2 (Contrepartie)
+            totalDebit += Number(mov.credit || 0); // le débit de la ligne 2 est le crédit du mouvement
+            totalCredit += Number(mov.debit || 0); // le crédit de la ligne 2 est le débit du mouvement
+        });
+
+        const solde = totalDebit - totalCredit;
+        const isBalanced = Math.abs(solde) < 0.001; // Équilibre parfait à 3 décimales près
+
+        return {
+            totalDebit,
+            totalCredit,
+            solde,
+            isBalanced
+        };
+    }, [movements, ligne2ByMovement]);
 
     const buildSavePayload = () => {
         const contreparties = {};
@@ -219,11 +283,13 @@ function RapprochementBancaire() {
     };
 
     const renderStep1 = () => (
-        <form onSubmit={handleUpload} className="olea-form mb-4">
-            <div className="form-row">
+        <form onSubmit={handleUpload} className="sage-upload-section mb-4" style={{ padding: '2rem 1.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="form-row mb-4">
                 <div className="form-col">
                     <div className="form-group">
-                        <label>Période début</label>
+                        <label>
+                            <span className="icon">📅</span> Période début
+                        </label>
                         <input
                             type="date"
                             name="periode_debut"
@@ -235,7 +301,9 @@ function RapprochementBancaire() {
                 </div>
                 <div className="form-col">
                     <div className="form-group">
-                        <label>Période fin</label>
+                        <label>
+                            <span className="icon">📅</span> Période fin
+                        </label>
                         <input
                             type="date"
                             name="periode_fin"
@@ -247,7 +315,9 @@ function RapprochementBancaire() {
                 </div>
                 <div className="form-col">
                     <div className="form-group">
-                        <label>Compte bancaire (journal)</label>
+                        <label>
+                            <span className="icon"></span> Compte bancaire (journal)
+                        </label>
                         <select
                             name="compte_banque"
                             value={formData.compte_banque}
@@ -264,7 +334,9 @@ function RapprochementBancaire() {
                 </div>
                 <div className="form-col">
                     <div className="form-group">
-                        <label>Compte comptable</label>
+                        <label>
+                            <span className="icon"></span> Compte comptable
+                        </label>
                         <input
                             list="comptes-list"
                             name="compte_comptable"
@@ -276,25 +348,100 @@ function RapprochementBancaire() {
                         />
                     </div>
                 </div>
-                <div className="form-col form-col-lg">
-                    <div className="form-group">
-                        <label>Fichier (PDF / Excel / CSV)</label>
-                        <input
-                            type="file"
-                            name="file"
-                            accept=".pdf,.csv,.xlsx,.xls"
-                            onChange={handleFormChange}
-                            className="form-control"
-                            required
-                        />
-                    </div>
-                </div>
-                <div className="form-col form-col-btn">
-                    <button type="submit" className="btn btn-primary" disabled={loading}>
-                        {loading ? 'Import…' : 'Importer'}
-                    </button>
+            </div>
+
+            {/* Magnifique zone de Drag & Drop inspirée de SAGE → BFC */}
+            <div className="form-group mb-4">
+               {/*  <label className="periode-label" style={{ fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
+                    <span className="icon">📁</span> Fichier de rapprochement
+                </label> */}
+                <div
+                    className={`sage-dropzone ${dragActive ? 'drag-active' : ''} ${formData.file ? 'has-file' : ''}`}
+                    onDragEnter={handleDrag}
+                    onDragLeave={handleDrag}
+                    onDragOver={handleDrag}
+                    onDrop={handleDrop}
+                    onClick={() => !formData.file && fileInputRef.current?.click()}
+                    style={{
+                        position: 'relative',
+                        border: '2px dashed var(--primary-300)',
+                        borderRadius: 'var(--radius-lg)',
+                        padding: '3rem 2rem',
+                        textAlign: 'center',
+                        cursor: formData.file ? 'default' : 'pointer',
+                        background: 'linear-gradient(135deg, rgba(183, 72, 43, 0.03) 0%, rgba(47, 52, 58, 0.02) 100%)',
+                        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+                    }}
+                >
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        name="file"
+                        accept=".pdf,.csv,.xlsx,.xls"
+                        onChange={handleFormChange}
+                        className="sage-file-input"
+                        style={{ display: 'none' }}
+                    />
+
+                    {!formData.file ? (
+                        <div className="dropzone-content">
+                        <div className={`dropzone-icon ${dragActive ? 'bounce' : ''}`}>
+                            <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="8" y="8" width="48" height="48" rx="8" strokeDasharray="6 3" />
+                                <path d="M32 22v20M22 32h20" strokeWidth="3" strokeLinecap="round" />
+                            </svg>
+                        </div>
+                            <h3 className="dropzone-title" style={{ fontSize: '1.1rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                                Glissez-déposez votre relevé bancaire ici
+                            </h3>
+                            <p className="dropzone-hint" style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>
+                                ou <span className="dropzone-link" style={{ color: 'var(--primary-500)', fontWeight: 600, textDecoration: 'underline' }}>parcourez vos fichiers</span>
+                            </p>
+                            <div className="dropzone-formats" style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                <span className="format-tag" style={{ padding: '0.2rem 0.6rem', background: 'var(--bg-muted)', borderRadius: 'var(--radius-full)', fontSize: '0.75rem', fontWeight: 600 }}>.pdf</span>
+                                <span className="format-tag" style={{ padding: '0.2rem 0.6rem', background: 'var(--bg-muted)', borderRadius: 'var(--radius-full)', fontSize: '0.75rem', fontWeight: 600 }}>.xlsx</span>
+                                <span className="format-tag" style={{ padding: '0.2rem 0.6rem', background: 'var(--bg-muted)', borderRadius: 'var(--radius-full)', fontSize: '0.75rem', fontWeight: 600 }}>.csv</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="dropzone-file-preview" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem', width: '100%' }}>
+                            <div className="file-preview-icon" style={{ fontSize: '2.5rem' }}>
+                                {formData.file.name.endsWith('.pdf') ? '📕' : formData.file.name.endsWith('.csv') ? '📊' : '📗'}
+                            </div>
+                            <div className="file-preview-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                                <span className="file-preview-name" style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{formData.file.name}</span>
+                                <span className="file-preview-size" style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{formatFileSize(formData.file.size)}</span>
+                            </div>
+                            <button
+                            className="file-preview-remove"
+                            onClick={(e) => { e.stopPropagation(); handleRemoveFile(); }}
+                            title="Retirer le fichier"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="6" x2="6" y2="18"/>
+                                <line x1="6" y1="6" x2="18" y2="18"/>
+                            </svg>
+                        </button>
+                        </div>
+                    )}
                 </div>
             </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
+                <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2.5rem', fontSize: '1rem' }} disabled={loading}>
+                    {loading ? (
+                        <>
+                            <span className="spinner" style={{ marginRight: '0.5rem' }} />
+                            Analyse en cours...
+                        </>
+                    ) : (
+                        <>
+                            ⚡ Lancer l'analyse du relevé
+                        </>
+                    )}
+                </button>
+            </div>
+
             <datalist id="comptes-list">
                 {comptesOptions.map((option) => (
                     <option key={option} value={option.split(' - ')[0]} />
@@ -310,7 +457,28 @@ function RapprochementBancaire() {
                     <span className="icon">📋</span>
                     Mouvements importés
                 </h3>
-                <span className="badge badge-warning">{movements.length} mouvements</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    <span className="badge badge-info">{movements.length} mouvements</span>
+                    <span className={`badge ${stats.isBalanced ? 'badge-success' : 'badge-danger'}`}>
+                        {stats.isBalanced ? '⚖️ Équilibré' : '⚠️ Déséquilibré'}
+                    </span>
+                </div>
+            </div>
+
+            {/* Section de statistiques et indicateur d'équilibre dans le style SaisieCaisse/BFC */}
+            <div className="brouillard-stats" style={{ display: 'flex', gap: '16px', padding: '16px 24px', background: 'var(--bg-muted)', borderBottom: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
+                <div className="stat-item debit" style={{ flex: '1', minWidth: '150px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-light)', borderLeft: '3px solid var(--success)' }}>
+                    <span className="stat-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '4px' }}>Total Débit</span>
+                    <span className="stat-value" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--success)' }}>{stats.totalDebit.toFixed(3)} TND</span>
+                </div>
+                <div className="stat-item credit" style={{ flex: '1', minWidth: '150px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-light)', borderLeft: '3px solid var(--olea-terracotta)' }}>
+                    <span className="stat-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '4px' }}>Total Crédit</span>
+                    <span className="stat-value" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--olea-terracotta)' }}>{stats.totalCredit.toFixed(3)} TND</span>
+                </div>
+                <div className="stat-item solde" style={{ flex: '1', minWidth: '150px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 16px', background: stats.isBalanced ? 'rgba(31, 157, 85, 0.12)' : 'rgba(183, 72, 43, 0.12)', borderRadius: '10px', border: '1px solid var(--border-light)', borderLeft: `3px solid ${stats.isBalanced ? 'var(--success)' : 'var(--olea-terracotta)'}` }}>
+                    <span className="stat-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '4px' }}>Écart / Solde</span>
+                    <span className="stat-value" style={{ fontSize: '1.1rem', fontWeight: 700, color: stats.isBalanced ? 'var(--success)' : 'var(--olea-terracotta)' }}>{stats.solde.toFixed(3)} TND</span>
+                </div>
             </div>
 
             <div className="olea-form mb-4">
@@ -320,7 +488,8 @@ function RapprochementBancaire() {
                             type="button"
                             className="btn btn-primary"
                             onClick={handleSaveSageLines}
-                            disabled={loading}
+                            disabled={loading || !stats.isBalanced}
+                            title={!stats.isBalanced ? "Le fichier est déséquilibré et ne peut pas être importé dans Sage." : "Sauvegarder les lignes dans la base de données."}
                         >
                             {loading ? 'Sauvegarde…' : 'Sauvegarder Sage'}
                         </button>
@@ -335,6 +504,14 @@ function RapprochementBancaire() {
                         </button>
                     </div>
                 </div>
+                {!stats.isBalanced && (
+                    <div className="alert alert-danger slide-down" style={{ marginTop: '1rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
+                        <span>⚠️</span>
+                        <span>
+                            <strong>Rejet Global Sage :</strong> Le rapprochement est déséquilibré de <strong>{Math.abs(stats.solde).toFixed(3)} TND</strong>. Toute pièce déséquilibrée entraîne le rejet global du fichier d’import par Sage. Veuillez vérifier vos écritures.
+                        </span>
+                    </div>
+                )}
             </div>
 
             <div className="table-responsive sage-table-scroll">
