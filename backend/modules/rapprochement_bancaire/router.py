@@ -67,8 +67,20 @@ def _parse_amount(value) -> float:
         return 0.0
     if _looks_like_date_number(raw):
         return 0.0
-    raw = raw.replace(",", ".")
-    raw = re.sub(r"[^0-9.\-]", "", raw)
+
+    # --- Format ATB tunisien : virgule = milliers, point = décimal ---
+    # Ex: 4,433.148 → 4433.148  |  2,100.000 → 2100.0  |  43,201.896 → 43201.896
+    if "," in raw and "." in raw:
+        raw = raw.replace(",", "")
+        raw = re.sub(r"[^0-9.\-]", "", raw)
+    elif "," in raw:
+        # Ancienne logique : format européen, virgule = décimal
+        raw = raw.replace(",", ".")
+        raw = re.sub(r"[^0-9.\-]", "", raw)
+    else:
+        # Ancienne logique : point = décimal (anglais) ou entier
+        raw = re.sub(r"[^0-9.\-]", "", raw)
+
     if raw in {"", ".", "-", "-."}:
         return 0.0
     try:
@@ -78,6 +90,7 @@ def _parse_amount(value) -> float:
         return amount
     except ValueError:
         return 0.0
+
 
 
 def _parse_date(value) -> Optional[date]:
@@ -124,6 +137,174 @@ def _normalize_row_length(row: List, length: int) -> List:
     return row + [None] * (length - len(row))
 
 
+# =============================================================================
+# PARSER PDF ATB TEXTE BRUT (relevé sans tableau structuré)
+# =============================================================================
+
+def _is_atb_text_format(lines: list) -> bool:
+    """Détecte si le PDF est un relevé ATB au format texte brut."""
+    header_re = re.compile(
+        r'Jour\s+D\.Valeur\s+Référence\s+Libellé\s+Mouvement\s+Débit\s+Crédit',
+        re.IGNORECASE,
+    )
+    for line in lines:
+        if header_re.search(line):
+            return True
+    return False
+
+
+# --- Patterns de classification Débit / Crédit (priorité Débit > Crédit) ---
+_DEBIT_PATTERNS = [
+    re.compile(r'\bPAIEMENT\s+PAR\s+CARTE\b', re.IGNORECASE),
+    re.compile(r'\bVIREMENT\s+EMIS\b', re.IGNORECASE),
+    re.compile(r'\bCOMMISSION\b', re.IGNORECASE),
+    re.compile(r'\bCOMM\s+SUR\b', re.IGNORECASE),
+    re.compile(r'\bCOM\s+VIREMENT\b', re.IGNORECASE),
+    re.compile(r'\bTVA\s+SUR\b', re.IGNORECASE),
+    re.compile(r'\bRECHERCHE\s+DE\s+DOCUMENTS\b', re.IGNORECASE),
+    re.compile(r'\bFRAIS\b', re.IGNORECASE),
+    re.compile(r'\bREGLEMENT\b', re.IGNORECASE),
+    re.compile(r'\bPAIEMENT\b', re.IGNORECASE),
+]
+
+_CREDIT_PATTERNS = [
+    re.compile(r'\bVIREMENT\s+RECU\b', re.IGNORECASE),
+    re.compile(r'\bVERSEMENT\s+ESPECE\b', re.IGNORECASE),
+    re.compile(r'\bENCAISSEMENT\b', re.IGNORECASE),
+    re.compile(r'\bTRANSFERT\s+-\s*RECU\b', re.IGNORECASE),
+    re.compile(r'\bTRANSFERT\s+-RECU\b', re.IGNORECASE),
+    re.compile(r'\bREMBOURSEMENT\b', re.IGNORECASE),
+    re.compile(r'\bCREDIT\b', re.IGNORECASE),
+]
+
+
+def _classify_atb_movement(libelle: str) -> str:
+    """Classifie un mouvement ATB en 'debit' ou 'credit'."""
+    lu = libelle.upper()
+    for pat in _DEBIT_PATTERNS:
+        if pat.search(lu):
+            return "debit"
+    for pat in _CREDIT_PATTERNS:
+        if pat.search(lu):
+            return "credit"
+    return "unknown"
+
+
+def _parse_pdf_atb_text(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Parse les relevés ATB 'texte brut' où chaque mouvement = 1 ligne :
+      JJ/MM  DD/MM/YYYY  REFERENCE  Libellé  MONTANT
+    Une seule colonne de montant par ligne (Débit OU Crédit).
+    """
+    text = ""
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            pt = page.extract_text()
+            if pt:
+                text += pt + "\n"
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="PDF vide ou texte non extractible")
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    if not _is_atb_text_format(lines):
+        raise HTTPException(status_code=400, detail="Format ATB texte non reconnu")
+
+    # Regex principale : Jour  D.Valeur  [reste = Ref + Libellé + Montant]
+    line_re = re.compile(r'^(\d{2}/\d{2})\s+(\d{2}/\d{2}/\d{4})\s+(.*)$')
+    ref_re = re.compile(r'^(FT|TT|CHG|ATB|TR)\w+$')
+
+    # Lignes d'en-tête / pied de page à ignorer (ancre ^ obligatoire)
+    skip_patterns = [
+        re.compile(r'^Jour\s+D\.Valeur', re.IGNORECASE),
+        re.compile(r'^Opening\s+Balance', re.IGNORECASE),
+        re.compile(r'^Closing\s+Balance', re.IGNORECASE),
+        re.compile(r'^Extrait\s+de\s+compte', re.IGNORECASE),
+        re.compile(r'^Agence\s+\w+', re.IGNORECASE),
+        re.compile(r'^Nom\s+client\s+', re.IGNORECASE),
+        re.compile(r'^Compte\s+\d', re.IGNORECASE),
+        re.compile(r'^Exgible', re.IGNORECASE),
+        re.compile(r'^Date\s*:', re.IGNORECASE),
+        re.compile(r'^Heure\s*:', re.IGNORECASE),
+        re.compile(r'^Page\s*:', re.IGNORECASE),
+        re.compile(r'^Compte\s*:\s*\d', re.IGNORECASE),
+        re.compile(r'^Nom\s+Client\s*:', re.IGNORECASE),
+    ]
+
+    rows = []
+
+    for line in lines:
+        # Skip lignes parasites (header/footer)
+        if any(p.match(line) for p in skip_patterns):
+            continue
+
+        m = line_re.match(line)
+        if not m:
+            continue
+
+        jour = m.group(1)
+        date_valeur = m.group(2)
+        rest = m.group(3).strip()
+
+        tokens = rest.split()
+
+        # --- Référence ---
+        ref = ""
+        if tokens and ref_re.match(tokens[0]):
+            ref = tokens[0]
+            tokens = tokens[1:]
+
+        if not tokens:
+            continue
+
+        # --- Montant (dernier token) ---
+        amount_str = tokens[-1]
+        amount = _parse_amount(amount_str)
+
+        # Si le dernier token n'est pas un montant valide, on ignore la ligne
+        if amount == 0 and not re.match(r'^[\d\s\-\u2013\u2014,.]+$', amount_str):
+            continue
+
+        # --- Libellé ---
+        libelle = " ".join(tokens[:-1]) if len(tokens) > 1 else ""
+
+        # --- Dates ---
+        year = date_valeur.split("/")[-1]
+        try:
+            date_op = datetime.strptime(f"{jour}/{year}", "%d/%m/%Y").date()
+        except ValueError:
+            date_op = datetime.strptime(date_valeur, "%d/%m/%Y").date()
+        date_val = datetime.strptime(date_valeur, "%d/%m/%Y").date()
+
+        # --- Débit / Crédit (classification par libellé) ---
+        movement_type = _classify_atb_movement(libelle)
+        debit = 0.0
+        credit = 0.0
+
+        if movement_type == "debit":
+            debit = amount
+        elif movement_type == "credit":
+            credit = amount
+        else:
+            # Inconnu : par défaut Débit (conservateur pour commissions/frais)
+            debit = amount
+
+        rows.append({
+            "date_operation": date_op,
+            "date_valeur": date_val,
+            "reference": ref,
+            "libelle": libelle or "(sans libellé)",
+            "debit": debit,
+            "credit": credit,
+        })
+
+    if not rows:
+        raise HTTPException(status_code=400, detail="Aucun mouvement détecté dans le PDF ATB")
+
+    return pd.DataFrame(rows)
+
+
 def _parse_pdf(file_bytes: bytes) -> pd.DataFrame:
     rows = []
     header = None
@@ -148,14 +329,24 @@ def _parse_pdf(file_bytes: bytes) -> pd.DataFrame:
                             continue
                     if header is not None:
                         rows.append(_normalize_row_length(row, len(header)))
-    if header is None:
-        raise HTTPException(status_code=400, detail="En-tête introuvable dans le PDF")
-    safe_rows = [
-        _normalize_row_length(row, len(header))
-        for row in rows
-    ]
-    df = pd.DataFrame(safe_rows, columns=header)
-    return df
+
+    if header is not None:
+        safe_rows = [
+            _normalize_row_length(row, len(header))
+            for row in rows
+        ]
+        df = pd.DataFrame(safe_rows, columns=header)
+        return df
+
+    # =================================================================
+    # FALLBACK : relevé ATB au format texte brut (sans tableau)
+    # =================================================================
+    try:
+        return _parse_pdf_atb_text(file_bytes)
+    except HTTPException:
+        pass
+
+    raise HTTPException(status_code=400, detail="En-tête introuvable dans le PDF")
 
 
 def _map_columns(df: pd.DataFrame) -> dict:
@@ -228,10 +419,13 @@ def _extract_movements(df: pd.DataFrame) -> List[dict]:
         if date_operation is None:
             continue
 
-        if debit == 0 and debit_col:
+        # --- FIX : empêcher la copie du montant dans l'autre colonne ---
+        # Si un montant est déjà présent dans debit OU credit, on ne cherche
+        # pas de fallback adjacent pour l'autre colonne.
+        if debit == 0 and debit_col and credit == 0:
             debit = _get_adjacent_amount(row, columns, debit_col)
 
-        if credit == 0 and credit_col:
+        if credit == 0 and credit_col and debit == 0:
             credit = _get_adjacent_amount(row, columns, credit_col)
 
         if debit == 0 and credit == 0:
@@ -254,8 +448,6 @@ def _extract_movements(df: pd.DataFrame) -> List[dict]:
         if libelle.upper().startswith("VIREMENT DOMESTIQUE RECU") and debit > 0 and credit == 0:
             credit = debit
             debit = 0.0
-
-        
 
         movements.append({
             "date_operation": date_operation,
@@ -457,6 +649,8 @@ def generate_sage_lines(
         line1_tiers = tiers_by_movement.get(movement_id) or payload.tiers
         line1_section = sections_by_movement.get(movement_id) or payload.section_analytique
 
+        # Inversement du principe débit/crédit entre la Banque (relevé) et la comptabilité de l'entreprise (Journal Banque).
+        # Un débit sur le relevé de la banque est un crédit dans la comptabilité de l'entreprise (dépense), et inversement.
         lines.append(
             BankReconciliationSageLine(
                 movement_id=movement_id,
@@ -466,8 +660,8 @@ def generate_sage_lines(
                 date_ecriture=date_ecriture,
                 compte=compte_comptable,
                 tiers=line1_tiers,
-                debit=debit,
-                credit=credit,
+                debit=credit,  # Relevé Crédit -> Entreprise Débit (encaissement)
+                credit=debit,  # Relevé Débit -> Entreprise Crédit (décaissement)
                 section_analytique=line1_section,
                 numero_piece=numero_piece,
                 libelle=libelle,
@@ -485,8 +679,8 @@ def generate_sage_lines(
                 date_ecriture=date_ecriture,
                 compte=contrepartie_compte,
                 tiers=contrepartie_tiers,
-                debit=credit,
-                credit=debit,
+                debit=debit,   # L2 a le débit/crédit opposé de L1
+                credit=credit,
                 section_analytique=contrepartie_section,
                 numero_piece=numero_piece,
                 libelle=libelle,
@@ -502,7 +696,9 @@ def generate_sage_lines(
 
 
 def _format_amount(value: float) -> str:
-    return str(value or 0).replace(".", ",")
+    if value == 0 or value == 0.0:
+        return ""
+    return str(value).replace(".", ",")
 
 
 def _build_sage_csv(lines: List[BankReconciliationSageLine]) -> str:
@@ -510,18 +706,18 @@ def _build_sage_csv(lines: List[BankReconciliationSageLine]) -> str:
     output.write("\ufeff")
     writer = csv.writer(output, delimiter=";")
     writer.writerow([
-        "Societe",
+        "Société",
         "Journal",
-        "Date ecriture",
-        "Compte",
+        "Date écriture",
+        "Code Compte",
         "Tiers",
-        "Montant debit",
-        "Montant credit",
+        "Débit",
+        "Crédit",
         "Section analytique",
-        "Numero de piece",
-        "Libelle ecriture",
+        "N° de pièce",
+        "Libellé écriture",
         "Devise",
-        "Type de piece",
+        "Type de pièce",
     ])
     for line in lines:
         writer.writerow([
@@ -553,7 +749,7 @@ def export_bank_reconciliation_sage_csv(
     lines: List[BankReconciliationSageLine] = generated["lines"]
 
     content = _build_sage_csv(lines)
-    filename = f"rapprochement_sage_batch_{batch_id}_{date.today():%Y%m%d}.csv"
+    filename = f"saisie_banque_sage_{date.today():%Y%m%d}.csv"
 
     log_audit_action(
         user=user,

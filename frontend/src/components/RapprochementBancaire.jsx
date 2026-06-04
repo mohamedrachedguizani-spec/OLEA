@@ -26,6 +26,8 @@ function RapprochementBancaire() {
     });
 
     const [ligne2ByMovement, setLigne2ByMovement] = useState({});
+    const [page, setPage] = useState(1);
+    const pageSize = 20;
 
     const journalOptions = ['BI1', 'BI2', 'BI3', 'TN-ATB1', 'UB1', 'UB2', 'UB3'];
     const journalToCompte = {
@@ -161,6 +163,7 @@ function RapprochementBancaire() {
             } else {
                 setMovements(Array.isArray(data?.preview) ? data.preview : []);
             }
+            setPage(1);
             setStep(2);
             setMessage('Fichier importé avec succès.');
         } catch (err) {
@@ -186,15 +189,17 @@ function RapprochementBancaire() {
         let totalCredit = 0;
 
         movements.forEach((mov) => {
-            const ligne2 = ligne2ByMovement[mov.id] || {};
-            
-            // Ligne 1 (Banque)
+            // Ligne 1 (Banque - inversée en comptabilité)
+            // Relevé Débit -> Entreprise Crédit
+            // Relevé Crédit -> Entreprise Débit
+            totalDebit += Number(mov.credit || 0);
+            totalCredit += Number(mov.debit || 0);
+
+            // Ligne 2 (Contrepartie - suit le sens du relevé)
+            // Relevé Débit -> Entreprise Débit
+            // Relevé Crédit -> Entreprise Crédit
             totalDebit += Number(mov.debit || 0);
             totalCredit += Number(mov.credit || 0);
-
-            // Ligne 2 (Contrepartie)
-            totalDebit += Number(mov.credit || 0); // le débit de la ligne 2 est le crédit du mouvement
-            totalCredit += Number(mov.debit || 0); // le crédit de la ligne 2 est le débit du mouvement
         });
 
         const solde = totalDebit - totalCredit;
@@ -206,7 +211,7 @@ function RapprochementBancaire() {
             solde,
             isBalanced
         };
-    }, [movements, ligne2ByMovement]);
+    }, [movements]);
 
     const buildSavePayload = () => {
         const contreparties = {};
@@ -450,140 +455,117 @@ function RapprochementBancaire() {
         </form>
     );
 
-    const renderStep2 = () => (
-        <>
-            <div className="section-header">
-                <h3>
-                    <span className="icon">📋</span>
-                    Mouvements importés
-                </h3>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <span className="badge badge-info">{movements.length} mouvements</span>
-                    <span className={`badge ${stats.isBalanced ? 'badge-success' : 'badge-danger'}`}>
-                        {stats.isBalanced ? '⚖️ Équilibré' : '⚠️ Déséquilibré'}
-                    </span>
-                </div>
-            </div>
+    const renderStep2 = () => {
+        // Pagination logic
+        const totalPages = Math.ceil(movements.length / pageSize);
+        const startIndex = (page - 1) * pageSize;
+        const paginatedMovements = movements.slice(startIndex, startIndex + pageSize);
+        const canGoPrev = page > 1;
+        const canGoNext = page < totalPages;
 
-            {/* Section de statistiques et indicateur d'équilibre dans le style SaisieCaisse/BFC */}
-            <div className="brouillard-stats" style={{ display: 'flex', gap: '16px', padding: '16px 24px', background: 'var(--bg-muted)', borderBottom: '1px solid var(--border-light)', flexWrap: 'wrap' }}>
-                <div className="stat-item debit" style={{ flex: '1', minWidth: '150px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-light)', borderLeft: '3px solid var(--success)' }}>
-                    <span className="stat-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '4px' }}>Total Débit</span>
-                    <span className="stat-value" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--success)' }}>{stats.totalDebit.toFixed(3)} TND</span>
-                </div>
-                <div className="stat-item credit" style={{ flex: '1', minWidth: '150px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 16px', background: 'var(--bg-card)', borderRadius: '10px', border: '1px solid var(--border-light)', borderLeft: '3px solid var(--olea-terracotta)' }}>
-                    <span className="stat-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '4px' }}>Total Crédit</span>
-                    <span className="stat-value" style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--olea-terracotta)' }}>{stats.totalCredit.toFixed(3)} TND</span>
-                </div>
-                <div className="stat-item solde" style={{ flex: '1', minWidth: '150px', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 16px', background: stats.isBalanced ? 'rgba(31, 157, 85, 0.12)' : 'rgba(183, 72, 43, 0.12)', borderRadius: '10px', border: '1px solid var(--border-light)', borderLeft: `3px solid ${stats.isBalanced ? 'var(--success)' : 'var(--olea-terracotta)'}` }}>
-                    <span className="stat-label" style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', fontWeight: 600, marginBottom: '4px' }}>Écart / Solde</span>
-                    <span className="stat-value" style={{ fontSize: '1.1rem', fontWeight: 700, color: stats.isBalanced ? 'var(--success)' : 'var(--olea-terracotta)' }}>{stats.solde.toFixed(3)} TND</span>
-                </div>
-            </div>
-
-            <div className="olea-form mb-4">
-                <div className="form-row">
-                    <div className="form-col form-col-btn">
-                        <button
-                            type="button"
-                            className="btn btn-primary"
-                            onClick={handleSaveSageLines}
-                            disabled={loading || !stats.isBalanced}
-                            title={!stats.isBalanced ? "Le fichier est déséquilibré et ne peut pas être importé dans Sage." : "Sauvegarder les lignes dans la base de données."}
-                        >
-                            {loading ? 'Sauvegarde…' : 'Sauvegarder Sage'}
-                        </button>
-                    </div>
-                    <div className="form-col form-col-btn">
-                        <button
-                            type="button"
-                            className="btn btn-secondary"
-                            onClick={() => setShowPreview(true)}
-                        >
-                            Prévisualiser format Sage
-                        </button>
-                    </div>
-                </div>
-                {!stats.isBalanced && (
-                    <div className="alert alert-danger slide-down" style={{ marginTop: '1rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
-                        <span>⚠️</span>
-                        <span>
-                            <strong>Rejet Global Sage :</strong> Le rapprochement est déséquilibré de <strong>{Math.abs(stats.solde).toFixed(3)} TND</strong>. Toute pièce déséquilibrée entraîne le rejet global du fichier d’import par Sage. Veuillez vérifier vos écritures.
+        return (
+            <>
+                <div className="section-header">
+                    <h3>
+                        <span className="icon">📋</span>
+                        Mouvements importés
+                    </h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <span className="badge badge-info">{movements.length} mouvements</span>
+                        <span className={`badge ${stats.isBalanced ? 'badge-success' : 'badge-danger'}`}>
+                            {stats.isBalanced ? '⚖️ Équilibré' : '⚠️ Déséquilibré'}
                         </span>
                     </div>
-                )}
-            </div>
+                </div>
 
-            <div className="table-responsive sage-table-scroll">
-                <table className="olea-table sage-table">
-                    <colgroup>
-                        <col style={{ width: '80px' }} />
-                        <col style={{ width: '130px' }} />
-                        <col style={{ width: '140px' }} />
-                        <col style={{ width: '140px' }} />
-                        <col style={{ width: '110px' }} />
-                        <col style={{ width: '110px' }} />
-                        <col style={{ width: '140px' }} />
-                        <col style={{ width: '320px' }} />
-                    </colgroup>
-                    <thead>
-                        <tr>
-                            <th>Ligne</th>
-                            <th>Date écriture</th>
-                            <th>Compte</th>
-                            <th>Tiers</th>
-                            <th className="text-right">Débit</th>
-                            <th className="text-right">Crédit</th>
-                            <th>Section</th>
-                            <th>Libellé</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {movements.length === 0 ? (
+                <div className="olea-form mb-4">
+                    <div className="form-row" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem', flexWrap: 'wrap' }}>
+                        <div className="form-col form-col-btn" style={{ display: 'flex', gap: '0.75rem', margin: 0 }}>
+                            <button
+                                type="button"
+                                className="btn btn-primary"
+                                onClick={handleSaveSageLines}
+                                disabled={loading || !stats.isBalanced}
+                                title={!stats.isBalanced ? "Le fichier est déséquilibré et ne peut pas être importé dans Sage." : "Sauvegarder les lignes dans la base de données."}
+                            >
+                                {loading ? 'Sauvegarde…' : 'Sauvegarder Sage'}
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-secondary"
+                                onClick={() => setShowPreview(true)}
+                            >
+                                Prévisualiser format Sage
+                            </button>
+                        </div>
+                        
+                        {/* Section statistiques déplacée à côté des boutons */}
+                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', background: 'var(--bg-muted)', padding: '0.5rem 1rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-light)', marginLeft: 'auto' }}>
+                            <div style={{ fontSize: '0.85rem', display: 'flex', gap: '0.5rem' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Débit:</span>
+                                <span style={{ fontWeight: 700, color: 'var(--success)' }}>{stats.totalDebit.toFixed(3)} TND</span>
+                            </div>
+                            <div style={{ width: '1px', height: '15px', background: 'var(--border-light)' }}></div>
+                            <div style={{ fontSize: '0.85rem', display: 'flex', gap: '0.5rem' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Crédit:</span>
+                                <span style={{ fontWeight: 700, color: 'var(--olea-terracotta)' }}>{stats.totalCredit.toFixed(3)} TND</span>
+                            </div>
+                            <div style={{ width: '1px', height: '15px', background: 'var(--border-light)' }}></div>
+                            <div style={{ fontSize: '0.85rem', display: 'flex', gap: '0.5rem' }}>
+                                <span style={{ fontWeight: 600, color: 'var(--text-muted)' }}>Écart:</span>
+                                <span style={{ fontWeight: 700, color: stats.isBalanced ? 'var(--success)' : 'var(--olea-terracotta)' }}>{stats.solde.toFixed(3)} TND</span>
+                            </div>
+                        </div>
+                    </div>
+                    {!stats.isBalanced && (
+                        <div className="alert alert-danger slide-down" style={{ marginTop: '1rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
+                            <span>⚠️</span>
+                            <span>
+                                <strong>Rejet Global Sage :</strong> Le rapprochement est déséquilibré de <strong>{Math.abs(stats.solde).toFixed(3)} TND</strong>. Toute pièce déséquilibrée entraîne le rejet global du fichier d’import par Sage. Veuillez vérifier vos écritures.
+                            </span>
+                        </div>
+                    )}
+                </div>
+
+                <div className="table-responsive sage-table-scroll">
+                    <table className="olea-table sage-table">
+                        <colgroup>
+                            <col style={{ width: '130px' }} />
+                            <col style={{ width: '140px' }} />
+                            <col style={{ width: '140px' }} />
+                            <col style={{ width: '110px' }} />
+                            <col style={{ width: '110px' }} />
+                            <col style={{ width: '140px' }} />
+                            <col style={{ width: '320px' }} />
+                        </colgroup>
+                        <thead>
                             <tr>
-                                <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
-                                    Aucun mouvement importé.
-                                </td>
+                                <th>Date écriture</th>
+                                <th>Compte</th>
+                                <th>Tiers</th>
+                                <th className="text-right">Débit</th>
+                                <th className="text-right">Crédit</th>
+                                <th>Section</th>
+                                <th>Libellé</th>
                             </tr>
-                        ) : (
-                            movements.map((mov) => {
-                                const ligne2 = ligne2ByMovement[mov.id] || {};
-                                return (
-                                    <React.Fragment key={mov.id}>
-                                        <tr className="fade-in">
-                                            <td className="font-bold">L1</td>
+                        </thead>
+                        <tbody>
+                            {paginatedMovements.length === 0 ? (
+                                <tr>
+                                    <td colSpan="7" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
+                                        Aucun mouvement importé.
+                                    </td>
+                                </tr>
+                            ) : (
+                                paginatedMovements.map((mov) => {
+                                    const ligne2 = ligne2ByMovement[mov.id] || {};
+                                    // La ligne est considérée comme traitée si le compte de contrepartie est rempli
+                                    const isProcessed = !!ligne2.compte;
+
+                                    return (
+                                        <tr key={mov.id} className="fade-in" style={{ backgroundColor: isProcessed ? 'rgba(46, 204, 113, 0.08)' : 'transparent', transition: 'background-color 0.3s ease', position: 'relative', zIndex: activeCompteInput === mov.id ? 100 : 1 }}>
                                             <td>{mov.date_operation}</td>
-                                            <td>
-                                                <input
-                                                    value={batch?.compte_comptable || ''}
-                                                    className="form-control form-control-sm compte-input"
-                                                    readOnly
-                                                />
-                                            </td>
-                                            <td>
-                                                <input
-                                                    value={ligne2.tiers || ''}
-                                                    onChange={(e) => updateLigne2(mov.id, 'tiers', e.target.value)}
-                                                    className="form-control form-control-sm"
-                                                    placeholder="Tiers"
-                                                />
-                                            </td>
-                                            <td className="text-right">{Number(mov.debit || 0).toFixed(3)}</td>
-                                            <td className="text-right">{Number(mov.credit || 0).toFixed(3)}</td>
-                                            <td>
-                                                <input
-                                                    value={ligne2.section_analytique || ''}
-                                                    onChange={(e) => updateLigne2(mov.id, 'section_analytique', e.target.value)}
-                                                    className="form-control form-control-sm"
-                                                    placeholder="Section"
-                                                />
-                                            </td>
-                                            <td>{mov.libelle}</td>
-                                        </tr>
-                                        <tr className={`fade-in sage-row-secondary ${activeCompteInput === mov.id ? 'active-suggest-row' : ''}`}>
-                                            <td className="font-bold">L2</td>
-                                            <td>{mov.date_operation}</td>
-                                            <td className="compte-suggest-cell" style={{ zIndex: activeCompteInput === mov.id ? 100 : 1 }}>
+                                            <td className="compte-suggest-cell" style={{ overflow: 'visible', position: 'relative', zIndex: activeCompteInput === mov.id ? 101 : 1 }}>
                                                 <div className="compte-suggest">
                                                     <input
                                                         type="text"
@@ -625,30 +607,114 @@ function RapprochementBancaire() {
                                             <td>
                                                 <input
                                                     value={ligne2.tiers || ''}
+                                                    onChange={(e) => updateLigne2(mov.id, 'tiers', e.target.value)}
                                                     className="form-control form-control-sm"
-                                                    readOnly
+                                                    placeholder="Tiers"
                                                 />
                                             </td>
-                                            <td className="text-right">{Number(mov.credit || 0).toFixed(3)}</td>
-                                            <td className="text-right">{Number(mov.debit || 0).toFixed(3)}</td>
+                                            {/* Débit / Crédit de la contrepartie (Ligne 2) :
+                                                La contrepartie suit le sens du relevé :
+                                                - Un Débit sur le relevé est un Débit pour la contrepartie.
+                                                - Un Crédit sur le relevé est un Crédit pour la contrepartie.
+                                            */}
+                                            <td className="text-right">
+                                                {Number(mov.debit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3)}
+                                            </td>
+                                            <td className="text-right">
+                                                {Number(mov.credit || 0) === 0 ? '' : Number(mov.credit || 0).toFixed(3)}
+                                            </td>
                                             <td>
                                                 <input
                                                     value={ligne2.section_analytique || ''}
+                                                    onChange={(e) => updateLigne2(mov.id, 'section_analytique', e.target.value)}
                                                     className="form-control form-control-sm"
-                                                    readOnly
+                                                    placeholder="Section"
                                                 />
                                             </td>
                                             <td>{mov.libelle}</td>
                                         </tr>
-                                    </React.Fragment>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {totalPages > 1 && (
+                    <div className="lignes-pagination" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'center', gap: '0.25rem', alignItems: 'center' }}>
+                        <button
+                            className="pagination-btn"
+                            disabled={page === 1 || loading}
+                            onClick={() => setPage(1)}
+                            title="Première page"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                <polyline points="11 17 6 12 11 7" />
+                                <polyline points="18 17 13 12 18 7" />
+                            </svg>
+                        </button>
+                        <button
+                            className="pagination-btn"
+                            disabled={!canGoPrev || loading}
+                            onClick={() => setPage((p) => p - 1)}
+                            title="Page précédente"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                <polyline points="15 18 9 12 15 6" />
+                            </svg>
+                        </button>
+
+                        <div className="pagination-pages" style={{ display: 'flex', gap: '0.25rem' }}>
+                            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                                let pageNumber;
+                                if (totalPages <= 5) {
+                                    pageNumber = i + 1;
+                                } else if (page <= 3) {
+                                    pageNumber = i + 1;
+                                } else if (page >= totalPages - 2) {
+                                    pageNumber = totalPages - 4 + i;
+                                } else {
+                                    pageNumber = page - 2 + i;
+                                }
+                                return (
+                                    <button
+                                        key={pageNumber}
+                                        className={`pagination-page ${page === pageNumber ? 'active' : ''}`}
+                                        onClick={() => setPage(pageNumber)}
+                                        disabled={loading}
+                                    >
+                                        {pageNumber}
+                                    </button>
                                 );
-                            })
-                        )}
-                    </tbody>
-                </table>
-            </div>
-        </>
-    );
+                            })}
+                        </div>
+
+                        <button
+                            className="pagination-btn"
+                            disabled={!canGoNext || loading}
+                            onClick={() => setPage((p) => p + 1)}
+                            title="Page suivante"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                <polyline points="9 18 15 12 9 6" />
+                            </svg>
+                        </button>
+                        <button
+                            className="pagination-btn"
+                            disabled={page === totalPages || loading}
+                            onClick={() => setPage(totalPages)}
+                            title="Dernière page"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                <polyline points="13 17 18 12 13 7" />
+                                <polyline points="6 17 11 12 6 7" />
+                            </svg>
+                        </button>
+                    </div>
+                )}
+            </>
+        );
+    };
 
     const PreviewModal = () => {
         if (!showPreview) return null;
@@ -664,8 +730,8 @@ function RapprochementBancaire() {
                     date_ecriture: mov.date_operation,
                     compte: batch?.compte_comptable || '-',
                     tiers: ligne2.tiers || '',
-                    debit: Number(mov.debit || 0).toFixed(3),
-                    credit: Number(mov.credit || 0).toFixed(3),
+                    debit: Number(mov.credit || 0) === 0 ? '' : Number(mov.credit || 0).toFixed(3),
+                    credit: Number(mov.debit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3),
                     section: ligne2.section_analytique || '',
                     numero_piece: numeroPiece,
                     libelle: mov.libelle,
@@ -679,8 +745,8 @@ function RapprochementBancaire() {
                     date_ecriture: mov.date_operation,
                     compte: ligne2.compte || '-',
                     tiers: ligne2.tiers || '',
-                    debit: Number(mov.credit || 0).toFixed(3),
-                    credit: Number(mov.debit || 0).toFixed(3),
+                    debit: Number(mov.debit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3),
+                    credit: Number(mov.credit || 0) === 0 ? '' : Number(mov.credit || 0).toFixed(3),
                     section: ligne2.section_analytique || '',
                     numero_piece: numeroPiece,
                     libelle: mov.libelle,

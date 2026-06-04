@@ -1341,7 +1341,7 @@ body {
     box-shadow: var(--shadow-md);
     max-height: 240px;
     overflow-y: auto;
-    z-index: 1000;
+    z-index: 9999;
 }
 
 .compte-suggest-item {

@@ -59,14 +59,19 @@ def export_csv(
 
     # Données
     for ecriture in ecritures:
+        debit_val = ecriture['montant_debit']
+        credit_val = ecriture['montant_credit']
+        debit_str = str(debit_val).replace('.', ',') if debit_val != 0 and debit_val != 0.0 else ''
+        credit_str = str(credit_val).replace('.', ',') if credit_val != 0 and credit_val != 0.0 else ''
+
         writer.writerow([
             ecriture['societe'],
             ecriture['journal'],
             ecriture['date_compta'].strftime('%d/%m/%Y'),
             ecriture['compte'],
             ecriture['tiers'] or '',
-            str(ecriture['montant_debit']).replace('.', ','),
-            str(ecriture['montant_credit']).replace('.', ','),
+            debit_str,
+            credit_str,
             ecriture['section_analytique'] or '',
             ecriture['numero_piece'],
             ecriture['libelle_ecriture'],
