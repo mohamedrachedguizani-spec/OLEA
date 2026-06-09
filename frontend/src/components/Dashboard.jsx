@@ -153,7 +153,7 @@ function Dashboard({ refreshTrigger }) {
             setData(res);
             setLastUpdate(new Date());
         } catch (err) {
-            console.error('Erreur chargement dashboard global:', err);
+            // Pas de log console
         } finally {
             setLoading(false);
         }
@@ -170,7 +170,6 @@ function Dashboard({ refreshTrigger }) {
         const ws = new WebSocket(WS_URL);
 
         ws.onopen = () => {
-            console.log('[Dashboard WS] ✅ Connecté');
             setWsConnected(true);
         };
 
@@ -182,16 +181,14 @@ function Dashboard({ refreshTrigger }) {
                     ? ['users', 'audit', 'sessions']
                     : ['caisse', 'migration', 'sage_bfc', 'forecast'];
                 if (channels.includes(channel)) {
-                    console.log(`[Dashboard WS] 📡 Refresh → ${channel}`);
                     loadDataRef.current?.();
                 }
             } catch (err) {
-                console.warn('[Dashboard WS] Message invalide:', err);
+                // Pas de log
             }
         };
 
         ws.onclose = (event) => {
-            console.log('[Dashboard WS] 🔌 Déconnecté — reconnexion…');
             setWsConnected(false);
             wsRef.current = null;
             if (event?.code === 1008) {

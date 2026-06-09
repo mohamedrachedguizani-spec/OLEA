@@ -31,7 +31,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
             setTotalEcritures(Number(data?.total ?? 0));
             setTotalPages(Number(data?.pages ?? 1));
         } catch (error) {
-            console.error('Erreur lors du chargement:', error);
+            // Pas de log console
         }
     };
 
@@ -40,7 +40,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
             const data = await ApiService.getComptes();
             setComptes(data);
         } catch (error) {
-            console.error('Erreur lors du chargement des comptes:', error);
+            // Pas de log console
         }
     };
 
@@ -176,7 +176,7 @@ function MigrationSage({ onMigrationComplete, refreshTrigger }) {
                     const cleanupResult = await ApiService.nettoyerHistoriqueMigre();
                     setMessage(prev => `${prev} | ${cleanupResult.message}`);
                 } catch (cleanupError) {
-                    console.error('Erreur nettoyage:', cleanupError);
+                    // Pas de log console
                 }
             }
             

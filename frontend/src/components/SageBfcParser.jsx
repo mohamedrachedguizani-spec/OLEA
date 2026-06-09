@@ -190,7 +190,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
             setMonthlyData(data);
 
         } catch (err) {
-            console.error('Erreur chargement données mensuelles:', err);
+            // Pas de log console
         } finally {
             setLoadingData(false);
         }
@@ -201,7 +201,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
             const res = await ApiService.getSageBfcClosedYears();
             setClosedYears(Array.isArray(res?.years) ? res.years.map((y) => Number(y)).filter((y) => Number.isFinite(y)) : []);
         } catch (err) {
-            console.error('Erreur chargement années clôturées:', err);
+            // Pas de log console
         }
     }, []);
 
@@ -229,7 +229,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                 }
             }));
         } catch (err) {
-            console.error(`Erreur chargement détail mois ${monthKey}:`, err);
+            // Pas de log console
         }
     }, [monthlyData]);
 
@@ -259,7 +259,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                     }
                 }));
             } catch (err) {
-                console.error(`Erreur chargement détail mois ${monthKey}:`, err);
+                // Pas de log console
             }
         }));
     }, [sortedMonths, monthlyData]);
@@ -298,7 +298,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                 const stats = await ApiService.getSageBfcMappingStats();
                 setMappingStats(stats);
             } catch (err) {
-                console.error('Erreur chargement stats mapping:', err);
+                // Pas de log console
             }
         };
         loadStats();

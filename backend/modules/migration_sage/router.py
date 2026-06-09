@@ -46,7 +46,7 @@ def get_ecritures_a_migrer(
 
         cursor.execute(
             "SELECT * FROM ecritures_caisse WHERE est_migree = FALSE "
-            "ORDER BY date_ecriture ASC, id ASC LIMIT %s OFFSET %s",
+            "ORDER BY date_ecriture DESC, id DESC LIMIT %s OFFSET %s",
             (safe_page_size, offset),
         )
         items = cursor.fetchall()

@@ -37,7 +37,7 @@ export default function useLiveUpdates(handlers = {}, options = {}) {
         const ws = new WebSocket(WS_URL);
 
         ws.onopen = () => {
-            console.log('[OLEA Live] ✅ Connecté');
+            // Pas de log
         };
 
         ws.onmessage = (event) => {
@@ -45,20 +45,17 @@ export default function useLiveUpdates(handlers = {}, options = {}) {
                 const data = JSON.parse(event.data);
                 const { channel, action, payload } = data;
 
-                console.log(`[OLEA Live] 📡 ${channel}/${action}`, payload);
-
                 // Appeler le handler correspondant au channel
                 const handler = handlersRef.current[channel];
                 if (typeof handler === 'function') {
                     handler(action, payload);
                 }
             } catch (err) {
-                console.warn('[OLEA Live] Message invalide:', err);
+                // Pas de log
             }
         };
 
         ws.onclose = (event) => {
-            console.log('[OLEA Live] 🔌 Déconnecté — reconnexion dans 3s…');
             wsRef.current = null;
             if (event?.code === 1008) {
                 // Rejet explicite côté backend (auth/session invalide)

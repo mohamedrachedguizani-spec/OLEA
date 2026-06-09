@@ -46,7 +46,7 @@ function RapprochementBancaire() {
                 const data = await ApiService.getComptes();
                 setComptes(Array.isArray(data) ? data : []);
             } catch (err) {
-                console.error(err);
+                // Pas de log console
             }
         };
         loadComptes();

@@ -168,14 +168,14 @@ function SaisieCaisse({ refreshTrigger }) {
                 page,
                 page_size: pageSize,
                 migree: false,
-                order: 'asc',
+                order: 'desc',
             });
             const items = Array.isArray(data?.items) ? data.items : [];
             setEcritures(items);
             setTotalEcritures(Number(data?.total ?? 0));
             setTotalPages(Number(data?.pages ?? 1));
         } catch (error) {
-            console.error('Erreur lors du chargement:', error);
+            // Pas de log console
         }
     }, [page, pageSize]);
 

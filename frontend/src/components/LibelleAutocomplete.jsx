@@ -32,7 +32,7 @@ function LibelleAutocomplete({ value, onChange, onSelect, onEditingComplete }) {
             setSuggestions(data);
             setShowSuggestions(true);
         } catch (error) {
-            console.error('Erreur lors de la recherche:', error);
+            // Pas de log console
         }
     };
 

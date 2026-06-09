@@ -155,7 +155,7 @@ def get_ecritures_caisse(
     safe_page = max(1, page)
     safe_page_size = max(1, page_size)
     offset = (safe_page - 1) * safe_page_size
-    safe_order = "ASC" if order.lower() == "asc" else "DESC"
+    safe_order = "DESC" if order.lower() == "desc" else "ASC"
 
     base_query = "FROM ecritures_caisse WHERE 1=1"
     params = []
