@@ -453,6 +453,27 @@ body {
     flex: 1;
     padding: 1.25rem 0.75rem;
     overflow-y: auto;
+    /* Personnalisation de la barre de défilement (Firefox) */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.238) transparent;
+}
+
+/* Personnalisation de la barre de défilement de la sidebar (Webkit) */
+.sidebar-menu::-webkit-scrollbar {
+    width: 5px;
+}
+
+.sidebar-menu::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.sidebar-menu::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border-radius: 10px;
+}
+
+.sidebar-menu::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
 }
 
 .menu-section {

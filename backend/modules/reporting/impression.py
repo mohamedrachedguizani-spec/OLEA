@@ -27,9 +27,56 @@ router = APIRouter(
 )
 
 
-def _fmt_cell(value) -> str:
+def _row_is_product(row: dict) -> bool:
+    nature = str(row.get("Nature") or "").lower().strip()
+    if nature == "produit":
+        return True
+    if nature == "charge":
+        return False
+    
+    lib = str(row.get("Libellé") or row.get("KPI") or "").lower().strip()
+    lib = lib.replace("↳", "").strip()
+    
+    product_indicators = [
+        "ca net", "ebitda", "resultat net", "résultat net", "ca brut", 
+        "autres produits", "produits financiers", "produits exceptionnels",
+        "profit avant impot", "profit avant impôt"
+    ]
+    return any(ind in lib for ind in product_indicators)
+
+
+def _fmt_cell_custom(value, col_name: str, row: dict) -> str:
     if value is None:
         return ""
+    
+    try:
+        val_float = float(value)
+    except (ValueError, TypeError):
+        return str(value)
+        
+    if col_name == "Reste budget" and _row_is_product(row):
+        forecast_val = row.get("Prévision annuelle")
+        if forecast_val is None:
+            forecast_val = row.get("Prévision Annuelle")
+            
+        actual_val = row.get("Réalisé cumulé")
+        if actual_val is None:
+            actual_val = row.get("Réalisé Cumulé")
+            
+        if forecast_val is not None and actual_val is not None:
+            try:
+                f_float = float(forecast_val)
+                a_float = float(actual_val)
+                
+                is_exceeded = (
+                    a_float > f_float if f_float >= 0 else a_float < f_float
+                )
+                if is_exceeded and val_float > 0:
+                    formatted = f"{val_float:,.3f}".replace(",", " ").replace(".", ",")
+                    return f"+{formatted}"
+            except (ValueError, TypeError):
+                pass
+                
     if isinstance(value, float):
         return f"{value:,.3f}".replace(",", " ").replace(".", ",")
     return str(value)
@@ -63,7 +110,7 @@ def _table_html(df: pd.DataFrame, sheet_name: str) -> str:
     body_rows = []
     for row in df.to_dict(orient="records"):
         cls = _row_class(sheet_name, row)
-        tds = "".join(f"<td>{html.escape(_fmt_cell(row.get(c)))}</td>" for c in cols)
+        tds = "".join(f"<td>{html.escape(_fmt_cell_custom(row.get(c), c, row))}</td>" for c in cols)
         body_rows.append(f"<tr class=\"{cls}\">{tds}</tr>")
     body = "".join(body_rows)
 

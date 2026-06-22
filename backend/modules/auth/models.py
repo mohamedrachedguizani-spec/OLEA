@@ -30,10 +30,11 @@ class ModuleEnum(str, Enum):
     saisie_caisse = "saisie_caisse"
     migration_sage = "migration_sage"
     export_csv = "export_csv"
-    rapprochement_bancaire = "rapprochement_bancaire"
+    saisie_bancaire = "saisie_bancaire"
     sage_bfc = "sage_bfc"
     reporting = "reporting"
     configuration = "configuration"
+    rapprochement_bancaire = "rapprochement_bancaire"
 
 
 # ─── Auth Schemas ───

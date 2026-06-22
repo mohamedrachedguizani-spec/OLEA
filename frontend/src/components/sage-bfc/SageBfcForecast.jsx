@@ -96,6 +96,24 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`;
     };
 
+    const fmtRemainingBudget = (value, nature, forecast, actual, digits = 3) => {
+        if (value == null || Number.isNaN(Number(value))) return '—';
+        const valNum = Number(value);
+        const forecastNum = Number(forecast || 0);
+        const actualNum = Number(actual || 0);
+        
+        const isProduct = nature === 'produit';
+        const isExceeded = isProduct && (
+            forecastNum >= 0 ? actualNum > forecastNum : actualNum < forecastNum
+        );
+        
+        const formatted = fmt(valNum, digits);
+        if (isExceeded && valNum > 0) {
+            return `+${formatted}`;
+        }
+        return formatted;
+    };
+
     const asDraft3 = useCallback((value) => {
         const raw = String(value ?? '').trim();
         if (raw === '') return '';
@@ -637,7 +655,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                 <td>{fmt(row.forecast_annual, 3)}</td>
                                                 <td>{fmt(row.actual_total, 3)}</td>
                                                 <td className={Number(row.taux_realisation_annuel_pct || 0) < 100 ? 'neg' : 'pos'}>{fmtPct(row.taux_realisation_annuel_pct)}</td>
-                                                <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmt(row.remaining_budget, 3)}</td>
+                                                <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmtRemainingBudget(row.remaining_budget, row.nature, row.forecast_annual, row.actual_total, 3)}</td>
                                                 <td>
                                                     <div className="annual-indicator-cell">
                                                         <span className={`alert-pill ${row.alert_level || 'none'}`}>
@@ -719,7 +737,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                                     Taux: {fmtPct(it.taux_realisation_annuel_pct, 3)}
                                                                                 </span>
                                                                                 <span className={`forecast-subitem-kpi forecast-subitem-kpi-remaining ${Number(it.remaining_budget || 0) >= 0 ? 'good' : 'bad'}`}>
-                                                                                    Reste: {fmt(it.remaining_budget, 3)}
+                                                                                    Reste: {fmtRemainingBudget(it.remaining_budget, row.nature, it.forecast_value, it.actual_value, 3)}
                                                                                 </span>
                                                                                 <span className="forecast-subitem-kpi forecast-subitem-kpi-indicator">
                                                                                     <span className={`alert-pill ${it.alert_level || 'none'}`}>{alertLabel(it.alert_level)}</span>
@@ -929,7 +947,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                                     Taux: {fmtPct(it.taux_realisation_annuel_pct, 3)}
                                                                                 </span>
                                                                                 <span className={`forecast-subitem-kpi forecast-subitem-kpi-remaining ${Number(it.remaining_budget || 0) >= 0 ? 'good' : 'bad'}`}>
-                                                                                    Reste: {fmt(it.remaining_budget, 3)}
+                                                                                    Reste: {fmtRemainingBudget(it.remaining_budget, row.nature, it.forecast_value, it.actual_value, 3)}
                                                                                 </span>
                                                                                 <span className="forecast-subitem-kpi forecast-subitem-kpi-indicator">
                                                                                     <span className={`alert-pill ${it.alert_level || 'none'}`}>{alertLabel(it.alert_level)}</span>

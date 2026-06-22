@@ -32,7 +32,8 @@ function Sidebar({
         { id: 'saisie', label: 'Saisie Caisse', icon: 'edit', module: 'saisie_caisse' },
         { id: 'migration', label: 'Migration Sage', icon: 'sync', module: 'migration_sage' },
         { id: 'export', label: 'Export CSV', icon: 'download', module: 'export_csv' },
-        { id: 'rapprochement', label: 'Rapprochement Bancaire', icon: 'bank', module: 'rapprochement_bancaire' },
+        { id: 'rapprochement', label: 'Saisie Bancaire', icon: 'bank', module: 'saisie_bancaire' },
+        { id: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: 'compare', module: 'rapprochement_bancaire' },
         { id: 'sage-bfc', label: 'SAGE → BFC', icon: 'transform', module: 'sage_bfc' },
         { id: 'reporting', label: 'Reporting', icon: 'reporting', module: 'reporting' },
         { id: 'configuration', label: 'Configuration', icon: 'settings', module: 'configuration' },
@@ -133,6 +134,14 @@ function Sidebar({
                     <path d="M14 10v8"/>
                     <path d="M18 10v8"/>
                     <path d="M4 18h16"/>
+                </svg>
+            ),
+            compare: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="12" y1="2" x2="12" y2="22"/>
+                    <line x1="5" y1="9" x2="19" y2="9"/>
+                    <path d="M5 9c0 4 3 6 7 6s7-2 7-6"/>
+                    <path d="M2 22h20"/>
                 </svg>
             ),
         };

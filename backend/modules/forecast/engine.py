@@ -196,13 +196,23 @@ def _round3(value: Optional[float]) -> Optional[float]:
     return round(float(value), 3)
 
 
-def _remaining_budget_value(forecast_value: float, actual_value: float) -> float:
+def _remaining_budget_value(forecast_value: float, actual_value: float, nature: str = "charge") -> float:
     """
     Reste budget sémantique:
     - si prévision >= 0 : reste = prévision - réalisé
     - si prévision < 0  : reste = -(prévision - réalisé)
       (ex: -40k vs -68k => reste négatif = dépassement)
     """
+    if nature == "produit":
+        if float(forecast_value) >= 0:
+            if float(actual_value) > float(forecast_value):
+                # Dépassement de budget pour un produit (positif)
+                return float(actual_value) - float(forecast_value)
+        else:
+            if float(actual_value) < float(forecast_value):
+                # Dépassement de budget pour un produit (négatif)
+                return float(forecast_value) - float(actual_value)
+
     base = float(forecast_value) - float(actual_value)
     return base if float(forecast_value) >= 0 else -base
 
@@ -1023,7 +1033,7 @@ def _annual_indicator(
     if abs(forecast_annual) < 1e-9:
         return None, None, None
 
-    remaining_budget = _remaining_budget_value(forecast_annual, actual_total)
+    remaining_budget = _remaining_budget_value(forecast_annual, actual_total, nature)
 
     if agregat_key == "resultat_financier":
         tolerance = 1e-6
@@ -1046,7 +1056,10 @@ def _annual_indicator(
         return "Reste à consommer", remaining_budget, "positive"
 
     # Produits
-    if remaining_budget <= 0:
+    is_exceeded = (
+        actual_total >= forecast_annual if forecast_annual >= 0 else actual_total <= forecast_annual
+    )
+    if is_exceeded:
         return "Objectif atteint / dépassé", remaining_budget, "positive"
     if ecart_to_date_pct is not None and ecart_to_date_pct < -5.0:
         return "Retard de réalisation", remaining_budget, "negative"
@@ -1117,7 +1130,7 @@ def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object
         taux_realisation_annuel_pct = (
             (actual_total / forecast_annual * 100.0) if abs(forecast_annual) > 1e-9 else None
         )
-        remaining_budget = _remaining_budget_value(forecast_annual, actual_total)
+        remaining_budget = _remaining_budget_value(forecast_annual, actual_total, str(item["nature"]))
 
         indicator_label, indicator_value, indicator_alert = _annual_indicator(
             agregat_key=key,
@@ -1247,7 +1260,7 @@ def get_subagregats(target_year: int, cycle_code: str, agregat_key: str, month: 
 
         diff, pct, level = _compute_alert(nature, a_val, f_val) if f_val is not None else (None, None, None)
         taux_realisation = (a_val / f_val * 100.0) if (f_val is not None and abs(f_val) > 1e-9) else None
-        remaining_budget = _remaining_budget_value(float(f_val), float(a_val)) if (f_val is not None) else None
+        remaining_budget = _remaining_budget_value(float(f_val), float(a_val), nature) if (f_val is not None) else None
 
         indicator_label, indicator_value, indicator_alert = _annual_indicator(
             agregat_key=agregat_key,

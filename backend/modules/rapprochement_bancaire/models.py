@@ -1,78 +1,59 @@
 from pydantic import BaseModel
-from datetime import date, datetime
-from typing import List, Optional, Dict
+from datetime import date
+from typing import List, Optional
 
+class ReconciliationOptions(BaseModel):
+    date_tolerance_days: int = 3
+    match_on_label: bool = False
+    match_on_date: bool = False
 
-class BankReconciliationBatchBase(BaseModel):
-    periode_debut: Optional[date] = None
-    periode_fin: Optional[date] = None
-    compte_banque: str
-    compte_comptable: str
-    file_name: str
-    file_type: str
-
-
-class BankReconciliationBatch(BankReconciliationBatchBase):
-    id: int
-    status: str
-    created_at: datetime
-    updated_at: datetime
-
-    class Config:
-        from_attributes = True
-
-
-class BankReconciliationMovement(BaseModel):
-    id: int
-    batch_id: int
+class BankMovement(BaseModel):
     date_operation: date
     reference: Optional[str] = None
     libelle: str
     debit: float
     credit: float
-    created_at: datetime
+    amount: float
 
-    class Config:
-        from_attributes = True
-
-
-class BankReconciliationUploadResponse(BaseModel):
-    batch: BankReconciliationBatch
-    total_mouvements: int
-    preview: List[BankReconciliationMovement]
-
-
-class BankReconciliationSageGenerationRequest(BaseModel):
-    contrepartie_compte: Optional[str] = None
-    contreparties: Optional[Dict[int, str]] = None
-    tiers: Optional[str] = None
-    section_analytique: Optional[str] = None
-    tiers_by_movement: Optional[Dict[int, str]] = None
-    sections_by_movement: Optional[Dict[int, str]] = None
-
-
-class BankReconciliationSageLine(BaseModel):
-    movement_id: int
-    line_no: int
-    societe: str
-    journal: str
+class SageMovement(BaseModel):
+    code_compte: str
+    libelle_compte: str
     date_ecriture: date
-    compte: Optional[str] = None
-    tiers: Optional[str] = None
-    debit: float = 0
-    credit: float = 0
-    section_analytique: Optional[str] = None
+    journal: str
     numero_piece: str
-    libelle: str
-    devise: str
-    type_piece: str
+    libelle_ecriture: str
+    reference_piece: Optional[str] = None
+    debit: float
+    credit: float
+    amount: float
 
+class ReconciledPair(BaseModel):
+    bank: BankMovement
+    sage: SageMovement
+    match_type: str  # "perfect" or "amount_only"
+    confidence: float  # e.g., 100.0 or 70.0
 
-class BankReconciliationSageLinesResponse(BaseModel):
-    batch_id: int
-    lines: List[BankReconciliationSageLine]
+class DiscrepancyPair(BaseModel):
+    bank: BankMovement
+    sage: SageMovement
+    difference: float
 
+class ReconciliationStats(BaseModel):
+    total_bank_movements: int
+    total_sage_movements: int
+    auto_reconciled_count: int
+    manual_validation_count: int
+    discrepancies_count: int
+    total_discrepancy_amount: float
+    automation_rate: float
+    bank_total_debit: float = 0.0
+    bank_total_credit: float = 0.0
+    sage_total_debit: float = 0.0
+    sage_total_credit: float = 0.0
 
-class BankReconciliationSageSaveResponse(BaseModel):
-    batch_id: int
-    saved_count: int
+class ReconciliationResult(BaseModel):
+    stats: ReconciliationStats
+    reconciled: List[ReconciledPair]
+    bank_only: List[BankMovement]
+    sage_only: List[SageMovement]
+    discrepancies: List[DiscrepancyPair]

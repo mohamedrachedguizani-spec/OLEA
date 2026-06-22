@@ -72,7 +72,7 @@ function SageBfcUpload({ onFileParse, loading, mappingStats }) {
 
     const getFileIcon = (filename) => {
         const ext = filename.split('.').pop().toLowerCase();
-        if (ext === 'csv') return '📊';
+        if (ext === 'csv') return '📗';
         return '📗';
     };
 

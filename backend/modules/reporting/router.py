@@ -258,9 +258,96 @@ def _build_hierarchical_annual_df(
     return pd.DataFrame(out)
 
 
-def _remaining_budget_semantic(forecast_value: float, actual_value: float) -> float:
+def _remaining_budget_semantic(forecast_value: float, actual_value: float, nature: str = "charge") -> float:
+    if nature == "produit":
+        if float(forecast_value) >= 0:
+            if float(actual_value) > float(forecast_value):
+                # Dépassement de budget pour un produit (positif)
+                return float(actual_value) - float(forecast_value)
+        else:
+            if float(actual_value) < float(forecast_value):
+                # Dépassement de budget pour un produit (négatif)
+                return float(forecast_value) - float(actual_value)
+
     base = float(forecast_value) - float(actual_value)
     return base if float(forecast_value) >= 0 else -base
+
+
+def _format_df_reste_budget(df: pd.DataFrame) -> pd.DataFrame:
+    if df.empty:
+        return df
+    
+    reste_col = None
+    for c in df.columns:
+        if str(c).lower().strip() == "reste budget":
+            reste_col = c
+            break
+            
+    if not reste_col:
+        return df
+        
+    forecast_col = None
+    for c in df.columns:
+        if str(c).lower().strip() in {"prévision annuelle", "prévision"}:
+            forecast_col = c
+            break
+            
+    actual_col = None
+    for c in df.columns:
+        if str(c).lower().strip() in {"réalisé cumulé", "réalisé"}:
+            actual_col = c
+            break
+            
+    if not forecast_col:
+        for c in df.columns:
+            if str(c).lower().strip() == "prévision annuelle":
+                forecast_col = c
+                break
+    if not actual_col:
+        for c in df.columns:
+            if str(c).lower().strip() == "réalisé cumulé":
+                actual_col = c
+                break
+
+    def _row_is_product(row: dict) -> bool:
+        nature = str(row.get("Nature") or "").lower().strip()
+        if nature == "produit":
+            return True
+        if nature == "charge":
+            return False
+        
+        lib = str(row.get("Libellé") or row.get("KPI") or row.get("Agrégat") or "").lower().strip()
+        lib = lib.replace("↳", "").strip()
+        
+        product_indicators = [
+            "ca net", "ebitda", "resultat net", "résultat net", "ca brut", 
+            "autres produits", "produits financiers", "produits exceptionnels",
+            "profit avant impot", "profit avant impôt"
+        ]
+        return any(ind in lib for ind in product_indicators)
+
+    new_rows = []
+    for row in df.to_dict(orient="records"):
+        val = row.get(reste_col)
+        if val is not None and _row_is_product(row):
+            try:
+                val_float = float(val)
+                f_val = row.get(forecast_col)
+                a_val = row.get(actual_col)
+                if f_val is not None and a_val is not None:
+                    f_float = float(f_val)
+                    a_float = float(a_val)
+                    is_exceeded = (
+                        a_float > f_float if f_float >= 0 else a_float < f_float
+                    )
+                    if is_exceeded and val_float > 0:
+                        formatted = f"{val_float:,.3f}".replace(",", " ").replace(".", ",")
+                        row[reste_col] = f"+{formatted}"
+            except (ValueError, TypeError):
+                pass
+        new_rows.append(row)
+        
+    return pd.DataFrame(new_rows)
 
 
 def _build_global_state_df(
@@ -328,7 +415,7 @@ def _build_global_state_df(
                 sub_line[col] = float(sub_actual_monthly.get((key, skey, m), 0.0))
 
             sub_line["Réalisé cumulé"] = a_cum
-            sub_line["Reste budget"] = _remaining_budget_semantic(f_val, a_cum)
+            sub_line["Reste budget"] = _remaining_budget_semantic(f_val, a_cum, row.get("nature"))
             out.append(sub_line)
 
     return pd.DataFrame(out)
@@ -730,6 +817,14 @@ def export_reporting_excel(
             sub_ann_map=sub_ann_map,
             realized_months=realized_months,
         ) if include_global_state else pd.DataFrame()
+
+        executive_df = _format_df_reste_budget(executive_df)
+        pnl_selected_df = _format_df_reste_budget(pnl_selected_df)
+        pnl_global_df = _format_df_reste_budget(pnl_global_df)
+        annual_df = _format_df_reste_budget(annual_df)
+        annual_detail_df = _format_df_reste_budget(annual_detail_df)
+        monthly_detail_df = _format_df_reste_budget(monthly_detail_df)
+        global_state_df = _format_df_reste_budget(global_state_df)
 
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:

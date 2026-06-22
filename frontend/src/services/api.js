@@ -337,10 +337,10 @@ class ApiService {
         return response.json();
     }
 
-    // ===================== Rapprochement Bancaire =====================
+    // ===================== Saisie Bancaire =====================
 
     static async uploadBankReconciliation(formData) {
-        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/upload`, {
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/upload`, {
             method: 'POST',
             body: formData,
         });
@@ -352,7 +352,7 @@ class ApiService {
     }
 
     static async getBankReconciliationMovements(batchId) {
-        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/movements`);
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/batches/${batchId}/movements`);
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des mouvements' }));
             throw new Error(err.detail || 'Erreur lors du chargement des mouvements');
@@ -361,7 +361,7 @@ class ApiService {
     }
 
     static async getBankReconciliationBatch(batchId) {
-        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}`);
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/batches/${batchId}`);
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement du batch' }));
             throw new Error(err.detail || 'Erreur lors du chargement du batch');
@@ -370,7 +370,7 @@ class ApiService {
     }
 
     static async generateBankReconciliationSageLines(batchId, payload = {}) {
-        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/sage-lines`, {
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/batches/${batchId}/sage-lines`, {
             method: 'POST',
             body: JSON.stringify(payload),
         });
@@ -382,7 +382,7 @@ class ApiService {
     }
 
     static async saveBankReconciliationSageLines(batchId, payload = {}) {
-        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/sage-lines/save`, {
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/batches/${batchId}/sage-lines/save`, {
             method: 'POST',
             body: JSON.stringify(payload),
         });
@@ -394,7 +394,7 @@ class ApiService {
     }
 
     static async exportBankReconciliationSageCsv(batchId, payload = {}) {
-        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement-bancaire/batches/${batchId}/sage-lines/export-csv`, {
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/batches/${batchId}/sage-lines/export-csv`, {
             method: 'POST',
             body: JSON.stringify(payload),
         });
@@ -405,6 +405,52 @@ class ApiService {
         return response.json();
     }
 
+    // ===================== Session de saisie (Banque) =====================
+
+    static async getPendingSessions() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/pending-sessions`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des sessions' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des sessions');
+        }
+        return response.json();
+    }
+
+    static async saveSessionEntries(batchId, entries) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/batches/${batchId}/save-session`, {
+            method: 'POST',
+            body: JSON.stringify({ entries }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la sauvegarde de session' }));
+            throw new Error(err.detail || 'Erreur lors de la sauvegarde de session');
+        }
+        return response.json();
+    }
+
+    static async getSessionEntries(batchId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/saisie-bancaire/batches/${batchId}/session-entries`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des entrées de session' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des entrées de session');
+        }
+        return response.json();
+    }
+
+    // ===================== Rapprochement Bancaire =====================
+    static async compareReconciliation(formData) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/compare`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du rapprochement' }));
+            throw new Error(err.detail || 'Erreur lors du rapprochement');
+        }
+        return response.json();
+    }
+
+    
     // ===================== Configuration =====================
 
     static async getConfigurationComptes(search = '', page = 1, pageSize = 20) {
