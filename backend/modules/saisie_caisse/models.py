@@ -11,6 +11,9 @@ class EcritureCaisseBase(BaseModel):
     libelle_ecriture: str
     debit: float = 0
     credit: float = 0
+    compte_contrepartie: Optional[str] = None
+    tiers: Optional[str] = None
+    section_analytique: Optional[str] = None
 
 
 class EcritureCaisseCreate(EcritureCaisseBase):

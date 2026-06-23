@@ -4,7 +4,6 @@ import { useAuth } from './contexts/AuthContext';
 import useLiveUpdates from './hooks/useLiveUpdates';
 import Login from './components/Login';
 import SaisieCaisse from './components/SaisieCaisse';
-import MigrationSage from './components/MigrationSage';
 import ExportCSV from './components/ExportCSV';
 import SageBfcParser from './components/SageBfcParser';
 import Sidebar from './components/Sidebar';
@@ -144,7 +143,6 @@ function App() {
                     {activeTab === 'dashboard' && <Dashboard refreshTrigger={refreshTrigger} />}
                     {activeTab === 'reporting' && hasPermission('reporting', 'read') && <Reporting refreshTrigger={reportingRefresh} />}
                     {activeTab === 'saisie' && <SaisieCaisse refreshTrigger={refreshTrigger} />}
-                    {activeTab === 'migration' && <MigrationSage onMigrationComplete={handleMigrationComplete} refreshTrigger={migrationRefresh + configurationRefresh} />}
                     {activeTab === 'export' && <ExportCSV />}
                     {activeTab === 'sage-bfc' && <SageBfcParser refreshTrigger={sageBfcRefresh} forecastRefresh={forecastRefresh} />}
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration />}

@@ -13,10 +13,12 @@ function SaisieBancaire() {
     const [message, setMessage] = useState('');
     const [error, setError] = useState('');
     const [comptes, setComptes] = useState([]);
+    const [tiersList, setTiersList] = useState([]);
     const [batch, setBatch] = useState(null);
     const [movements, setMovements] = useState([]);
     const [showPreview, setShowPreview] = useState(false);
     const [activeCompteInput, setActiveCompteInput] = useState(null);
+    const [activeTiersInput, setActiveTiersInput] = useState(null);
     const [dragActive, setDragActive] = useState(false);
     const [pendingSessions, setPendingSessions] = useState([]);
     const [showResumeModal, setShowResumeModal] = useState(false);
@@ -61,6 +63,16 @@ function SaisieBancaire() {
         };
         loadComptes();
 
+        const loadTiers = async () => {
+            try {
+                const data = await ApiService.getTiers();
+                setTiersList(Array.isArray(data) ? data : []);
+            } catch (err) {
+                // Pas de log console
+            }
+        };
+        loadTiers();
+
         // Vérifier les sessions en cours
         const checkPending = async () => {
             try {
@@ -80,7 +92,7 @@ function SaisieBancaire() {
         if (message) {
             const timer = setTimeout(() => {
                 setMessage('');
-            }, 5000);
+            }, 2000);
             return () => clearTimeout(timer);
         }
     }, [message]);
@@ -89,7 +101,7 @@ function SaisieBancaire() {
         if (error) {
             const timer = setTimeout(() => {
                 setError('');
-            }, 5000);
+            }, 2000);
             return () => clearTimeout(timer);
         }
     }, [error]);
@@ -338,6 +350,15 @@ function SaisieBancaire() {
         return comptes.filter((compte) =>
             compte.code_compte.toLowerCase().includes(value) ||
             compte.libelle_compte.toLowerCase().includes(value)
+        );
+    };
+
+    const filterTiers = (query = '') => {
+        const value = query.toLowerCase().trim();
+        if (!value) return tiersList;
+        return tiersList.filter((t) =>
+            t.code.toLowerCase().includes(value) ||
+            t.libelle.toLowerCase().includes(value)
         );
     };
 
@@ -669,7 +690,7 @@ function SaisieBancaire() {
                                     const isProcessed = !!ligne2.compte;
 
                                     return (
-                                        <tr key={mov.id} className="fade-in" style={{ backgroundColor: isProcessed ? 'rgba(46, 204, 113, 0.08)' : 'transparent', transition: 'background-color 0.3s ease', position: 'relative', zIndex: activeCompteInput === mov.id ? 100 : 1 }}>
+                                        <tr key={mov.id} className="fade-in" style={{ backgroundColor: isProcessed ? 'rgba(46, 204, 113, 0.08)' : 'transparent', transition: 'background-color 0.3s ease', position: 'relative', zIndex: (activeCompteInput === mov.id || activeTiersInput === mov.id) ? 100 : 1 }}>
                                             <td>{mov.date_operation}</td>
                                             <td className="compte-suggest-cell" style={{ overflow: 'visible', position: 'relative', zIndex: activeCompteInput === mov.id ? 101 : 1 }}>
                                                 <div className="compte-suggest">
@@ -710,13 +731,45 @@ function SaisieBancaire() {
                                                     )}
                                                 </div>
                                             </td>
-                                            <td>
-                                                <input
-                                                    value={ligne2.tiers || ''}
-                                                    onChange={(e) => updateLigne2(mov.id, 'tiers', e.target.value)}
-                                                    className="form-control form-control-sm"
-                                                    placeholder="Tiers"
-                                                />
+                                            <td className="compte-suggest-cell" style={{ overflow: 'visible', position: 'relative', zIndex: activeTiersInput === mov.id ? 101 : 1 }}>
+                                                <div className="compte-suggest">
+                                                    <input
+                                                        type="text"
+                                                        className="form-control form-control-sm compte-input"
+                                                        value={ligne2.tiers || ''}
+                                                        onChange={(e) => updateLigne2(mov.id, 'tiers', e.target.value)}
+                                                        onFocus={() => setActiveTiersInput(mov.id)}
+                                                        onBlur={() => {
+                                                            setTimeout(() => {
+                                                                setActiveTiersInput((prev) => (prev === mov.id ? null : prev));
+                                                            }, 150);
+                                                        }}
+                                                        placeholder="Saisir tiers"
+                                                        autoComplete="off"
+                                                    />
+                                                    {activeTiersInput === mov.id && (
+                                                        <div className="compte-suggest-list">
+                                                            {filterTiers(ligne2.tiers || '')
+                                                                .map((t) => (
+                                                                    <button
+                                                                        key={t.code}
+                                                                        type="button"
+                                                                        className="compte-suggest-item"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            updateLigne2(mov.id, 'tiers', t.code);
+                                                                            setActiveTiersInput(null);
+                                                                        }}
+                                                                    >
+                                                                        <strong>{t.code}</strong> — {t.libelle}
+                                                                    </button>
+                                                                ))}
+                                                            {filterTiers(ligne2.tiers || '').length === 0 && (
+                                                                <div className="compte-suggest-empty">Aucun tiers trouvé</div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
                                             </td>
                                             {/* Débit / Crédit de la contrepartie (Ligne 2) :
                                                 La contrepartie suit le sens du relevé :
@@ -825,9 +878,10 @@ function SaisieBancaire() {
     const PreviewModal = () => {
         if (!showPreview) return null;
 
-        const numeroPiece = `${batch?.compte_comptable || ''}-${new Date().toLocaleDateString('fr-FR').replace(/\//g, '')}`;
         const previewLines = movements.flatMap((mov) => {
             const ligne2 = ligne2ByMovement[mov.id] || {};
+            const year = mov.date_operation ? new Date(mov.date_operation).getFullYear() : new Date().getFullYear();
+            const numPiece = `${batch?.compte_banque || ''}-${year}`;
             return [
                 {
                     line_no: 'L1',
@@ -835,11 +889,11 @@ function SaisieBancaire() {
                     journal: batch?.compte_banque || '-',
                     date_ecriture: mov.date_operation,
                     compte: batch?.compte_comptable || '-',
-                    tiers: ligne2.tiers || '',
+                    tiers: '', // Tiers uniquement sur la ligne de contrepartie (L2)
                     debit: Number(mov.credit || 0) === 0 ? '' : Number(mov.credit || 0).toFixed(3),
                     credit: Number(mov.debit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3),
                     section: ligne2.section_analytique || '',
-                    numero_piece: numeroPiece,
+                    numero_piece: numPiece,
                     libelle: mov.libelle,
                     devise: 'TND',
                     type_piece: 'BQ',
@@ -852,9 +906,9 @@ function SaisieBancaire() {
                     compte: ligne2.compte || '-',
                     tiers: ligne2.tiers || '',
                     debit: Number(mov.debit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3),
-                    credit: Number(mov.credit || 0) === 0 ? '' : Number(mov.credit || 0).toFixed(3),
+                    credit: Number(mov.credit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3),
                     section: ligne2.section_analytique || '',
-                    numero_piece: numeroPiece,
+                    numero_piece: numPiece,
                     libelle: mov.libelle,
                     devise: 'TND',
                     type_piece: 'BQ',
@@ -1014,19 +1068,19 @@ function SaisieBancaire() {
 
     return (
         <div className="olea-card fade-in">
-            {loading && (
+            {loading && ReactDOM.createPortal(
                 <div className="sage-close-overlay" role="status" aria-live="polite" aria-label="Analyse en cours">
                     <div className="sage-close-overlay-card">
                         <div className="sage-close-spinner" />
                         <h4>Analyse du relevé en cours...</h4>
                         <p>Extraction des mouvements et conversion des devises.</p>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
             
             <div className="card-header">
                 <h2 className="card-title">
-                    <span className="icon">🏦</span>
                     Saisie Bancaire
                 </h2>
             </div>

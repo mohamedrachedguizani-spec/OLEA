@@ -224,7 +224,6 @@ def generate_sage_lines(
 
     compte_banque = (batch.get("compte_banque") or "").strip()
     compte_comptable = (batch.get("compte_comptable") or "").strip()
-    numero_piece = f"{compte_comptable}-{date.today():%d%m%Y}"
     contreparties = payload.contreparties or {}
     default_contrepartie = (payload.contrepartie_compte or "").strip() or None
     tiers_by_movement = payload.tiers_by_movement or {}
@@ -243,8 +242,11 @@ def generate_sage_lines(
         contrepartie_tiers = tiers_by_movement.get(movement_id) or payload.tiers
         contrepartie_section = sections_by_movement.get(movement_id) or payload.section_analytique
 
-        line1_tiers = tiers_by_movement.get(movement_id) or payload.tiers
+        line1_tiers = None  # Le tiers est affecté uniquement à la ligne de contrepartie (Ligne 2)
         line1_section = sections_by_movement.get(movement_id) or payload.section_analytique
+
+        # Numéro de pièce : Nom de la banque (compte_banque) - Année
+        numero_piece = f"{compte_banque}-{date_ecriture.year}"
 
         lines.append(
             BankReconciliationSageLine(

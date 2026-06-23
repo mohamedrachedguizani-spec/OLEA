@@ -5,7 +5,10 @@ from database import db
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user, require_permission, restrict_superadmin
 from modules.audit.service import log_audit_action
-from .models import CompteConfiguration, CompteConfigurationCreate, CompteConfigurationUpdate, CompteConfigurationPage
+from .models import (
+    CompteConfiguration, CompteConfigurationCreate, CompteConfigurationUpdate, CompteConfigurationPage,
+    TiersConfiguration, TiersConfigurationCreate, TiersConfigurationUpdate, TiersConfigurationPage
+)
 
 
 router = APIRouter(
@@ -285,3 +288,261 @@ def delete_compte(
     )
 
     return {"message": "Compte supprimé avec succès", "code_compte": code}
+
+
+# ═══════════════════════════════════════════════════════════
+# SECTION 2 — Gestion du Plan Tiers
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/configuration/tiers/", response_model=TiersConfigurationPage)
+def get_configuration_tiers(
+    search: str = "",
+    page: int = 1,
+    page_size: int = 20,
+    user: dict = Depends(require_permission("configuration", "read")),
+):
+    """Lister les tiers configurés (code + libellé)."""
+    safe_page = max(1, int(page))
+    safe_page_size = max(1, min(int(page_size), 200))
+    offset = (safe_page - 1) * safe_page_size
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*) AS total
+            FROM plan_tiers
+            WHERE code LIKE %s OR libelle LIKE %s
+            """,
+            (f"%{search}%", f"%{search}%"),
+        )
+        total = int(cursor.fetchone()["total"])
+        pages = max(1, (total + safe_page_size - 1) // safe_page_size)
+
+        if safe_page > pages:
+            safe_page = pages
+            offset = (safe_page - 1) * safe_page_size
+
+        cursor.execute(
+            """
+            SELECT code, libelle
+            FROM plan_tiers
+            WHERE code LIKE %s OR libelle LIKE %s
+            ORDER BY code
+            LIMIT %s OFFSET %s
+            """,
+            (f"%{search}%", f"%{search}%", safe_page_size, offset),
+        )
+        items = cursor.fetchall()
+
+    return {
+        "items": items,
+        "total": total,
+        "page": safe_page,
+        "page_size": safe_page_size,
+        "pages": pages,
+    }
+
+
+@router.post("/configuration/tiers/", response_model=TiersConfiguration)
+def create_or_update_tiers(
+    payload: TiersConfigurationCreate,
+    request: Request,
+    user: dict = Depends(require_permission("configuration", "write")),
+):
+    """Créer un nouveau tiers ou mettre à jour son libellé s'il existe."""
+    code = (payload.code or "").strip()
+    libelle = (payload.libelle or "").strip()
+
+    if not code:
+        raise HTTPException(status_code=400, detail="Le code tiers est obligatoire")
+    if not libelle:
+        raise HTTPException(status_code=400, detail="Le libellé tiers est obligatoire")
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id
+            FROM plan_tiers
+            WHERE code = %s
+            LIMIT 1
+            """,
+            (code,),
+        )
+        existing = cursor.fetchone()
+
+        if existing:
+            cursor.execute(
+                """
+                UPDATE plan_tiers
+                SET libelle = %s
+                WHERE id = %s
+                """,
+                (libelle, existing["id"]),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO plan_tiers (code, libelle)
+                VALUES (%s, %s)
+                """,
+                (code, libelle),
+            )
+
+        cursor.execute(
+            """
+            SELECT code, libelle
+            FROM plan_tiers
+            WHERE code = %s
+            LIMIT 1
+            """,
+            (code,),
+        )
+        created_or_updated = cursor.fetchone()
+
+    if not created_or_updated:
+        raise HTTPException(status_code=500, detail="Impossible de sauvegarder le tiers")
+
+    ws_manager.broadcast(
+        "configuration",
+        "upsert_tiers",
+        {"code": created_or_updated["code"]},
+    )
+
+    log_audit_action(
+        user=user,
+        action="upsert_tiers",
+        module="configuration",
+        entity_type="tiers",
+        entity_id=created_or_updated["code"],
+        detail={"libelle": created_or_updated["libelle"]},
+        request=request,
+    )
+
+    return created_or_updated
+
+
+@router.put("/configuration/tiers/{code}", response_model=TiersConfiguration)
+def update_configuration_tiers(
+    code: str,
+    payload: TiersConfigurationUpdate,
+    request: Request,
+    user: dict = Depends(require_permission("configuration", "write")),
+):
+    """Modifier le libellé ET le code d'un tiers existant."""
+    old_code = (code or "").strip()
+    new_code = (payload.code or "").strip()
+    libelle = (payload.libelle or "").strip()
+
+    if not old_code:
+        raise HTTPException(status_code=400, detail="Le code tiers actuel est obligatoire")
+    if not new_code:
+        raise HTTPException(status_code=400, detail="Le nouveau code tiers est obligatoire")
+    if not libelle:
+        raise HTTPException(status_code=400, detail="Le libellé tiers est obligatoire")
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id, code, libelle
+            FROM plan_tiers
+            WHERE code = %s
+            LIMIT 1
+            """,
+            (old_code,),
+        )
+        existing = cursor.fetchone()
+
+        if not existing:
+            raise HTTPException(status_code=404, detail="Tiers introuvable")
+
+        cursor.execute(
+            """
+            UPDATE plan_tiers
+            SET code = %s,
+                libelle = %s
+            WHERE id = %s
+            """,
+            (new_code, libelle, existing["id"]),
+        )
+
+        cursor.execute(
+            """
+            SELECT code, libelle
+            FROM plan_tiers
+            WHERE id = %s
+            """,
+            (existing["id"],),
+        )
+        updated = cursor.fetchone()
+
+    if not updated:
+        raise HTTPException(status_code=500, detail="Impossible de mettre à jour le tiers")
+
+    ws_manager.broadcast(
+        "configuration",
+        "update_tiers",
+        {"code": updated["code"]},
+    )
+
+    log_audit_action(
+        user=user,
+        action="update_tiers",
+        module="configuration",
+        entity_type="tiers",
+        entity_id=updated["code"],
+        detail={
+            "before": {
+                "code": existing.get("code") if existing else old_code,
+                "libelle": existing.get("libelle") if existing else None,
+            },
+            "after": {
+                "code": updated["code"],
+                "libelle": updated["libelle"],
+            },
+        },
+        request=request,
+    )
+
+    return updated
+
+
+@router.delete("/configuration/tiers/{code}")
+def delete_configuration_tiers(
+    code: str,
+    request: Request,
+    user: dict = Depends(require_permission("configuration", "delete")),
+):
+    """Supprimer un tiers par son code."""
+    code_strip = (code or "").strip()
+    if not code_strip:
+        raise HTTPException(status_code=400, detail="Le code tiers est obligatoire")
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT COUNT(*) AS cnt FROM plan_tiers WHERE code = %s",
+            (code_strip,),
+        )
+        row = cursor.fetchone()
+        if not row or row["cnt"] == 0:
+            raise HTTPException(status_code=404, detail="Tiers introuvable")
+
+        cursor.execute(
+            "DELETE FROM plan_tiers WHERE code = %s",
+            (code_strip,),
+        )
+
+    ws_manager.broadcast(
+        "configuration",
+        "delete_tiers",
+        {"code": code_strip},
+    )
+
+    log_audit_action(
+        user=user,
+        action="delete_tiers",
+        module="configuration",
+        entity_type="tiers",
+        entity_id=code_strip,
+        request=request,
+    )
+
+    return {"message": "Tiers supprimé avec succès", "code": code_strip}

@@ -36,9 +36,9 @@ function LibelleAutocomplete({ value, onChange, onSelect, onEditingComplete }) {
         }
     };
 
-    const handleSelect = (libelle) => {
-        onChange(libelle);
-        onSelect(libelle);
+    const handleSelect = (suggestion) => {
+        onChange(suggestion.libelle);
+        onSelect(suggestion);
         setShowSuggestions(false);
     };
 
@@ -73,7 +73,7 @@ function LibelleAutocomplete({ value, onChange, onSelect, onEditingComplete }) {
                         <div
                             key={index}
                             className="autocomplete-item"
-                            onClick={() => handleSelect(suggestion.libelle)}
+                            onClick={() => handleSelect(suggestion)}
                         >
                             {suggestion.libelle}
                         </div>

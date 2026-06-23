@@ -1,5 +1,6 @@
 // src/components/SageBfcParser.js
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import ReactDOM from 'react-dom';
 import ApiService from '../services/api';
 import SageBfcUpload from './sage-bfc/SageBfcUpload';
 import SageBfcPnl from './sage-bfc/SageBfcPnl';
@@ -541,14 +542,15 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                 </div>
             </div>
 
-            {closingYear && (
+            {closingYear && ReactDOM.createPortal(
                 <div className="sage-close-overlay" role="status" aria-live="polite" aria-label="Clôture annuelle en cours">
                     <div className="sage-close-overlay-card">
                         <div className="sage-close-spinner" />
                         <h4>Clôture annuelle en cours...</h4>
                         <p>Archivage, synchronisation historique et génération du budget initial.</p>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {/* Erreur globale */}

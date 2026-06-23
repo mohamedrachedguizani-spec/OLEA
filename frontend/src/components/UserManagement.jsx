@@ -12,7 +12,6 @@ const ROLES = [
 
 const MODULES = [
     { name: 'saisie_caisse', label: 'Saisie Caisse', icon: '✏️' },
-    { name: 'migration_sage', label: 'Migration Sage', icon: '📤' },
     { name: 'export_csv', label: 'Export CSV', icon: '📁' },
     { name: 'saisie_bancaire', label: 'Saisie Bancaire', icon: '🏦' },
     { name: 'sage_bfc', label: 'SAGE → BFC', icon: '🔄' },

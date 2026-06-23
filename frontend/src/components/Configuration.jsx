@@ -3,6 +3,8 @@ import ApiService from '../services/api';
 
 function Configuration() {
     const [activeTab, setActiveTab] = useState('comptes');
+    
+    // Comptes
     const [form, setForm] = useState({ code_compte: '', libelle_compte: '' });
     const [search, setSearch] = useState('');
     const [comptes, setComptes] = useState([]);
@@ -15,6 +17,20 @@ function Configuration() {
     const [pageSize] = useState(20);
     const [total, setTotal] = useState(0);
     const [pages, setPages] = useState(1);
+
+    // Tiers
+    const [tiersForm, setTiersForm] = useState({ code: '', libelle: '' });
+    const [tiersSearch, setTiersSearch] = useState('');
+    const [tiersList, setTiersList] = useState([]);
+    const [tiersLoading, setTiersLoading] = useState(false);
+    const [tiersSaving, setTiersSaving] = useState(false);
+    const [tiersMessage, setTiersMessage] = useState('');
+    const [tiersEditingCode, setTiersEditingCode] = useState(null);
+    const [tiersEditForm, setTiersEditForm] = useState({ code: '', libelle: '' });
+    const [tiersPage, setTiersPage] = useState(1);
+    const [tiersPageSize, setTiersPageSize] = useState(20);
+    const [tiersTotal, setTiersTotal] = useState(0);
+    const [tiersPages, setTiersPages] = useState(1);
 
     const [mappingForm, setMappingForm] = useState({
         mapping_section: '',
@@ -71,6 +87,28 @@ function Configuration() {
         loadComptes();
     }, [loadComptes]);
 
+    const loadTiers = useCallback(async () => {
+        setTiersLoading(true);
+        try {
+            const data = await ApiService.getConfigurationTiers(tiersSearch, tiersPage, tiersPageSize);
+            const items = Array.isArray(data?.items) ? data.items : [];
+            setTiersList(items);
+            setTiersTotal(Number(data?.total ?? items.length));
+            setTiersPages(Number(data?.pages ?? 1));
+            setTiersPage(Number(data?.page ?? tiersPage));
+        } catch (error) {
+            setTiersMessage(`Erreur lors du chargement: ${error.message}`);
+        } finally {
+            setTiersLoading(false);
+        }
+    }, [tiersSearch, tiersPage, tiersPageSize]);
+
+    useEffect(() => {
+        if (activeTab === 'tiers') {
+            loadTiers();
+        }
+    }, [activeTab, loadTiers]);
+
     const loadMappingData = useCallback(async () => {
         setMappingLoading(true);
         try {
@@ -98,6 +136,27 @@ function Configuration() {
             loadMappingData();
         }
     }, [activeTab, loadMappingData]);
+
+    useEffect(() => {
+        if (message) {
+            const timer = setTimeout(() => setMessage(''), 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [message]);
+
+    useEffect(() => {
+        if (tiersMessage) {
+            const timer = setTimeout(() => setTiersMessage(''), 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [tiersMessage]);
+
+    useEffect(() => {
+        if (mappingMessage) {
+            const timer = setTimeout(() => setMappingMessage(''), 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [mappingMessage]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -196,8 +255,108 @@ function Configuration() {
         }
     };
 
+    const handleTiersSubmit = async (e) => {
+        e.preventDefault();
+        setTiersMessage('');
+
+        const code = (tiersForm.code || '').trim();
+        const libelle = (tiersForm.libelle || '').trim();
+
+        if (!code || !libelle) {
+            setTiersMessage('Veuillez saisir le code tiers et le libellé tiers');
+            return;
+        }
+
+        setTiersSaving(true);
+        try {
+            await ApiService.createOrUpdateConfigurationTiers({
+                code: code,
+                libelle: libelle,
+            });
+            setTiersMessage('Tiers enregistré avec succès');
+            setTiersForm({ code: '', libelle: '' });
+            await loadTiers();
+        } catch (error) {
+            setTiersMessage(`Erreur lors de l'enregistrement: ${error.message}`);
+        } finally {
+            setTiersSaving(false);
+        }
+    };
+
+    const handleTiersSearchChange = (e) => {
+        setTiersSearch(e.target.value);
+        setTiersPage(1);
+    };
+
+    const handleTiersEdit = (t) => {
+        setTiersEditingCode(t.code);
+        setTiersEditForm({
+            code: t.code,
+            libelle: t.libelle,
+        });
+    };
+
+    const handleTiersCancelEdit = () => {
+        setTiersEditingCode(null);
+        setTiersEditForm({ code: '', libelle: '' });
+    };
+
+    const handleTiersEditChange = (e) => {
+        const { name, value } = e.target;
+        setTiersEditForm((prev) => ({ ...prev, [name]: value }));
+    };
+
+    const handleTiersSaveEdit = async (originalCode) => {
+        const code = (tiersEditForm.code || '').trim();
+        const libelle = (tiersEditForm.libelle || '').trim();
+
+        if (!code || !libelle) {
+            setTiersMessage('Veuillez saisir le code tiers et le libellé tiers');
+            return;
+        }
+
+        setTiersSaving(true);
+        setTiersMessage('');
+        try {
+            await ApiService.updateConfigurationTiers(originalCode, {
+                code: code,
+                libelle: libelle,
+            });
+            setTiersMessage('Tiers modifié avec succès');
+            setTiersEditingCode(null);
+            setTiersEditForm({ code: '', libelle: '' });
+            await loadTiers();
+        } catch (error) {
+            setTiersMessage(`Erreur lors de la modification: ${error.message}`);
+        } finally {
+            setTiersSaving(false);
+        }
+    };
+
+    const handleTiersDelete = async (code) => {
+        if (!window.confirm(`Supprimer le tiers "${code}" ?`)) return;
+        setTiersSaving(true);
+        setTiersMessage('');
+        try {
+            await ApiService.deleteConfigurationTiers(code);
+            setTiersMessage('Tiers supprimé avec succès');
+            if (tiersEditingCode === code) {
+                setTiersEditingCode(null);
+                setTiersEditForm({ code: '', libelle: '' });
+            }
+            await loadTiers();
+        } catch (error) {
+            setTiersMessage(`Erreur lors de la suppression: ${error.message}`);
+        } finally {
+            setTiersSaving(false);
+        }
+    };
+
     const canGoPrev = page > 1;
     const canGoNext = page < pages;
+
+    const canGoTiersPrev = tiersPage > 1;
+    const canGoTiersNext = tiersPage < tiersPages;
 
     const filteredMappingEntries = mappingEntries;
 
@@ -346,7 +505,7 @@ function Configuration() {
             <div className="card-header">
                 <div className="config-header">
                     <h2 className="card-title">
-                        <span className="icon">⚙️</span>
+                        {/* <span className="icon">⚙️</span> */}
                         Configuration
                     </h2>
                     <div className="config-tabs" role="tablist" aria-label="Configuration tabs">
@@ -358,6 +517,15 @@ function Configuration() {
                             aria-selected={activeTab === 'comptes'}
                         >
                             Comptes
+                        </button>
+                        <button
+                            type="button"
+                            className={`config-tab ${activeTab === 'tiers' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('tiers')}
+                            role="tab"
+                            aria-selected={activeTab === 'tiers'}
+                        >
+                            Plan Tiers
                         </button>
                         <button
                             type="button"
@@ -375,6 +543,12 @@ function Configuration() {
             {activeTab === 'comptes' && message && (
                 <div className={`alert ${message.includes('Erreur') ? 'alert-danger' : 'alert-success'} slide-down`}>
                     {message}
+                </div>
+            )}
+
+            {activeTab === 'tiers' && tiersMessage && (
+                <div className={`alert ${tiersMessage.includes('Erreur') ? 'alert-danger' : 'alert-success'} slide-down`}>
+                    {tiersMessage}
                 </div>
             )}
 
@@ -603,6 +777,238 @@ function Configuration() {
                                 className="pagination-btn"
                                 disabled={page === pages || loading}
                                 onClick={() => setPage(pages)}
+                                title="Dernière page"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                    <polyline points="13 17 18 12 13 7" />
+                                    <polyline points="6 17 11 12 6 7" />
+                                </svg>
+                            </button>
+                        </div>
+                    )}
+                </>
+            )}
+
+            {activeTab === 'tiers' && (
+                <>
+                    <div className="section-header" style={{ marginBottom: '1rem' }}>
+                        <h3>
+                            <span className="icon">🏷️</span>
+                            Plan Tiers
+                        </h3>
+                        <span className="badge badge-primary">{tiersTotal}</span>
+                    </div>
+
+                    <form className="olea-form mb-4" onSubmit={handleTiersSubmit}>
+                        <div className="form-row">
+                            <div className="form-col">
+                                <div className="form-group">
+                                    <label>Code tiers</label>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        value={tiersForm.code}
+                                        onChange={(e) => setTiersForm((prev) => ({ ...prev, code: e.target.value }))}
+                                        placeholder="Ex: T01"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-col form-col-lg">
+                                <div className="form-group">
+                                    <label>Libellé tiers</label>
+                                    <input
+                                        type="text"
+                                        className="form-control"
+                                        value={tiersForm.libelle}
+                                        onChange={(e) => setTiersForm((prev) => ({ ...prev, libelle: e.target.value }))}
+                                        placeholder="Ex: Client Olea"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="form-col form-col-btn">
+                                <button type="submit" className="btn btn-primary" disabled={tiersSaving}>
+                                    {tiersSaving ? 'Enregistrement...' : 'Enregistrer'}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+
+                    <div className="form-row config-search-row" style={{ marginBottom: '1rem' }}>
+                        <div className="form-col form-col-lg">
+                            <input
+                                type="text"
+                                className="form-control"
+                                value={tiersSearch}
+                                onChange={handleTiersSearchChange}
+                                placeholder="Rechercher par code ou libellé..."
+                            />
+                        </div>
+                    </div>
+
+                    <div className="table-responsive">
+                        <table className="olea-table config-table">
+                            <thead>
+                                <tr>
+                                    <th>Code tiers</th>
+                                    <th>Libellé tiers</th>
+                                    <th className="text-center">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {tiersLoading ? (
+                                    <tr>
+                                        <td colSpan="3" style={{ textAlign: 'center', padding: '1rem' }}>
+                                            Chargement...
+                                        </td>
+                                    </tr>
+                                ) : tiersList.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="3" style={{ textAlign: 'center', padding: '1rem' }}>
+                                            Aucun tiers trouvé
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    tiersList.map((t) => (
+                                        <tr key={t.code}>
+                                            {tiersEditingCode === t.code ? (
+                                                <>
+                                                    <td>
+                                                        <input
+                                                            type="text"
+                                                            name="code"
+                                                            className="form-control form-control-sm"
+                                                            value={tiersEditForm.code}
+                                                            onChange={handleTiersEditChange}
+                                                        />
+                                                    </td>
+                                                    <td>
+                                                        <input
+                                                            type="text"
+                                                            name="libelle"
+                                                            className="form-control form-control-sm"
+                                                            value={tiersEditForm.libelle}
+                                                            onChange={handleTiersEditChange}
+                                                        />
+                                                    </td>
+                                                    <td className="text-center">
+                                                        <div className="btn-group">
+                                                            <button
+                                                                className="btn btn-sm btn-success"
+                                                                onClick={() => handleTiersSaveEdit(t.code)}
+                                                                disabled={tiersSaving}
+                                                                title="Enregistrer"
+                                                            >
+                                                                ✓ 
+                                                            </button>
+                                                            <button
+                                                                className="btn btn-sm btn-secondary"
+                                                                onClick={handleTiersCancelEdit}
+                                                                title="Annuler"
+                                                            >
+                                                                ✕ 
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td>{t.code}</td>
+                                                    <td>{t.libelle}</td>
+                                                    <td className="text-center">
+                                                        <div className="btn-group">
+                                                            <button
+                                                                className="btn btn-sm btn-secondary"
+                                                                onClick={() => handleTiersEdit(t)}
+                                                                title="Modifier"
+                                                            >
+                                                                ✏️ 
+                                                            </button>
+                                                            <button
+                                                                className="btn btn-sm btn-danger"
+                                                                onClick={() => handleTiersDelete(t.code)}
+                                                                title="Supprimer"
+                                                                disabled={tiersSaving}
+                                                            >
+                                                                🗑️ 
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </>
+                                            )}
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    {tiersPages > 1 && (
+                        <div className="lignes-pagination">
+                            <button
+                                className="pagination-btn"
+                                disabled={tiersPage === 1 || tiersLoading}
+                                onClick={() => setTiersPage(1)}
+                                title="Première page"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                    <polyline points="11 17 6 12 11 7" />
+                                    <polyline points="18 17 13 12 18 7" />
+                                </svg>
+                            </button>
+                            <button
+                                className="pagination-btn"
+                                disabled={!canGoTiersPrev || tiersLoading}
+                                onClick={() => setTiersPage((p) => p - 1)}
+                                title="Page précédente"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                    <polyline points="15 18 9 12 15 6" />
+                                </svg>
+                            </button>
+
+                            <div className="pagination-pages">
+                                {Array.from({ length: Math.min(5, tiersPages) }, (_, i) => {
+                                    let pageNumber;
+                                    if (tiersPages <= 5) {
+                                        pageNumber = i + 1;
+                                    } else if (tiersPage <= 3) {
+                                        pageNumber = i + 1;
+                                    } else if (tiersPage >= tiersPages - 2) {
+                                        pageNumber = tiersPages - 4 + i;
+                                    } else {
+                                        pageNumber = tiersPage - 2 + i;
+                                    }
+                                    return (
+                                        <button
+                                            key={pageNumber}
+                                            className={`pagination-page ${tiersPage === pageNumber ? 'active' : ''}`}
+                                            onClick={() => setTiersPage(pageNumber)}
+                                            disabled={tiersLoading}
+                                        >
+                                            {pageNumber}
+                                        </button>
+                                    );
+                                })}
+                            </div>
+
+                            <button
+                                className="pagination-btn"
+                                disabled={!canGoTiersNext || tiersLoading}
+                                onClick={() => setTiersPage((p) => p + 1)}
+                                title="Page suivante"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>
+                                    <polyline points="9 18 15 12 9 6" />
+                                </svg>
+                            </button>
+                            <button
+                                className="pagination-btn"
+                                disabled={tiersPage === tiersPages || tiersLoading}
+                                onClick={() => setTiersPage(tiersPages)}
                                 title="Dernière page"
                             >
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '14px', height: '14px' }}>

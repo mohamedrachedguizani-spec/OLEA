@@ -30,7 +30,6 @@ function Sidebar({
     const allMenuItems = [
         { id: 'dashboard', label: 'Tableau de Bord', icon: 'dashboard', alwaysVisible: true },
         { id: 'saisie', label: 'Saisie Caisse', icon: 'edit', module: 'saisie_caisse' },
-        { id: 'migration', label: 'Migration Sage', icon: 'sync', module: 'migration_sage' },
         { id: 'export', label: 'Export CSV', icon: 'download', module: 'export_csv' },
         { id: 'rapprochement', label: 'Saisie Bancaire', icon: 'bank', module: 'saisie_bancaire' },
         { id: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: 'compare', module: 'rapprochement_bancaire' },

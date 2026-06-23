@@ -1,5 +1,6 @@
 // src/components/RapprochementBancaire.jsx
 import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 import ApiService from '../services/api';
 import './sage-bfc/SageBfcParser.css';
 
@@ -598,19 +599,19 @@ function RapprochementBancaire() {
 
     return (
         <div className="olea-card fade-in">
-            {loading && (
+            {loading && ReactDOM.createPortal(
                 <div className="sage-close-overlay" role="status" aria-live="polite" aria-label="Rapprochement en cours">
                     <div className="sage-close-overlay-card">
                         <div className="sage-close-spinner" />
                         <h4>Rapprochement en cours...</h4>
                         <p>Vérification de la concordance et calcul des taux de confiance.</p>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
             
             <div className="card-header">
                 <h2 className="card-title">
-                    <span className="icon">⚖️</span>
                     Rapprochement Bancaire
                 </h2>
             </div>

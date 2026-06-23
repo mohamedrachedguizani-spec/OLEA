@@ -15,6 +15,18 @@ def init_configuration_tables():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
             """
         )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS plan_tiers (
+                id INT(11) NOT NULL AUTO_INCREMENT,
+                code VARCHAR(50) NOT NULL,
+                libelle VARCHAR(255) NOT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (id),
+                UNIQUE KEY unique_code (code)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci
+            """
+        )
 
 
 __all__ = ["router", "init_configuration_tables"]

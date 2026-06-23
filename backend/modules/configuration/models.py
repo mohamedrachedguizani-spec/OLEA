@@ -27,3 +27,30 @@ class CompteConfigurationPage(BaseModel):
     page: int
     page_size: int
     pages: int
+
+
+class TiersConfigurationBase(BaseModel):
+    code: str
+    libelle: str
+
+
+class TiersConfigurationCreate(TiersConfigurationBase):
+    pass
+
+
+class TiersConfigurationUpdate(BaseModel):
+    code: str
+    libelle: str
+
+
+class TiersConfiguration(TiersConfigurationBase):
+    class Config:
+        from_attributes = True
+
+
+class TiersConfigurationPage(BaseModel):
+    items: List[TiersConfiguration]
+    total: int
+    page: int
+    page_size: int
+    pages: int

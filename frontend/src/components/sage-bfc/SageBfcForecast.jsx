@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
 import ApiService from '../../services/api';
 import {
     ResponsiveContainer,
@@ -439,14 +440,15 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
 
     return (
         <div className="forecast-panel">
-            {isCycleRunLoading && (
+            {isCycleRunLoading && ReactDOM.createPortal(
                 <div className="forecast-cycle-overlay" role="status" aria-live="polite" aria-label="Exécution du cycle d'ajustement en cours">
                     <div className="forecast-cycle-overlay-card">
                         <div className="forecast-cycle-spinner" />
                         <h4>Exécution du cycle en cours...</h4>
                         <p>Calcul des ajustements et mise à jour des prévisions.</p>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             <div className="forecast-toolbar forecast-filter-shell">

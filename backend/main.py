@@ -8,7 +8,7 @@ from modules.auth.security import decode_access_token
 
 # ─── Import des routers modulaires ───
 from modules.auth import router as auth_router, init_auth_tables
-from modules.saisie_caisse import router as saisie_caisse_router
+from modules.saisie_caisse import router as saisie_caisse_router, init_saisie_caisse_tables
 from modules.migration_sage import router as migration_sage_router
 from modules.export_csv import router as export_csv_router
 from modules.sage_bfc import router as sage_bfc_router
@@ -34,6 +34,7 @@ app.add_middleware(
 
 # Initialiser les tables
 init_auth_tables()
+init_saisie_caisse_tables()
 init_sage_bfc_tables()
 init_forecast_tables()
 init_configuration_tables()

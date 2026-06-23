@@ -19,7 +19,7 @@ from .models import (
 router = APIRouter(
     tags=["Migration Sage"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("migration_sage"))],
+    dependencies=[Depends(restrict_superadmin("saisie_caisse"))],
 )
 
 
@@ -82,17 +82,48 @@ def migrer_ecriture(
         if not ecriture_caisse:
             raise HTTPException(status_code=404, detail="Écriture non trouvée ou déjà migrée")
 
+        # Fallback values from database
+        compte_caisse_default = "5411000T"
+        compte_contrepartie_db = (ecriture_caisse.get("compte_contrepartie") or "").strip()
+        
+        # Validation
+        if not migration.ligne2 and not compte_contrepartie_db:
+            raise HTTPException(status_code=400, detail="Compte de contrepartie manquant pour la migration")
+
+        tiers_db = (ecriture_caisse.get("tiers") or "").strip() or None
+        section_db = (ecriture_caisse.get("section_analytique") or "").strip() or None
+
+        # Resolve ligne1 values
+        if migration.ligne1:
+            ligne1_compte = migration.ligne1.compte
+            ligne1_tiers = None  # Tiers uniquement sur la ligne de contrepartie (Ligne 2)
+            ligne1_section = migration.ligne1.section_analytique
+        else:
+            ligne1_compte = compte_caisse_default
+            ligne1_tiers = None  # Tiers uniquement sur la ligne de contrepartie (Ligne 2)
+            ligne1_section = section_db
+
+        # Resolve ligne2 values
+        if migration.ligne2:
+            ligne2_compte = migration.ligne2.compte
+            ligne2_tiers = migration.ligne2.tiers
+            ligne2_section = migration.ligne2.section_analytique
+        else:
+            ligne2_compte = compte_contrepartie_db
+            ligne2_tiers = tiers_db
+            ligne2_section = section_db
+
         numero_piece = f"MGCAI{ecriture_caisse['date_ecriture'].strftime('%m%Y')}"
 
         # Créer la première ligne (caisse)
         ligne1 = EcritureSageCreate(
             ecriture_caisse_id=ecriture_caisse['id'],
             date_compta=ecriture_caisse['date_ecriture'],
-            compte=migration.ligne1.compte,
-            tiers=migration.ligne1.tiers,
+            compte=ligne1_compte,
+            tiers=ligne1_tiers,
             montant_debit=ecriture_caisse['debit'],
             montant_credit=ecriture_caisse['credit'],
-            section_analytique=migration.ligne1.section_analytique,
+            section_analytique=ligne1_section,
             numero_piece=numero_piece,
             libelle_ecriture=ecriture_caisse['libelle_ecriture'],
             societe="TN01",
@@ -105,11 +136,11 @@ def migrer_ecriture(
         ligne2 = EcritureSageCreate(
             ecriture_caisse_id=ecriture_caisse['id'],
             date_compta=ecriture_caisse['date_ecriture'],
-            compte=migration.ligne2.compte,
-            tiers=migration.ligne2.tiers,
+            compte=ligne2_compte,
+            tiers=ligne2_tiers,
             montant_debit=ecriture_caisse['credit'],
             montant_credit=ecriture_caisse['debit'],
-            section_analytique=migration.ligne2.section_analytique,
+            section_analytique=ligne2_section,
             numero_piece=numero_piece,
             libelle_ecriture=ecriture_caisse['libelle_ecriture'],
             societe="TN01",

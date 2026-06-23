@@ -15,6 +15,18 @@ from .models import (
     LibelleSuggestion,
 )
 
+SELECT_FIELDS_WITH_ADJUSTED_SOLDE = """
+    id, date_ecriture, libelle_ecriture, debit, credit, est_migree, created_at, compte_contrepartie, tiers, section_analytique,
+    (solde + COALESCE((
+        SELECT SUM(sub.debit - sub.credit) 
+        FROM ecritures_caisse AS sub 
+        WHERE sub.est_migree = TRUE 
+          AND (sub.date_ecriture > ecritures_caisse.date_ecriture 
+               OR (sub.date_ecriture = ecritures_caisse.date_ecriture AND sub.id > ecritures_caisse.id))
+    ), 0)) AS solde
+"""
+
+
 router = APIRouter(
     tags=["Saisie Caisse"],
     responses={404: {"description": "Non trouvé"}},
@@ -89,14 +101,23 @@ def recalculate_soldes_from(cursor, start_date, start_id: int):
         )
 
 
-def update_libelle_frequent(libelle: str):
-    """Mettre à jour le compteur d'utilisation d'un libellé"""
+def update_libelle_frequent(
+    libelle: str,
+    compte: Optional[str] = None,
+    tiers: Optional[str] = None,
+    section: Optional[str] = None,
+):
+    """Mettre à jour le compteur d'utilisation d'un libellé et enregistrer les suggestions"""
     with db.get_cursor() as cursor:
         cursor.execute("""
-            INSERT INTO libelles_frequents (libelle, usage_count)
-            VALUES (%s, 1)
-            ON DUPLICATE KEY UPDATE usage_count = usage_count + 1
-        """, (libelle,))
+            INSERT INTO libelles_frequents (libelle, compte_suggestion, tiers_suggestion, section_analytique_suggestion, usage_count)
+            VALUES (%s, %s, %s, %s, 1)
+            ON DUPLICATE KEY UPDATE 
+                usage_count = usage_count + 1,
+                compte_suggestion = COALESCE(%s, compte_suggestion),
+                tiers_suggestion = COALESCE(%s, tiers_suggestion),
+                section_analytique_suggestion = COALESCE(%s, section_analytique_suggestion)
+        """, (libelle, compte, tiers, section, compte, tiers, section))
 
 
 # ═══════════════════════════════════════════════════════════
@@ -113,19 +134,25 @@ def create_ecriture_caisse(
     with db.get_cursor() as cursor:
         cursor.execute("""
             INSERT INTO ecritures_caisse 
-            (date_ecriture, libelle_ecriture, debit, credit, solde)
-            VALUES (%s, %s, %s, %s, 0)
+            (date_ecriture, libelle_ecriture, debit, credit, solde, compte_contrepartie, tiers, section_analytique)
+            VALUES (%s, %s, %s, %s, 0, %s, %s, %s)
         """, (ecriture.date_ecriture, ecriture.libelle_ecriture,
-              ecriture.debit, ecriture.credit))
+              ecriture.debit, ecriture.credit, ecriture.compte_contrepartie,
+              ecriture.tiers, ecriture.section_analytique))
 
         ecriture_id = cursor.lastrowid
 
         recalculate_soldes_from(cursor, ecriture.date_ecriture, ecriture_id)
 
-        cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
+        cursor.execute(f"SELECT {SELECT_FIELDS_WITH_ADJUSTED_SOLDE} FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
         result = cursor.fetchone()
 
-        update_libelle_frequent(ecriture.libelle_ecriture)
+        update_libelle_frequent(
+            ecriture.libelle_ecriture,
+            ecriture.compte_contrepartie,
+            ecriture.tiers,
+            ecriture.section_analytique
+        )
 
         ws_manager.broadcast("caisse", "create", {"id": ecriture_id})
 
@@ -178,7 +205,7 @@ def get_ecritures_caisse(
         total = int(row["cnt"] if row else 0)
 
         cursor.execute(
-            f"SELECT * {base_query} ORDER BY date_ecriture {safe_order}, id {safe_order} LIMIT %s OFFSET %s",
+            f"SELECT {SELECT_FIELDS_WITH_ADJUSTED_SOLDE} {base_query} ORDER BY date_ecriture {safe_order}, id {safe_order} LIMIT %s OFFSET %s",
             params + [safe_page_size, offset],
         )
         items = cursor.fetchall()
@@ -197,7 +224,7 @@ def get_ecritures_caisse(
 def get_ecriture_caisse(ecriture_id: int):
     """Récupérer une écriture de caisse par ID"""
     with db.get_cursor() as cursor:
-        cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
+        cursor.execute(f"SELECT {SELECT_FIELDS_WITH_ADJUSTED_SOLDE} FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
         result = cursor.fetchone()
 
         if not result:
@@ -229,10 +256,12 @@ def update_ecriture_caisse(
 
         cursor.execute("""
             UPDATE ecritures_caisse 
-            SET date_ecriture = %s, libelle_ecriture = %s, debit = %s, credit = %s
+            SET date_ecriture = %s, libelle_ecriture = %s, debit = %s, credit = %s,
+                compte_contrepartie = %s, tiers = %s, section_analytique = %s
             WHERE id = %s
         """, (ecriture.date_ecriture, ecriture.libelle_ecriture,
-              ecriture.debit, ecriture.credit, ecriture_id))
+              ecriture.debit, ecriture.credit, ecriture.compte_contrepartie,
+              ecriture.tiers, ecriture.section_analytique, ecriture_id))
 
         pivot_date, pivot_id = get_update_recalc_pivot(
             old_date,
@@ -243,7 +272,7 @@ def update_ecriture_caisse(
 
         recalculate_soldes_from(cursor, pivot_date, pivot_id)
 
-        cursor.execute("SELECT * FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
+        cursor.execute(f"SELECT {SELECT_FIELDS_WITH_ADJUSTED_SOLDE} FROM ecritures_caisse WHERE id = %s", (ecriture_id,))
         result = cursor.fetchone()
 
         ws_manager.broadcast("caisse", "update", {"id": ecriture_id})
@@ -260,12 +289,18 @@ def update_ecriture_caisse(
                     "libelle_ecriture": existing.get("libelle_ecriture") if existing else None,
                     "debit": float(existing.get("debit")) if existing else None,
                     "credit": float(existing.get("credit")) if existing else None,
+                    "compte_contrepartie": existing.get("compte_contrepartie") if existing else None,
+                    "tiers": existing.get("tiers") if existing else None,
+                    "section_analytique": existing.get("section_analytique") if existing else None,
                 },
                 "after": {
                     "date_ecriture": str(ecriture.date_ecriture),
                     "libelle_ecriture": ecriture.libelle_ecriture,
                     "debit": float(ecriture.debit),
                     "credit": float(ecriture.credit),
+                    "compte_contrepartie": ecriture.compte_contrepartie,
+                    "tiers": ecriture.tiers,
+                    "section_analytique": ecriture.section_analytique,
                 },
             },
             request=request,
@@ -350,6 +385,24 @@ def get_comptes(search: str = ""):
 
 
 # ═══════════════════════════════════════════════════════════
+# 3.5 Tiers
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/tiers/")
+def get_tiers(search: str = ""):
+    """Récupérer la liste des tiers"""
+    with db.get_cursor() as cursor:
+        cursor.execute("""
+            SELECT code, libelle 
+            FROM plan_tiers 
+            WHERE code LIKE %s OR libelle LIKE %s
+            ORDER BY code
+            LIMIT 200
+        """, (f"%{search}%", f"%{search}%"))
+        return cursor.fetchall()
+
+
+# ═══════════════════════════════════════════════════════════
 # 4. Nettoyage historique migré
 # ═══════════════════════════════════════════════════════════
 
@@ -359,77 +412,125 @@ def nettoyer_historique_migre(
     user: dict = Depends(get_current_user),
 ):
     """
-    Supprimer automatiquement les écritures migrées tout en conservant le solde.
-    Crée une écriture de report à nouveau si nécessaire.
+    Supprimer automatiquement les écritures migrées situées avant la plus ancienne écriture non migrée
+    tout en conservant le solde cumulé exact à l'aide d'un Report à nouveau historique.
     """
+    from datetime import timedelta
     with db.get_cursor() as cursor:
+        # Trouver la plus ancienne écriture non migrée
+        cursor.execute("""
+            SELECT date_ecriture, id 
+            FROM ecritures_caisse 
+            WHERE est_migree = FALSE 
+            ORDER BY date_ecriture ASC, id ASC 
+            LIMIT 1
+        """)
+        oldest_active = cursor.fetchone()
+
+        # Si toutes les écritures sont migrées
+        if not oldest_active:
+            cursor.execute("""
+                SELECT solde 
+                FROM ecritures_caisse 
+                ORDER BY date_ecriture DESC, id DESC 
+                LIMIT 1
+            """)
+            dernier = cursor.fetchone()
+            solde_actuel = float(dernier['solde']) if dernier else 0.0
+
+            cursor.execute("SELECT COUNT(*) as count FROM ecritures_caisse")
+            total_count = cursor.fetchone()['count']
+
+            if total_count > 0:
+                cursor.execute("DELETE FROM ecritures_caisse")
+                if solde_actuel != 0:
+                    cursor.execute("""
+                        INSERT INTO ecritures_caisse 
+                        (date_ecriture, libelle_ecriture, debit, credit, solde, est_migree)
+                        VALUES (%s, %s, %s, %s, %s, TRUE)
+                    """, (
+                        date.today(),
+                        "📋 Report à nouveau",
+                        solde_actuel if solde_actuel > 0 else 0,
+                        abs(solde_actuel) if solde_actuel < 0 else 0,
+                        solde_actuel,
+                    ))
+                ws_manager.broadcast("caisse", "cleanup", {"count": total_count})
+                
+                log_audit_action(
+                    user=user,
+                    action="cleanup",
+                    module="saisie_caisse",
+                    entity_type="ecritures_caisse",
+                    entity_id=None,
+                    detail={"ecritures_supprimees": total_count},
+                    request=request,
+                )
+                return {
+                    "message": f"Historique nettoyé: {total_count} écritures supprimées",
+                    "ecritures_supprimees": total_count,
+                    "solde_reporte": solde_actuel,
+                }
+            else:
+                return {
+                    "message": "Aucune écriture migrée à nettoyer",
+                    "ecritures_supprimees": 0,
+                    "solde_reporte": 0,
+                }
+
+        # S'il y a des écritures actives
+        # 1. Calculer le solde cumulé immédiatement avant la plus ancienne active
         cursor.execute("""
             SELECT solde 
             FROM ecritures_caisse 
+            WHERE date_ecriture < %s OR (date_ecriture = %s AND id < %s)
             ORDER BY date_ecriture DESC, id DESC 
             LIMIT 1
-        """)
-        dernier = cursor.fetchone()
-        solde_actuel = float(dernier['solde']) if dernier else 0
+        """, (oldest_active['date_ecriture'], oldest_active['date_ecriture'], oldest_active['id']))
+        dernier_migre = cursor.fetchone()
+        solde_before = float(dernier_migre['solde']) if dernier_migre else 0.0
 
-        cursor.execute("SELECT COUNT(*) as count FROM ecritures_caisse WHERE est_migree = TRUE")
-        count_result = cursor.fetchone()
-        count_migrees = count_result['count']
-
-        pivot_date = None
-        pivot_id = None
-        if count_migrees > 0:
-            cursor.execute("""
-                SELECT date_ecriture, MIN(id) AS min_id
-                FROM ecritures_caisse
-                WHERE est_migree = TRUE
-                GROUP BY date_ecriture
-                ORDER BY date_ecriture ASC
-                LIMIT 1
-            """)
-            pivot = cursor.fetchone()
-            if pivot:
-                pivot_date = pivot['date_ecriture']
-                pivot_id = int(pivot['min_id'])
+        # 2. Compter les écritures migrées à supprimer (celles situées avant oldest_active)
+        cursor.execute("""
+            SELECT COUNT(*) as count 
+            FROM ecritures_caisse 
+            WHERE est_migree = TRUE 
+              AND (date_ecriture < %s OR (date_ecriture = %s AND id < %s))
+        """, (oldest_active['date_ecriture'], oldest_active['date_ecriture'], oldest_active['id']))
+        count_migrees = cursor.fetchone()['count']
 
         if count_migrees == 0:
             return {
-                "message": "Aucune écriture migrée à nettoyer",
+                "message": "Aucune écriture migrée ancienne à nettoyer",
                 "ecritures_supprimees": 0,
-                "solde_reporte": solde_actuel,
+                "solde_reporte": solde_before,
             }
 
-        cursor.execute("DELETE FROM ecritures_caisse WHERE est_migree = TRUE")
+        # 3. Supprimer les écritures migrées anciennes
+        cursor.execute("""
+            DELETE FROM ecritures_caisse 
+            WHERE est_migree = TRUE 
+              AND (date_ecriture < %s OR (date_ecriture = %s AND id < %s))
+        """, (oldest_active['date_ecriture'], oldest_active['date_ecriture'], oldest_active['id']))
 
-        cursor.execute("SELECT COUNT(*) as count FROM ecritures_caisse")
-        remaining = cursor.fetchone()['count']
-
-        if remaining == 0 and solde_actuel != 0:
+        # 4. Créer un Report à nouveau si solde_before != 0
+        date_report = oldest_active['date_ecriture'] - timedelta(days=1)
+        if solde_before != 0:
             cursor.execute("""
                 INSERT INTO ecritures_caisse 
                 (date_ecriture, libelle_ecriture, debit, credit, solde, est_migree)
-                VALUES (%s, %s, %s, %s, %s, FALSE)
+                VALUES (%s, %s, %s, %s, %s, TRUE)
             """, (
-                date.today(),
-                "📋 Report à nouveau",
-                solde_actuel if solde_actuel > 0 else 0,
-                abs(solde_actuel) if solde_actuel < 0 else 0,
-                solde_actuel,
+                date_report,
+                "📋 Report à nouveau (Historique migré)",
+                solde_before if solde_before > 0 else 0,
+                abs(solde_before) if solde_before < 0 else 0,
+                solde_before,
             ))
-        elif remaining > 0:
-            if pivot_date is not None and pivot_id is not None:
-                recalculate_soldes_from(cursor, pivot_date, pivot_id)
-            else:
-                # Fallback de sécurité (cas inattendu)
-                cursor.execute("""
-                    SELECT date_ecriture, id
-                    FROM ecritures_caisse
-                    ORDER BY date_ecriture ASC, id ASC
-                    LIMIT 1
-                """)
-                first_row = cursor.fetchone()
-                if first_row:
-                    recalculate_soldes_from(cursor, first_row['date_ecriture'], int(first_row['id']))
+            report_id = cursor.lastrowid
+            recalculate_soldes_from(cursor, date_report, report_id)
+        else:
+            recalculate_soldes_from(cursor, oldest_active['date_ecriture'], oldest_active['id'])
 
         ws_manager.broadcast("caisse", "cleanup", {"count": count_migrees})
 
@@ -446,5 +547,5 @@ def nettoyer_historique_migre(
         return {
             "message": f"Historique nettoyé: {count_migrees} écritures supprimées",
             "ecritures_supprimees": count_migrees,
-            "solde_reporte": solde_actuel,
+            "solde_reporte": solde_before,
         }

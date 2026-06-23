@@ -45,8 +45,8 @@ class EcritureSagePage(BaseModel):
 
 class MigrationRequest(BaseModel):
     ecriture_caisse_id: int
-    ligne1: EcritureSageBase
-    ligne2: EcritureSageBase
+    ligne1: Optional[EcritureSageBase] = None
+    ligne2: Optional[EcritureSageBase] = None
 
 
 class EcrituresAMigrerPage(BaseModel):

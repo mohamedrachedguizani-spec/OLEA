@@ -337,6 +337,12 @@ class ApiService {
         return response.json();
     }
 
+    // Tiers
+    static async getTiers(search = '') {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tiers/?search=${search}`);
+        return response.json();
+    }
+
     // ===================== Saisie Bancaire =====================
 
     static async uploadBankReconciliation(formData) {
@@ -498,6 +504,55 @@ class ApiService {
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression du compte' }));
             throw new Error(err.detail || 'Erreur lors de la suppression du compte');
+        }
+        return response.json();
+    }
+
+    static async getConfigurationTiers(search = '', page = 1, pageSize = 20) {
+        const params = new URLSearchParams({
+            search: String(search || ''),
+            page: String(page),
+            page_size: String(pageSize),
+        });
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/tiers/?${params.toString()}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des tiers' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des tiers');
+        }
+        return response.json();
+    }
+
+    static async createOrUpdateConfigurationTiers(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/tiers/`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la sauvegarde du tiers' }));
+            throw new Error(err.detail || 'Erreur lors de la sauvegarde du tiers');
+        }
+        return response.json();
+    }
+
+    static async updateConfigurationTiers(code, payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/tiers/${encodeURIComponent(code)}`, {
+            method: 'PUT',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la mise à jour du tiers' }));
+            throw new Error(err.detail || 'Erreur lors de la mise à jour du tiers');
+        }
+        return response.json();
+    }
+
+    static async deleteConfigurationTiers(code) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/configuration/tiers/${encodeURIComponent(code)}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression du tiers' }));
+            throw new Error(err.detail || 'Erreur lors de la suppression du tiers');
         }
         return response.json();
     }

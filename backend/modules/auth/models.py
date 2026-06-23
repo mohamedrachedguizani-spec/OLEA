@@ -28,7 +28,6 @@ class RoleEnum(str, Enum):
 
 class ModuleEnum(str, Enum):
     saisie_caisse = "saisie_caisse"
-    migration_sage = "migration_sage"
     export_csv = "export_csv"
     saisie_bancaire = "saisie_bancaire"
     sage_bfc = "sage_bfc"

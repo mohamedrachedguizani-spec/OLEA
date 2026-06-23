@@ -9,9 +9,18 @@ function SaisieCaisse({ refreshTrigger }) {
         date_ecriture: new Date().toISOString().split('T')[0],
         libelle_ecriture: '',
         debit: '',
-        credit: ''
+        credit: '',
+        compte_contrepartie: '',
+        tiers: '',
+        section_analytique: ''
     });
     const [ecritures, setEcritures] = useState([]);
+    const [comptes, setComptes] = useState([]);
+    const [tiersList, setTiersList] = useState([]);
+    const [activeCompteInput, setActiveCompteInput] = useState(false);
+    const [activeEditCompteInput, setActiveEditCompteInput] = useState(null);
+    const [activeTiersInput, setActiveTiersInput] = useState(false);
+    const [activeEditTiersInput, setActiveEditTiersInput] = useState(null);
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [editingId, setEditingId] = useState(null);
@@ -24,6 +33,47 @@ function SaisieCaisse({ refreshTrigger }) {
     const [pageSize] = useState(20);
     const [totalPages, setTotalPages] = useState(1);
     const [totalEcritures, setTotalEcritures] = useState(0);
+
+    const loadComptes = useCallback(async () => {
+        try {
+            const data = await ApiService.getComptes();
+            setComptes(data);
+        } catch (error) {
+            // Pas de log console
+        }
+    }, []);
+
+    const loadTiers = useCallback(async () => {
+        try {
+            const data = await ApiService.getTiers();
+            setTiersList(Array.isArray(data) ? data : []);
+        } catch (error) {
+            // Pas de log console
+        }
+    }, []);
+
+    useEffect(() => {
+        loadComptes();
+        loadTiers();
+    }, [loadComptes, loadTiers]);
+
+    const filterComptes = (query = '') => {
+        const value = query.toLowerCase().trim();
+        if (!value) return comptes;
+        return comptes.filter((compte) =>
+            compte.code_compte.toLowerCase().includes(value) ||
+            compte.libelle_compte.toLowerCase().includes(value)
+        );
+    };
+
+    const filterTiers = (query = '') => {
+        const value = query.toLowerCase().trim();
+        if (!value) return tiersList;
+        return tiersList.filter((t) =>
+            t.code.toLowerCase().includes(value) ||
+            t.libelle.toLowerCase().includes(value)
+        );
+    };
 
     const normalizeText = (text = '') =>
         text
@@ -183,6 +233,15 @@ function SaisieCaisse({ refreshTrigger }) {
         loadEcritures();
     }, [loadEcritures, refreshTrigger]);
 
+    useEffect(() => {
+        if (message) {
+            const timer = setTimeout(() => {
+                setMessage('');
+            }, 2000);
+            return () => clearTimeout(timer);
+        }
+    }, [message]);
+
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({
@@ -193,12 +252,15 @@ function SaisieCaisse({ refreshTrigger }) {
         }));
     };
 
-    const handleLibelleSelect = (libelle) => {
+    const handleLibelleSelect = (suggestion) => {
         setFormData(prev => ({
             ...prev,
-            libelle_ecriture: libelle
+            libelle_ecriture: suggestion.libelle,
+            compte_contrepartie: suggestion.compte_suggestion || prev.compte_contrepartie || '',
+            tiers: suggestion.tiers_suggestion || prev.tiers || '',
+            section_analytique: suggestion.section_analytique_suggestion || prev.section_analytique || ''
         }));
-        autoFocusMontantField(libelle);
+        autoFocusMontantField(suggestion.libelle);
     };
 
     const handleLibelleChange = (value) => {
@@ -225,7 +287,10 @@ function SaisieCaisse({ refreshTrigger }) {
                 date_ecriture: new Date().toISOString().split('T')[0],
                 libelle_ecriture: '',
                 debit: '',
-                credit: ''
+                credit: '',
+                compte_contrepartie: '',
+                tiers: '',
+                section_analytique: ''
             });
             lastSuggestedFieldRef.current = null;
             loadEcritures();
@@ -248,19 +313,46 @@ function SaisieCaisse({ refreshTrigger }) {
         }
     };
 
+    const handleMigrateDirect = async (ecriture) => {
+        if (!ecriture.compte_contrepartie) {
+            setMessage("Erreur : le Compte de Contre partie est obligatoire pour la migration vers Sage. Veuillez modifier l'écriture pour le renseigner.");
+            return;
+        }
+
+        setLoading(true);
+        setMessage('');
+
+        try {
+            await ApiService.migrerEcriture({
+                ecriture_caisse_id: ecriture.id
+            });
+            setMessage('Écriture migrée vers Sage avec succès !');
+            loadEcritures();
+        } catch (error) {
+            setMessage('Erreur lors de la migration: ' + error.message);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleEdit = (ecriture) => {
         setEditingId(ecriture.id);
         setEditForm({
             date_ecriture: ecriture.date_ecriture.split('T')[0],
             libelle_ecriture: ecriture.libelle_ecriture,
             debit: ecriture.debit,
-            credit: ecriture.credit
+            credit: ecriture.credit,
+            compte_contrepartie: ecriture.compte_contrepartie || '',
+            tiers: ecriture.tiers || '',
+            section_analytique: ecriture.section_analytique || ''
         });
     };
 
     const handleCancelEdit = () => {
         setEditingId(null);
         setEditForm({});
+        setActiveEditCompteInput(null);
+        setActiveEditTiersInput(null);
     };
 
     const handleSaveEdit = async (id) => {
@@ -270,6 +362,8 @@ function SaisieCaisse({ refreshTrigger }) {
             setMessage('Écriture modifiée avec succès!');
             setEditingId(null);
             setEditForm({});
+            setActiveEditCompteInput(null);
+            setActiveEditTiersInput(null);
             loadEcritures();
         } catch (error) {
             setMessage('Erreur lors de la modification: ' + error.message);
@@ -290,7 +384,6 @@ function SaisieCaisse({ refreshTrigger }) {
         <div className="olea-card fade-in">
             <div className="card-header">
                 <h2 className="card-title">
-                    <span className="icon">💰</span>
                     Saisie des Écritures de Caisse
                 </h2>
             </div>
@@ -302,7 +395,8 @@ function SaisieCaisse({ refreshTrigger }) {
             )}
 
             <form onSubmit={handleSubmit} className="olea-form mb-4">
-                <div className="form-row">
+                {/* Première ligne du formulaire : Informations de caisse */}
+                <div className="form-row" style={{ marginBottom: '1rem' }}>
                     <div className="form-col">
                         <div className="form-group">
                             <label>Date écriture</label>
@@ -360,7 +454,116 @@ function SaisieCaisse({ refreshTrigger }) {
                             />
                         </div>
                     </div>
-                    
+                </div>
+
+                {/* Deuxième ligne du formulaire : Informations Sage */}
+                <div className="form-row">
+                    <div className="form-col">
+                        <div className="form-group">
+                            <label>Compte Contrepartie <span className="required" style={{ color: 'red' }}>*</span></label>
+                            <div className="compte-suggest">
+                                <input
+                                    type="text"
+                                    name="compte_contrepartie"
+                                    value={formData.compte_contrepartie}
+                                    onChange={handleChange}
+                                    onFocus={() => setActiveCompteInput(true)}
+                                    onBlur={() => {
+                                        setTimeout(() => {
+                                            setActiveCompteInput(false);
+                                        }, 150);
+                                    }}
+                                    className="form-control"
+                                    placeholder="Saisir code ou libellé"
+                                    required
+                                    autoComplete="off"
+                                />
+                                {activeCompteInput && (
+                                    <div className="compte-suggest-list">
+                                        {filterComptes(formData.compte_contrepartie || '')
+                                            .map((compte) => (
+                                                <button
+                                                    key={compte.code_compte}
+                                                    type="button"
+                                                    className="compte-suggest-item"
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault();
+                                                        setFormData(prev => ({ ...prev, compte_contrepartie: compte.code_compte }));
+                                                        setActiveCompteInput(false);
+                                                    }}
+                                                >
+                                                    <strong>{compte.code_compte}</strong> — {compte.libelle_compte}
+                                                </button>
+                                            ))}
+                                        {filterComptes(formData.compte_contrepartie || '').length === 0 && (
+                                            <div className="compte-suggest-empty">Aucun compte trouvé</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="form-col">
+                        <div className="form-group">
+                            <label>Tiers (optionnel)</label>
+                            <div className="compte-suggest">
+                                <input
+                                    type="text"
+                                    name="tiers"
+                                    value={formData.tiers}
+                                    onChange={handleChange}
+                                    onFocus={() => setActiveTiersInput(true)}
+                                    onBlur={() => {
+                                        setTimeout(() => {
+                                            setActiveTiersInput(false);
+                                        }, 150);
+                                    }}
+                                    className="form-control"
+                                    placeholder="Code Tiers"
+                                    autoComplete="off"
+                                />
+                                {activeTiersInput && (
+                                    <div className="compte-suggest-list">
+                                        {filterTiers(formData.tiers || '')
+                                            .map((t) => (
+                                                <button
+                                                    key={t.code}
+                                                    type="button"
+                                                    className="compte-suggest-item"
+                                                    onMouseDown={(e) => {
+                                                        e.preventDefault();
+                                                        setFormData(prev => ({ ...prev, tiers: t.code }));
+                                                        setActiveTiersInput(false);
+                                                    }}
+                                                >
+                                                    <strong>{t.code}</strong> — {t.libelle}
+                                                </button>
+                                            ))}
+                                        {filterTiers(formData.tiers || '').length === 0 && (
+                                            <div className="compte-suggest-empty">Aucun tiers trouvé</div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="form-col">
+                        <div className="form-group">
+                            <label>Section analytique (optionnel)</label>
+                            <input
+                                type="text"
+                                name="section_analytique"
+                                value={formData.section_analytique}
+                                onChange={handleChange}
+                                className="form-control"
+                                placeholder="Section analytique"
+                                autoComplete="off"
+                            />
+                        </div>
+                    </div>
+
                     <div className="form-col form-col-btn">
                         <button type="submit" className="btn btn-primary" disabled={loading}>
                             {loading ? 'Ajout...' : 'Ajouter'}
@@ -401,7 +604,11 @@ function SaisieCaisse({ refreshTrigger }) {
                             </tr>
                         ) : (
                         ecritures.map(ecriture => (
-                            <tr key={ecriture.id} className={`fade-in ${editingId === ecriture.id ? 'editing' : ''}`}>
+                            <tr 
+                                key={ecriture.id} 
+                                className={`fade-in ${editingId === ecriture.id ? 'editing' : ''}`}
+                                style={editingId === ecriture.id ? { position: 'relative', zIndex: (activeEditCompteInput === ecriture.id || activeEditTiersInput === ecriture.id) ? 100 : 1 } : {}}
+                            >
                                 {editingId === ecriture.id ? (
                                     <>
                                         <td>
@@ -413,14 +620,113 @@ function SaisieCaisse({ refreshTrigger }) {
                                                 className="form-control form-control-sm"
                                             />
                                         </td>
-                                        <td>
+                                        <td 
+                                            className="compte-suggest-cell" 
+                                            style={{ overflow: 'visible', position: 'relative', zIndex: (activeEditCompteInput === ecriture.id || activeEditTiersInput === ecriture.id) ? 101 : 1 }}
+                                        >
                                             <input
                                                 type="text"
                                                 name="libelle_ecriture"
                                                 value={editForm.libelle_ecriture}
                                                 onChange={handleEditChange}
                                                 className="form-control form-control-sm"
+                                                required
                                             />
+                                            <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                                                {/* Suggestion Compte Contrepartie en Mode Édition */}
+                                                <div className="compte-suggest" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        name="compte_contrepartie"
+                                                        value={editForm.compte_contrepartie || ''}
+                                                        onChange={handleEditChange}
+                                                        onFocus={() => setActiveEditCompteInput(ecriture.id)}
+                                                        onBlur={() => {
+                                                            setTimeout(() => {
+                                                                setActiveEditCompteInput(null);
+                                                            }, 150);
+                                                        }}
+                                                        className="form-control form-control-sm"
+                                                        placeholder="Compte C.P."
+                                                        required
+                                                        autoComplete="off"
+                                                    />
+                                                    {activeEditCompteInput === ecriture.id && (
+                                                        <div className="compte-suggest-list" style={{ width: '250px' }}>
+                                                            {filterComptes(editForm.compte_contrepartie || '')
+                                                                .map((compte) => (
+                                                                    <button
+                                                                        key={compte.code_compte}
+                                                                        type="button"
+                                                                        className="compte-suggest-item"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            setEditForm(prev => ({ ...prev, compte_contrepartie: compte.code_compte }));
+                                                                            setActiveEditCompteInput(null);
+                                                                        }}
+                                                                    >
+                                                                        <strong>{compte.code_compte}</strong> — {compte.libelle_compte}
+                                                                    </button>
+                                                                ))}
+                                                            {filterComptes(editForm.compte_contrepartie || '').length === 0 && (
+                                                                <div className="compte-suggest-empty">Aucun compte</div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                
+                                                {/* Suggestion Tiers en Mode Édition */}
+                                                <div className="compte-suggest" style={{ flex: 1 }}>
+                                                    <input
+                                                        type="text"
+                                                        name="tiers"
+                                                        value={editForm.tiers || ''}
+                                                        onChange={handleEditChange}
+                                                        onFocus={() => setActiveEditTiersInput(ecriture.id)}
+                                                        onBlur={() => {
+                                                            setTimeout(() => {
+                                                                setActiveEditTiersInput(null);
+                                                            }, 150);
+                                                        }}
+                                                        className="form-control form-control-sm"
+                                                        placeholder="Tiers"
+                                                        autoComplete="off"
+                                                    />
+                                                    {activeEditTiersInput === ecriture.id && (
+                                                        <div className="compte-suggest-list" style={{ width: '250px' }}>
+                                                            {filterTiers(editForm.tiers || '')
+                                                                .map((t) => (
+                                                                    <button
+                                                                        key={t.code}
+                                                                        type="button"
+                                                                        className="compte-suggest-item"
+                                                                        onMouseDown={(e) => {
+                                                                            e.preventDefault();
+                                                                            setEditForm(prev => ({ ...prev, tiers: t.code }));
+                                                                            setActiveEditTiersInput(null);
+                                                                        }}
+                                                                    >
+                                                                        <strong>{t.code}</strong> — {t.libelle}
+                                                                    </button>
+                                                                ))}
+                                                            {filterTiers(editForm.tiers || '').length === 0 && (
+                                                                <div className="compte-suggest-empty">Aucun tiers</div>
+                                                            )}
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                <input
+                                                    type="text"
+                                                    name="section_analytique"
+                                                    value={editForm.section_analytique || ''}
+                                                    onChange={handleEditChange}
+                                                    className="form-control form-control-sm"
+                                                    placeholder="Section"
+                                                    autoComplete="off"
+                                                    style={{ flex: 1 }}
+                                                />
+                                            </div>
                                         </td>
                                         <td>
                                             <input
@@ -449,12 +755,14 @@ function SaisieCaisse({ refreshTrigger }) {
                                                     className="btn btn-sm btn-success"
                                                     onClick={() => handleSaveEdit(ecriture.id)}
                                                     disabled={loading}
+                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
                                                     ✓
                                                 </button>
                                                 <button
                                                     className="btn btn-sm btn-secondary"
                                                     onClick={handleCancelEdit}
+                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
                                                     ✕
                                                 </button>
@@ -464,16 +772,47 @@ function SaisieCaisse({ refreshTrigger }) {
                                 ) : (
                                     <>
                                         <td>{new Date(ecriture.date_ecriture).toLocaleDateString('fr-FR')}</td>
-                                        <td>{ecriture.libelle_ecriture}</td>
+                                        <td>
+                                            <div style={{ fontWeight: 600 }}>{ecriture.libelle_ecriture}</div>
+                                            {(ecriture.compte_contrepartie || ecriture.tiers || ecriture.section_analytique) && (
+                                                <div style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginTop: '0.25rem', fontSize: '0.8rem' }}>
+                                                    {ecriture.compte_contrepartie && (
+                                                        <span className="badge" style={{ background: '#e0f2fe', color: '#0369a1', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #bae6fd' }}>
+                                                             C.P: {ecriture.compte_contrepartie}
+                                                        </span>
+                                                    )}
+                                                    {ecriture.tiers && (
+                                                        <span className="badge" style={{ background: '#f3f4f6', color: '#374151', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #e5e7eb' }}>
+                                                            Tiers: {ecriture.tiers}
+                                                        </span>
+                                                    )}
+                                                    {ecriture.section_analytique && (
+                                                        <span className="badge" style={{ background: '#fef3c7', color: '#b45309', padding: '0.15rem 0.4rem', borderRadius: '4px', border: '1px solid #fde68a' }}>
+                                                             Analytique: {ecriture.section_analytique}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="text-right">{ecriture.debit.toFixed(3)}</td>
                                         <td className="text-right">{ecriture.credit.toFixed(3)}</td>
                                         <td className="text-right font-bold">{ecriture.solde.toFixed(3)}</td>
                                         <td className="text-center">
                                             <div className="btn-group">
                                                 <button
+                                                    className="btn btn-sm btn-primary"
+                                                    onClick={() => handleMigrateDirect(ecriture)}
+                                                    title="Migrer vers Sage"
+                                                    disabled={loading}
+                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1, marginRight: '0.2rem' }}
+                                                >
+                                                    ✓
+                                                </button>
+                                                <button
                                                     className="btn btn-sm btn-secondary"
                                                     onClick={() => handleEdit(ecriture)}
                                                     title="Modifier"
+                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
                                                     ✏️
                                                 </button>
@@ -481,6 +820,7 @@ function SaisieCaisse({ refreshTrigger }) {
                                                     className="btn btn-sm btn-danger"
                                                     onClick={() => handleDelete(ecriture.id)}
                                                     title="Supprimer"
+                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1, marginLeft: '0.2rem' }}
                                                 >
                                                     🗑️
                                                 </button>
