@@ -115,6 +115,9 @@ function SageBfcUpload({ onFileParse, loading, mappingStats }) {
                         <p className="dropzone-hint">
                             ou <span className="dropzone-link">parcourez vos fichiers</span>
                         </p>
+                        {/* <p className="dropzone-hint" style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem', marginBottom: '0.5rem' }}>
+                            (Accepte uniquement une seule feuille Excel ou un fichier CSV)
+                        </p> */}
                         <div className="dropzone-formats">
                             <span className="format-tag">.xlsx</span>
                             <span className="format-tag">.xls</span>

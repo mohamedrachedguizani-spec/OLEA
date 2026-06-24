@@ -89,8 +89,14 @@ class SageBalanceParser:
         )
     
     def _read_excel(self, content: bytes) -> pd.DataFrame:
-        """Lit un fichier Excel depuis des bytes"""
-        return pd.read_excel(io.BytesIO(content))
+        """Lit un fichier Excel depuis des bytes et valide qu'il ne contient qu'une seule feuille"""
+        xl = pd.ExcelFile(io.BytesIO(content))
+        if len(xl.sheet_names) > 1:
+            raise ValueError(
+                "Le fichier Excel contient plusieurs feuilles. "
+                "Veuillez uploader un fichier contenant uniquement une seule feuille (pas de classeur multi-feuilles)."
+            )
+        return xl.parse(xl.sheet_names[0])
     
     def _read_csv(self, content: bytes) -> pd.DataFrame:
         """Lit un fichier CSV avec détection automatique"""
