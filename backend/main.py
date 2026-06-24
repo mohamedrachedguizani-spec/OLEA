@@ -1,4 +1,5 @@
 # main.py
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -23,10 +24,10 @@ from modules.rapprochement_bancaire import router as rapprochement_bancaire_rout
 
 app = FastAPI(title="Olea – Gestion de Caisse & BFC")
 
-# Configuration CORS
+# Configuration CORS (Accepte toutes les origines dynamiquement pour supporter n'importe quelle adresse IP de VM)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"https?://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -13,15 +13,6 @@ from database import db
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user, restrict_superadmin
 from modules.audit.service import log_audit_action
-from modules.forecast.engine import (
-    sync_actuals_from_resume,
-    clear_actuals_for_month,
-    clear_all_actuals,
-    invalidate_adjustment_cycles_for_year,
-    purge_all_adjustment_cycles,
-    sync_closed_years_into_history,
-    generate_forecast,
-)
 from .config import get_mapping_config, save_mapping_config
 from .mapper import SageBFCMapper
 from .parser import SageBalanceParser
@@ -628,6 +619,7 @@ async def parse_balance(
             if hasattr(resultat_reel.resume, "model_dump")
             else resultat_reel.resume.dict()
         )
+        from modules.forecast.engine import sync_actuals_from_resume
         sync_actuals_from_resume(resultat_reel.periode, resume_payload)
 
         ws_manager.broadcast("sage_bfc", "upload", {"periode": str(resultat_reel.periode)})
@@ -1057,6 +1049,7 @@ async def delete_monthly(
         cursor.execute("DELETE FROM sage_bfc_monthly_cumule WHERE periode = %s", (periode,))
 
     # Synchroniser le module forecast: suppression des réels/écarts pour ce mois
+    from modules.forecast.engine import clear_actuals_for_month, invalidate_adjustment_cycles_for_year
     clear_actuals_for_month(periode.year, periode.month)
 
     # Invalider les cycles d'ajustement devenus incohérents (ex: M03 sans 3 mois réels)
@@ -1097,6 +1090,7 @@ async def delete_all_monthly(
         cursor.execute("DELETE FROM sage_bfc_monthly_cumule")
 
     # Synchroniser le module forecast: suppression globale des réels/écarts
+    from modules.forecast.engine import clear_all_actuals, purge_all_adjustment_cycles
     clear_all_actuals()
     purge_payload = purge_all_adjustment_cycles()
 
@@ -1194,6 +1188,7 @@ async def close_year(
     }
 
     next_year = year + 1
+    from modules.forecast.engine import sync_closed_years_into_history, generate_forecast
     sync_payload = sync_closed_years_into_history(before_year=next_year)
     run_id, rows_written = generate_forecast(target_year=next_year, cycle_code="INITIAL", cycle_month=None)
     forecast_payload = {

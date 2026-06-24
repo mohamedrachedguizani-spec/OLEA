@@ -4,7 +4,11 @@ Usage:
     python scripts/migrate_budgets_to_db.py
 """
 
+import sys
 from pathlib import Path
+
+# Ajoute le dossier parent au PYTHONPATH pour importer database.py
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 from database import init_forecast_tables
 from modules.forecast.engine import import_historical_csv
