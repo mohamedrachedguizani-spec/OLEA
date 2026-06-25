@@ -39,10 +39,17 @@ services:
       - DB_USER=root
       - DB_PASSWORD=rootpassword
       - DB_NAME=gestion_caisse
+      - SECRET_KEY=olea-secret-key-change-in-production-2026
+      - REFRESH_SECRET_KEY=olea-refresh-secret-key-change-in-production-2026
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=15
+      - REFRESH_TOKEN_EXPIRE_DAYS=7
+      - ENVIRONMENT=production
     ports:
       - "8000:8000"
     depends_on:
-      - db
+      db:
+        condition: service_started
 
   frontend:
     build:
