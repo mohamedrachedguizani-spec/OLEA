@@ -8,6 +8,7 @@ import pdfplumber
 from dateutil import parser as date_parser
 from fastapi import HTTPException
 
+
 def _normalize_col(value: str) -> str:
     raw = (value or "").lower()
     raw = unicodedata.normalize("NFKD", raw)
@@ -72,8 +73,30 @@ def _parse_date(value) -> Optional[date]:
         return value.date()
     if isinstance(value, date):
         return value
+    raw = str(value).strip()
+
+    # --- Gestion des mois français pour BIAT (ex: "25 juin 26") ---
+    french_months = {
+        'janvier': 1, 'février': 2, 'fevrier': 2, 'mars': 3, 'avril': 4,
+        'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8, 'aout': 8,
+        'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12, 'decembre': 12
+    }
+    m = re.match(r'(\d{1,2})\s+([a-zA-Zéûôîâäëïöüùç]+)\s+(\d{2,4})', raw, re.IGNORECASE)
+    if m:
+        day = int(m.group(1))
+        month_str = m.group(2).lower()
+        year = int(m.group(3))
+        month = french_months.get(month_str)
+        if month:
+            if year < 100:
+                year += 2000
+            try:
+                return date(year, month, day)
+            except ValueError:
+                pass
+
     try:
-        return date_parser.parse(str(value), dayfirst=True).date()
+        return date_parser.parse(raw, dayfirst=True).date()
     except Exception:
         return None
 
@@ -110,7 +133,7 @@ def _normalize_row_length(row: List, length: int) -> List:
 
 
 # =============================================================================
-# PARSER PDF ATB TEXTE BRUT
+# PARSER PDF ATB TEXTE BRUT (inchangé)
 # =============================================================================
 
 def _is_atb_text_format(lines: list) -> bool:
@@ -261,7 +284,7 @@ def _parse_pdf_atb_text(file_bytes: bytes) -> pd.DataFrame:
 
 
 # =============================================================================
-# PARSER PDF BIAT TEXTE BRUT (avec bordures verticales pour Débit/Crédit)
+# PARSER PDF BIAT TEXTE BRUT (NOUVELLE VERSION)
 # =============================================================================
 
 def _is_biat_text_format(lines: list) -> bool:
@@ -270,143 +293,112 @@ def _is_biat_text_format(lines: list) -> bool:
     has_releve = (
         "RELEV" in sample
         or "COMPTE MENSUEL" in sample
+        or "EXTRAIT" in sample
         or "كشف" in sample
         or "كشفحساب" in sample
     )
-    return has_biat and has_releve
+    # Détection robuste du header BIAT moderne même si "BIAT" est en image
+    has_biat_header = (
+        ("DATE OPÉ" in sample or "DATE OPE" in sample)
+        and ("LIBELLÉ OPÉRATION" in sample or "LIBELLE OPERATION" in sample)
+        and ("DATE VALEUR" in sample)
+    )
+    return (has_biat and has_releve) or has_biat_header
 
 
 def _parse_pdf_biat_text(file_bytes: bytes) -> pd.DataFrame:
     """
-    Parse BIAT en utilisant les bordures verticales du PDF pour déterminer
-    exactement les colonnes Date, Libellé, Référence, Date valeur, Débit, Crédit.
+    Parse BIAT par extraction texte brute avec pdfplumber.
+    Chaque transaction commence par une ligne contenant :
+    Date Opé  Libellé...  Référence  Date Valeur  Montant
+    Les lignes suivantes sans cette structure sont des suites de libellé.
     """
-    from collections import defaultdict
+    text = ""
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        for page in pdf.pages:
+            pt = page.extract_text()
+            if pt:
+                text += pt + "\n"
+
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="PDF vide ou texte non extractible")
+
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+
+    # Références : FT, CHG, TT, PDL, LD (échéances crédit)
+    ref_pattern = r'(?:FT|CHG|TT|PDL|LD)[A-Z0-9\\/_;.-]+'
+    line_re = re.compile(
+        r'^(?P<date_op>\d{1,2}\s+[a-zA-Zéûôîâäëïöüùç]+\s+\d{2,4})\s+'
+        r'(?P<libelle>.+?)\s+'
+        r'(?P<ref>' + ref_pattern + r')\s+'
+        r'(?P<date_val>\d{1,2}\s+[a-zA-Zéûôîâäëïöüùç]+\s+\d{2,4})\s+'
+        r'(?P<amount>-?\d{1,3}(?:\s\d{3})*,\d{3})$',
+        re.IGNORECASE
+    )
+
+    skip_patterns = [
+        re.compile(r'^Date\s+Opé', re.IGNORECASE),
+        re.compile(r'^Libellé\s+Opération', re.IGNORECASE),
+        re.compile(r'^Référence$', re.IGNORECASE),
+        re.compile(r'^Date\s+valeur', re.IGNORECASE),
+        re.compile(r'^Débit$', re.IGNORECASE),
+        re.compile(r'^Crédit$', re.IGNORECASE),
+        re.compile(r'^Solde\s+(départ|fin|actuel)', re.IGNORECASE),
+        re.compile(r'^Page\s+\d+', re.IGNORECASE),
+        re.compile(r'^BIAT$', re.IGNORECASE),
+        re.compile(r'^Extrait\s+de\s+compte', re.IGNORECASE),
+        re.compile(r'^Numéro\s+de\s+Compte', re.IGNORECASE),
+        re.compile(r'^Devise', re.IGNORECASE),
+        re.compile(r'^RIB', re.IGNORECASE),
+        re.compile(r'^Catégorie\s+Compte', re.IGNORECASE),
+        re.compile(r'^Nom\s+du\s+Client', re.IGNORECASE),
+        re.compile(r'^Sauf\s+erreur', re.IGNORECASE),
+        re.compile(r'^Edité\s+le', re.IGNORECASE),
+        re.compile(r'^#\s+Extrait\s+de\s+compte', re.IGNORECASE),
+    ]
 
     rows = []
+    current = None
 
-    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
-        for page_num, page in enumerate(pdf.pages):
-            vlines = [l for l in page.lines
-                      if abs(l['x0'] - l['x1']) < 2 and l['bottom'] - l['top'] > 400]
-            vlines = sorted(vlines, key=lambda l: l['x0'])
-            x_borders = [l['x0'] for l in vlines]
+    for line in lines:
+        if any(p.match(line) for p in skip_patterns):
+            continue
 
-            if len(x_borders) < 5:
-                continue
+        m = line_re.match(line)
+        if m:
+            if current:
+                rows.append(current)
 
-            words = page.extract_words()
-            table_words = [w for w in words if 240 < w['top'] < 720]
+            amount_val = _parse_amount(m.group('amount'))
+            debit = abs(amount_val) if amount_val < 0 else 0.0
+            credit = amount_val if amount_val > 0 else 0.0
 
-            lines = defaultdict(list)
-            for w in table_words:
-                y = round(w['top'])
-                lines[y].append(w)
+            current = {
+                'date_operation': _parse_date(m.group('date_op')),
+                'date_valeur': _parse_date(m.group('date_val')),
+                'reference': m.group('ref'),
+                'libelle': m.group('libelle').strip(),
+                'debit': debit,
+                'credit': credit,
+            }
+        else:
+            if current is not None:
+                current['libelle'] += ' ' + line.strip()
 
-            blocks = []
-            current_block = []
-
-            for y in sorted(lines.keys()):
-                line_words = lines[y]
-                has_date_op = any(
-                    w['x0'] < x_borders[0] and
-                    re.match(r'^\d{2}/\d{2}/\d{4}$', w['text'].strip())
-                    for w in line_words
-                )
-
-                if has_date_op and current_block:
-                    blocks.append(current_block)
-                    current_block = []
-
-                current_block.extend(line_words)
-
-            if current_block:
-                blocks.append(current_block)
-
-            for block in blocks:
-                mov = {
-                    'date_op': None,
-                    'libelle': '',
-                    'ref': '',
-                    'date_val': None,
-                    'debit': 0.0,
-                    'credit': 0.0,
-                }
-
-                block_lines = defaultdict(list)
-                for w in block:
-                    y = round(w['top'])
-                    block_lines[y].append(w)
-
-                for y in sorted(block_lines.keys()):
-                    line_words = block_lines[y]
-                    line_by_col = defaultdict(list)
-
-                    for w in line_words:
-                        x = w['x0']
-                        text = w['text'].strip()
-                        col = None
-
-                        if x < x_borders[0]:
-                            col = 'date_op'
-                        elif x_borders[0] <= x < x_borders[1]:
-                            col = 'libelle'
-                        elif x_borders[1] <= x < x_borders[2]:
-                            col = 'ref'
-                        elif x_borders[2] <= x < x_borders[3]:
-                            col = 'date_val'
-                        elif x_borders[3] <= x < x_borders[4]:
-                            col = 'debit'
-                        elif x >= x_borders[4]:
-                            col = 'credit'
-
-                        if col:
-                            line_by_col[col].append(text)
-
-                    for col, texts in line_by_col.items():
-                        text = ' '.join(texts)
-
-                        if col == 'date_op':
-                            if re.match(r'^\d{2}/\d{2}/\d{4}$', text):
-                                mov['date_op'] = text
-                        elif col == 'libelle':
-                            mov['libelle'] += (' ' if mov['libelle'] else '') + text
-                        elif col == 'ref':
-                            if re.match(r'^(FT|CHG|TT|PDL?)[A-Z0-9\\/_;.-]+$', text):
-                                mov['ref'] = text
-                        elif col == 'date_val':
-                            if re.match(r'^\d{2}/\d{2}/\d{4}$', text):
-                                mov['date_val'] = text
-                        elif col == 'debit':
-                            if re.match(r'^[0-9\s]{1,3}(?:\s[0-9]{3})*,\d{3}$|^\d{1,3},\d{3}$', text):
-                                mov['debit'] = _parse_amount(text)
-                        elif col == 'credit':
-                            if re.match(r'^[0-9\s]{1,3}(?:\s[0-9]{3})*,\d{3}$|^\d{1,3},\d{3}$', text):
-                                mov['credit'] = _parse_amount(text)
-
-                if mov['date_op'] and mov['libelle'].strip():
-                    libelle = mov['libelle'].strip()
-                    skip = False
-                    for kw in ['SOLDE AU', 'SOLDE', 'TOTAUX', 'TOTAL', 'الجملة', 'الرصيد', 'OPENING BALANCE', 'CLOSING BALANCE']:
-                        if kw in libelle.upper():
-                            skip = True
-                            break
-                    if not skip:
-                        rows.append(mov)
+    if current:
+        rows.append(current)
 
     if not rows:
         raise HTTPException(status_code=400, detail="Aucun mouvement détecté dans le PDF BIAT")
 
     df_rows = []
     for r in rows:
-        date_op = _parse_date(r['date_op'])
-        if not date_op:
+        if r['date_operation'] is None:
             continue
-
         df_rows.append({
-            'date_operation': date_op,
-            'date_valeur': _parse_date(r['date_val']) if r['date_val'] else None,
-            'reference': r['ref'] or None,
+            'date_operation': r['date_operation'],
+            'date_valeur': r['date_valeur'],
+            'reference': r['reference'] or None,
             'libelle': r['libelle'].strip(),
             'debit': r['debit'],
             'credit': r['credit'],
