@@ -62,6 +62,7 @@ function UserManagement() {
 
     const canGoPrev = page > 1;
     const canGoNext = page < totalPages;
+    const allChecked = permissionsForm.length > 0 && permissionsForm.every(p => p.can_read && p.can_write && p.can_delete);
 
     const loadUsers = useCallback(async () => {
         try {
@@ -152,6 +153,17 @@ function UserManagement() {
             const updated = [...prev];
             updated[moduleIndex] = { ...updated[moduleIndex], [action]: !updated[moduleIndex][action] };
             return updated;
+        });
+    };
+
+    const handleCheckAll = (check = true) => {
+        setPermissionsForm(prev => {
+            return prev.map(p => ({
+                ...p,
+                can_read: check,
+                can_write: check,
+                can_delete: check
+            }));
         });
     };
 
@@ -589,7 +601,17 @@ function UserManagement() {
                             <button className="um-modal-close" onClick={() => setShowPermissionsModal(false)}>×</button>
                         </div>
                         <div className="um-modal-body">
-                            <p className="um-perm-hint">Cochez les droits d'accès pour chaque module de l'application.</p>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                                <p className="um-perm-hint" style={{ margin: 0 }}>Cochez les droits d'accès pour chaque module de l'application.</p>
+                                <button
+                                    type="button"
+                                    className="um-btn um-btn-secondary"
+                                    onClick={() => handleCheckAll(!allChecked)}
+                                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
+                                >
+                                    {allChecked ? 'Tout décocher' : 'Tout cocher'}
+                                </button>
+                            </div>
                             <table className="um-perm-table">
                                 <thead>
                                     <tr>

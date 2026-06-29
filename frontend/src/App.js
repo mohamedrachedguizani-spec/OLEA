@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
 import useLiveUpdates from './hooks/useLiveUpdates';
+import useNotifications from './hooks/useNotifications';
 import Login from './components/Login';
 import SaisieCaisse from './components/SaisieCaisse';
 import ExportCSV from './components/ExportCSV';
@@ -14,6 +15,7 @@ import Reporting from './components/Reporting';
 import Configuration from './components/Configuration';
 import SaisieBancaire from './components/SaisieBancaire';
 import RapprochementBancaire from './components/RapprochementBancaire';
+import NotificationBell from './components/NotificationBell';
 import oleaLogo from './assets/olea-logo.svg';
 
 function App() {
@@ -46,6 +48,16 @@ function App() {
         setRefreshTrigger(prev => prev + 1);
     }, []);
 
+    // ─── Notifications temps réel ───
+    const {
+        notifications: notifList,
+        unreadCount: notifUnread,
+        markRead: notifMarkRead,
+        markAllRead: notifMarkAllRead,
+        deleteNotification: notifDelete,
+        handleWsNotification,
+    } = useNotifications(Boolean(user));
+
     // ─── Temps réel : WebSocket pour synchroniser plusieurs comptables ───
     useLiveUpdates({
         caisse: () => {
@@ -68,6 +80,7 @@ function App() {
             setConfigurationRefresh(prev => prev + 1);
             setMigrationRefresh(prev => prev + 1);
         },
+        notifications: handleWsNotification,
     }, { enabled: Boolean(user) });
 
     // Écran de chargement initial
@@ -128,6 +141,13 @@ function App() {
                         </div>
                     </div>
                     <div className="header-actions">
+                        <NotificationBell
+                            notifications={notifList}
+                            unreadCount={notifUnread}
+                            onMarkRead={notifMarkRead}
+                            onMarkAllRead={notifMarkAllRead}
+                            onDelete={notifDelete}
+                        />
                         <span className="date-display">
                             {new Date().toLocaleDateString('fr-FR', { 
                                 weekday: 'long', 

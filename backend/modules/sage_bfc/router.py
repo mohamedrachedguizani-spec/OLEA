@@ -13,6 +13,7 @@ from database import db
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user, restrict_superadmin
 from modules.audit.service import log_audit_action
+from modules.notifications.service import notify_module_users
 from .config import get_mapping_config, save_mapping_config
 from .mapper import SageBFCMapper
 from .parser import SageBalanceParser
@@ -628,6 +629,79 @@ async def parse_balance(
             "annual_comparison_updated",
             {"year": resultat_reel.periode.year, "month": resultat_reel.periode.month},
         )
+
+        # Vérification des alertes budget forecast
+        try:
+            from modules.forecast.router import check_and_notify_forecast_overruns
+            check_and_notify_forecast_overruns(
+                target_year=resultat_reel.periode.year
+            )
+        except Exception as e:
+            print(f"⚠️ Erreur notifications forecast après upload: {e}")
+
+        # ─── Notifications temps réel ───
+        month_names = [
+            "", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin",
+            "Juillet", "Août", "Septembre", "Octobre", "Novembre", "Décembre"
+        ]
+        m_label = month_names[resultat_reel.periode.month]
+        notify_module_users(
+            module_name="sage_bfc",
+            notif_type="sage_bfc.nouveau_mois",
+            severity="info",
+            title=f"Nouvelles données — {m_label} {resultat_reel.periode.year}",
+            message=f"Les données Sage BFC de {m_label} {resultat_reel.periode.year} ont été importées par {user.get('username', '')}.",
+            metadata={"periode": str(resultat_reel.periode), "file": file.filename},
+        )
+
+        # Vérifier les alertes globales (validations)
+        try:
+            with db.get_cursor() as _cursor:
+                _cursor.execute(
+                    "SELECT alertes_globales FROM sage_bfc_monthly WHERE periode = %s",
+                    (resultat_reel.periode,),
+                )
+                _row = _cursor.fetchone()
+                if _row and _row.get("alertes_globales"):
+                    _alertes = _row["alertes_globales"]
+                    if isinstance(_alertes, str):
+                        _alertes = json.loads(_alertes)
+                    if _alertes:
+                        notify_module_users(
+                            module_name="sage_bfc",
+                            notif_type="sage_bfc.alertes_globales",
+                            severity="warning",
+                            title=f"Alertes de validation — {m_label} {resultat_reel.periode.year}",
+                            message=f"{len(_alertes)} alerte(s) de validation détectée(s) pour {m_label} {resultat_reel.periode.year}.",
+                            metadata={"periode": str(resultat_reel.periode), "alertes_count": len(_alertes)},
+                        )
+        except Exception:
+            pass  # Ne pas bloquer l'upload si la vérification échoue
+
+        # Vérifier les mois manquants dans la séquence
+        try:
+            with db.get_cursor() as _cursor:
+                _cursor.execute(
+                    "SELECT DISTINCT MONTH(periode) AS m FROM sage_bfc_monthly "
+                    "WHERE YEAR(periode) = %s ORDER BY m",
+                    (resultat_reel.periode.year,),
+                )
+                _existing = {r["m"] for r in _cursor.fetchall()}
+                _max_m = max(_existing) if _existing else 0
+                _expected = set(range(1, _max_m + 1))
+                _missing = sorted(_expected - _existing)
+                if _missing:
+                    _missing_labels = [month_names[m] for m in _missing]
+                    notify_module_users(
+                        module_name="sage_bfc",
+                        notif_type="sage_bfc.mois_manquant",
+                        severity="critical",
+                        title=f"Mois manquants — {resultat_reel.periode.year}",
+                        message=f"Attention : les mois suivants sont absents pour {resultat_reel.periode.year} : {', '.join(_missing_labels)}.",
+                        metadata={"year": resultat_reel.periode.year, "missing_months": _missing},
+                    )
+        except Exception:
+            pass
 
         log_audit_action(
             user=user,

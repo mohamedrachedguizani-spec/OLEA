@@ -1081,6 +1081,39 @@ class ApiService {
         printWindow.focus();
         printWindow.print();
     }
+
+    // ===================== NOTIFICATIONS =====================
+
+    static async getNotifications(limit = 50, offset = 0, unreadOnly = false) {
+        const params = new URLSearchParams({ limit, offset, unread_only: unreadOnly });
+        const response = await this._fetch(`${API_BASE_URL}/notifications?${params}`);
+        if (!response.ok) throw new Error('Erreur chargement notifications');
+        return response.json();
+    }
+
+    static async getUnreadCount() {
+        const response = await this._fetch(`${API_BASE_URL}/notifications/unread-count`);
+        if (!response.ok) throw new Error('Erreur compteur notifications');
+        return response.json();
+    }
+
+    static async markNotificationRead(id) {
+        const response = await this._fetch(`${API_BASE_URL}/notifications/${id}/read`, { method: 'PUT' });
+        if (!response.ok) throw new Error('Erreur marquage notification');
+        return response.json();
+    }
+
+    static async markAllNotificationsRead() {
+        const response = await this._fetch(`${API_BASE_URL}/notifications/read-all`, { method: 'PUT' });
+        if (!response.ok) throw new Error('Erreur marquage notifications');
+        return response.json();
+    }
+
+    static async deleteNotification(id) {
+        const response = await this._fetch(`${API_BASE_URL}/notifications/${id}`, { method: 'DELETE' });
+        if (!response.ok) throw new Error('Erreur suppression notification');
+        return response.json();
+    }
 }
 
 export default ApiService;

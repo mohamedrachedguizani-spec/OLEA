@@ -20,6 +20,7 @@ from modules.configuration import router as configuration_router, init_configura
 from modules.audit import router as audit_router, init_audit_tables
 from modules.saisie_bancaire import router as saisie_bancaire_router, init_saisie_bancaire_tables
 from modules.rapprochement_bancaire import router as rapprochement_bancaire_router
+from modules.notifications import router as notifications_router, init_notifications_tables
 
 
 app = FastAPI(title="Olea – Gestion de Caisse & BFC")
@@ -41,6 +42,7 @@ init_forecast_tables()
 init_configuration_tables()
 init_audit_tables()
 init_saisie_bancaire_tables()
+init_notifications_tables()
 
 # ─── Enregistrement des routers ───
 app.include_router(auth_router)
@@ -55,6 +57,7 @@ app.include_router(configuration_router)
 app.include_router(audit_router)
 app.include_router(saisie_bancaire_router)
 app.include_router(rapprochement_bancaire_router)
+app.include_router(notifications_router)
 
 
 # ─── Enregistrer la boucle asyncio au démarrage ───
@@ -62,6 +65,9 @@ app.include_router(rapprochement_bancaire_router)
 async def on_startup():
     import asyncio
     manager.set_loop(asyncio.get_running_loop())
+    # Démarrer le scheduler de notifications (purge 30j + rappels)
+    from modules.notifications.scheduler import start_scheduler
+    await start_scheduler()
 
 
 # ─── WebSocket temps réel ───
@@ -108,12 +114,14 @@ async def websocket_live(ws: WebSocket):
         await ws.close(code=1008)
         return
 
-    await manager.connect(ws)
+    await manager.connect(ws, user_id=user["id"])
     try:
         while True:
             # Garder la connexion vivante ; ignorer les messages entrants
             await ws.receive_text()
     except WebSocketDisconnect:
+        pass
+    finally:
         manager.disconnect(ws)
 
 

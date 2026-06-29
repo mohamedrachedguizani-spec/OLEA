@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Depends, Request
 from ws_manager import manager as ws_manager
 from modules.auth.dependencies import get_current_user, restrict_superadmin
 from modules.audit.service import log_audit_action
+from modules.notifications.service import notify_module_users
 from .engine import (
     generate_forecast,
     get_annual_comparison,
@@ -153,6 +154,13 @@ def generate_budget_forecast(
             "generated",
             {"target_year": target_year, "cycle_code": cycle_code, "cycle_month": cycle_month, "run_id": run_id},
         )
+
+        # ─── Notifications : dépassements budget (favorables ou défavorables) sur le plan annuel ───
+        try:
+            check_and_notify_forecast_overruns(target_year=target_year)
+        except Exception:
+            pass
+
         log_audit_action(
             user=user,
             action="generate",
@@ -427,6 +435,23 @@ def run_adjustment_cycle(
     try:
         payload = run_cycle_adjustment(target_year=target_year, cycle_code=cycle_code, force=force)
         ws_manager.broadcast("forecast", "cycle_run", payload)
+
+        # ─── Notification : cycle exécuté ───
+        notify_module_users(
+            module_name="sage_bfc",
+            notif_type="forecast.cycle_declenchable",
+            severity="success",
+            title=f"Cycle {cycle_code} exécuté — {target_year}",
+            message=f"Le cycle d'ajustement {cycle_code} pour {target_year} a été déclenché par {user.get('username', '')}.",
+            metadata={"target_year": target_year, "cycle_code": cycle_code},
+        )
+
+        # ─── Notifications : dépassements budget après exécution du cycle ───
+        try:
+            check_and_notify_forecast_overruns(target_year=target_year)
+        except Exception:
+            pass
+
         log_audit_action(
             user=user,
             action="run_cycle",
@@ -441,3 +466,102 @@ def run_adjustment_cycle(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur exécution cycle: {str(e)}")
+
+
+def check_and_notify_forecast_overruns(target_year: int):
+    """
+    Vérifie s'il y a des dépassements de budget sur le plan annuel
+    uniquement pour le cycle actif/le plus récent de cette année:
+    - Dépassement favorable: sur les produits critiques (ebitda, resultat_net, ca_net, total_produits)
+      lorsque l'objectif annuel est atteint ou dépassé (alert_level == "positive").
+    - Dépassement défavorable: uniquement si le cumul réel des charges dépasse le budget annuel fixé
+      (nature == "charge" et alert_level == "negative").
+    """
+    try:
+        # Récupérer les cycles existants pour cette année
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                "SELECT DISTINCT cycle_code FROM bfc_forecast_values WHERE forecast_year = %s",
+                (target_year,)
+            )
+            cycles = [r["cycle_code"] for r in cursor.fetchall()]
+        
+        if not cycles:
+            return
+
+        # Identifier le cycle le plus récent/actif
+        cycle_order = ["M08", "M06", "M03", "INITIAL"]
+        active_cycle = None
+        for code in cycle_order:
+            if code in cycles:
+                active_cycle = code
+                break
+        
+        if not active_cycle:
+            active_cycle = cycles[-1]
+
+        critical_products = {"ebitda", "resultat_net", "ca_net", "total_produits"}
+
+        payload = get_annual_comparison(target_year=target_year, cycle_code=active_cycle)
+        rows = payload.get("rows", [])
+        
+        # 1. Dépassements défavorables (charges seulement, cumul réel > budget annuel)
+        neg_alerts = [
+            r for r in rows
+            if r.get("nature") == "charge" and r.get("alert_level") == "negative"
+        ]
+        if neg_alerts:
+            labels = [r.get("agregat_label", r.get("agregat_key", "")) for r in neg_alerts]
+            notify_module_users(
+                module_name="sage_bfc",
+                notif_type="forecast.depassement_budget",
+                severity="critical",
+                title=f"Dépassement budget annuel défavorable — {active_cycle} {target_year}",
+                message=f"Le cumul réel des charges dépasse le budget annuel fixé pour : {', '.join(labels)}.",
+                metadata={
+                    "target_year": target_year,
+                    "cycle_code": active_cycle,
+                    "type": "negative",
+                    "alerts": [
+                        {
+                            "key": r.get("agregat_key"),
+                            "forecast_annual": r.get("forecast_annual"),
+                            "actual_total": r.get("actual_total")
+                        }
+                        for r in neg_alerts
+                    ],
+                },
+            )
+
+        # 2. Dépassements favorables (produits critiques seulement, cumul réel >= budget annuel)
+        pos_alerts = [
+            r for r in rows
+            if r.get("nature") == "produit" and r.get("agregat_key") in critical_products and r.get("alert_level") == "positive"
+        ]
+        if pos_alerts:
+            labels = [r.get("agregat_label", r.get("agregat_key", "")) for r in pos_alerts]
+            notify_module_users(
+                module_name="sage_bfc",
+                notif_type="forecast.depassement_budget",
+                severity="success",
+                title=f"Objectif budget annuel atteint/dépassé — {active_cycle} {target_year}",
+                message=f"Objectif annuel favorable atteint/dépassé pour : {', '.join(labels)}.",
+                metadata={
+                    "target_year": target_year,
+                    "cycle_code": active_cycle,
+                    "type": "positive",
+                    "alerts": [
+                        {
+                            "key": r.get("agregat_key"),
+                            "forecast_annual": r.get("forecast_annual"),
+                            "actual_total": r.get("actual_total")
+                        }
+                        for r in pos_alerts
+                    ],
+                },
+            )
+    except Exception as e:
+        print(f"⚠️ Erreur lors de la vérification des dépassements budget : {e}")
+
+
+
