@@ -632,7 +632,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                             </svg>
                             P&L Formaté
                         </button>
-                        <button
+                        {/* <button
                             className={`sage-tab ${activeTab === 'lignes' ? 'active' : ''}`}
                             onClick={() => setActiveTab('lignes')}
                         >
@@ -646,7 +646,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
                             </svg>
                             Lignes Mappées
                             <span className="tab-count">{allLignes.length}</span>
-                        </button>
+                        </button> */}
                         <button
                             className={`sage-tab ${activeTab === 'forecast' ? 'active' : ''}`}
                             onClick={() => setActiveTab('forecast')}
