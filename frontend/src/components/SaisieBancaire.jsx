@@ -906,7 +906,7 @@ function SaisieBancaire() {
                     compte: ligne2.compte || '-',
                     tiers: ligne2.tiers || '',
                     debit: Number(mov.debit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3),
-                    credit: Number(mov.credit || 0) === 0 ? '' : Number(mov.debit || 0).toFixed(3),
+                    credit: Number(mov.credit || 0) === 0 ? '' : Number(mov.credit || 0).toFixed(3),
                     section: ligne2.section_analytique || '',
                     numero_piece: numPiece,
                     libelle: mov.libelle,
