@@ -22,13 +22,22 @@ export default function useLiveUpdates(handlers = {}, options = {}) {
     const wsRef = useRef(null);
     const handlersRef = useRef(handlers);
     const reconnectTimer = useRef(null);
+    const enabledRef = useRef(enabled);
 
     // Toujours pointer vers la dernière version des handlers
     useEffect(() => {
         handlersRef.current = handlers;
     }, [handlers]);
 
+    // Toujours garder à jour la ref de la configuration d'activation
+    useEffect(() => {
+        enabledRef.current = enabled;
+    }, [enabled]);
+
     const connect = useCallback(() => {
+        if (!enabledRef.current) {
+            return;
+        }
         // Éviter les connexions multiples
         if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
             return;
@@ -63,7 +72,7 @@ export default function useLiveUpdates(handlers = {}, options = {}) {
                 return;
             }
             // Auto-reconnexion
-            if (enabled) {
+            if (enabledRef.current) {
                 reconnectTimer.current = setTimeout(connect, RECONNECT_DELAY);
             }
         };
@@ -73,12 +82,16 @@ export default function useLiveUpdates(handlers = {}, options = {}) {
         };
 
         wsRef.current = ws;
-    }, [enabled]);
+    }, []);
 
     useEffect(() => {
         if (!enabled) {
             clearTimeout(reconnectTimer.current);
             if (wsRef.current) {
+                wsRef.current.onopen = null;
+                wsRef.current.onmessage = null;
+                wsRef.current.onerror = null;
+                wsRef.current.onclose = null;
                 wsRef.current.close();
                 wsRef.current = null;
             }
@@ -91,6 +104,10 @@ export default function useLiveUpdates(handlers = {}, options = {}) {
             // Nettoyage à la destruction du composant
             clearTimeout(reconnectTimer.current);
             if (wsRef.current) {
+                wsRef.current.onopen = null;
+                wsRef.current.onmessage = null;
+                wsRef.current.onerror = null;
+                wsRef.current.onclose = null;
                 wsRef.current.close();
                 wsRef.current = null;
             }

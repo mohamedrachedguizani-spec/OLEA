@@ -207,7 +207,14 @@ function Dashboard({ refreshTrigger }) {
         connectWs();
         return () => {
             clearTimeout(reconnectTimer.current);
-            if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
+            if (wsRef.current) {
+                wsRef.current.onopen = null;
+                wsRef.current.onmessage = null;
+                wsRef.current.onerror = null;
+                wsRef.current.onclose = null;
+                wsRef.current.close();
+                wsRef.current = null;
+            }
         };
     }, [connectWs]);
 
