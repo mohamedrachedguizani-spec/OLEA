@@ -95,25 +95,25 @@ class SageBFCMapper:
         produits_financiers = sum_by_agregat('Produits Financiers')
         produits_except = sum_by_agregat('Produits Exceptionnels')
         
-        # Charges: abs() car le mapper les a déjà négativées via sens="-"
-        retrocessions = abs(sum_by_agregat('Retrocessions'))
-        frais_personnel = abs(sum_by_agregat('Frais de Personnel'))
-        honoraires = abs(sum_by_agregat('Honoraires & Sous-traitance'))  # inclut Brand Fees + Management Fees
-        frais_commerciaux = abs(sum_by_agregat('Frais Commerciaux'))
-        impots_taxes = abs(sum_by_agregat('Impôts et taxes'))
-        fonctionnement = abs(sum_by_agregat('Fonctionnement Courant'))
-        autres_charges = abs(sum_by_agregat('Autres Charges'))
-        charges_financieres = abs(sum_by_agregat('Charges Financières'))
-        dotations = abs(sum_by_agregat('Dotations Amortissements & Provisions'))
-        charges_except = abs(sum_by_agregat('Charges Exceptionnelles'))
-        impot_societes = abs(sum_by_agregat('Impôt sur les sociétés'))
+        # Charges: - (négatives dans le mapper car sens="-")
+        retrocessions = -sum_by_agregat('Retrocessions')
+        frais_personnel = -sum_by_agregat('Frais de Personnel')
+        honoraires = -sum_by_agregat('Honoraires & Sous-traitance')  # inclut Brand Fees + Management Fees
+        frais_commerciaux = -sum_by_agregat('Frais Commerciaux')
+        impots_taxes = -sum_by_agregat('Impôts et taxes')
+        fonctionnement = -sum_by_agregat('Fonctionnement Courant')
+        autres_charges = -sum_by_agregat('Autres Charges')
+        charges_financieres = -sum_by_agregat('Charges Financières')
+        dotations = -sum_by_agregat('Dotations Amortissements & Provisions')
+        charges_except = -sum_by_agregat('Charges Exceptionnelles')
+        impot_societes = -sum_by_agregat('Impôt sur les sociétés')
         
         # Sous-totaux Brand Fees et Management Fees (sous-éléments de Honoraires)
         def sum_by_sous_cat(nom: str) -> Decimal:
             return sum((l.montant for l in lignes if l.sous_categorie == nom), Decimal('0'))
         
-        brand_fees = abs(sum_by_sous_cat('Brand Fees'))
-        management_fees = abs(sum_by_sous_cat('Management Fees'))
+        brand_fees = -sum_by_sous_cat('Brand Fees')
+        management_fees = -sum_by_sous_cat('Management Fees')
         interco_charges = brand_fees + management_fees  # sous-total interco dans Honoraires
         
         # Calculs P&L

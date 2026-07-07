@@ -256,9 +256,6 @@ def _normalize_text(value: str) -> str:
 
 
 def _nature_normalize(key: str, value: float) -> float:
-    nature = ALL_AGGREGATES[key]["nature"]
-    if nature == "charge":
-        return abs(value)
     return value
 
 
@@ -340,7 +337,9 @@ def _load_actual_subagregats(target_year: int, agregat_key: str, month: Optional
             key = _subagregat_key_from_code(code) if code else _subagregat_key(libelle)
             label = f"{code} - {libelle}" if code else libelle
 
-            amount = abs(_to_float(ligne.get("montant_absolu", ligne.get("montant", 0.0))))
+            montant_brut = _to_float(ligne.get("montant", 0.0))
+            sens = str(ligne.get("sens", "+"))
+            amount = -montant_brut if sens == "-" else montant_brut
             current = sums.get(key, {"subagregat_label": label, "actual_value": 0.0})
             current["subagregat_label"] = current.get("subagregat_label") or label
             current["actual_value"] = float(_to_float(current.get("actual_value", 0.0)) + amount)

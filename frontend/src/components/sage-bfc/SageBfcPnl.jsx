@@ -70,12 +70,19 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
                 const current = bucket.get(k) || {
                     code_sage: code,
                     libelle_sage: libelle,
-                    montant_absolu: 0,
+                    montant: 0,
+                    sens: l.sens,
                 };
-                current.montant_absolu += parseFloat(l.montant_absolu || 0);
+                current.montant += parseFloat(l.montant || 0);
                 bucket.set(k, current);
             });
-            out[agregat] = Array.from(bucket.values()).sort((a, b) =>
+            out[agregat] = Array.from(bucket.values()).map(item => {
+                const valueToDisplay = item.sens === '-' ? -item.montant : item.montant;
+                return {
+                    ...item,
+                    montant_absolu: valueToDisplay
+                };
+            }).sort((a, b) =>
                 String(a.code_sage || '').localeCompare(String(b.code_sage || ''))
             );
         });
