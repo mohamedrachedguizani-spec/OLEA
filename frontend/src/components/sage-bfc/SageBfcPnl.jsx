@@ -199,7 +199,7 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
     return (
         <div className="sage-pnl-container">
             {/* EBITDA & RN Hero Cards */}
-            <div className="pnl-hero-grid pnl-hero-grid-2">
+            {/* <div className="pnl-hero-grid pnl-hero-grid-2">
                 <div className={`pnl-hero-card ${resume.ebitda >= 0 ? 'hero-positive' : 'hero-negative'}`}>
                     <div className="hero-icon-wrap">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -250,7 +250,7 @@ function SageBfcPnl({ resume, previousResume, lignes = [] }) {
                         </div>
                     </div>
                 </div>
-            </div>
+            </div> */}
 
             {/* P&L Table Header */}
             {hasPrevious && (
