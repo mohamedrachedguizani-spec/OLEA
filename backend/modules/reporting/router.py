@@ -237,9 +237,9 @@ def _build_hierarchical_annual_df(
                 "Niveau": "Agrégat",
                 "Libellé": r.get("agregat_label"),
                 "Nature": r.get("nature"),
-                "Prévision annuelle": r.get("forecast_annual"),
-                "Réalisé cumulé": r.get("actual_total"),
-                "Reste budget": r.get("remaining_budget"),
+                "Prévision annuelle": r.get("forecast_annual") if r.get("forecast_annual") is not None else 0.0,
+                "Réalisé cumulé": r.get("actual_total") if r.get("actual_total") is not None else 0.0,
+                "Reste budget": r.get("remaining_budget") if r.get("remaining_budget") is not None else 0.0,
             }
         )
 
@@ -249,9 +249,9 @@ def _build_hierarchical_annual_df(
                     "Niveau": "Sous-agrégat",
                     "Libellé": f"↳ {item.get('subagregat_label')}",
                     "Nature": r.get("nature"),
-                    "Prévision annuelle": item.get("forecast_value"),
-                    "Réalisé cumulé": item.get("actual_value"),
-                    "Reste budget": item.get("remaining_budget"),
+                    "Prévision annuelle": item.get("forecast_value") if item.get("forecast_value") is not None else 0.0,
+                    "Réalisé cumulé": item.get("actual_value") if item.get("actual_value") is not None else 0.0,
+                    "Reste budget": item.get("remaining_budget") if item.get("remaining_budget") is not None else 0.0,
                 }
             )
 

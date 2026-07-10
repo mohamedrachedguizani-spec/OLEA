@@ -46,8 +46,8 @@ def _row_is_product(row: dict) -> bool:
 
 
 def _fmt_cell_custom(value, col_name: str, row: dict) -> str:
-    if value is None:
-        return ""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return "0,000"
     
     try:
         val_float = float(value)
