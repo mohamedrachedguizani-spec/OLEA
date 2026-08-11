@@ -46,19 +46,40 @@ def _parse_amount(value) -> float:
     if _looks_like_date_number(raw):
         return 0.0
 
-    if "," in raw and "." in raw:
-        raw = raw.replace(",", "")
-        raw = re.sub(r"[^0-9.\-]", "", raw)
-    elif "," in raw:
-        raw = raw.replace(",", ".")
-        raw = re.sub(r"[^0-9.\-]", "", raw)
-    else:
-        raw = re.sub(r"[^0-9.\-]", "", raw)
+    raw_clean = re.sub(r"[^0-9.,\-]", "", raw)
 
-    if raw in {"", ".", "-", "-."}:
+    # Gestion du format tunisien : virgule OU point comme séparateur décimal
+    # En comptabilité tunisienne, les montants ont souvent 3 décimales (millimes)
+    if "," in raw_clean and "." in raw_clean:
+        last_comma = raw_clean.rfind(",")
+        last_dot = raw_clean.rfind(".")
+        if last_comma > last_dot:
+            # 1.250,000 → virgule est le décimal
+            raw_clean = raw_clean.replace(".", "")
+            raw_clean = raw_clean.replace(",", ".")
+        else:
+            # 1,250.000 → point est le décimal
+            raw_clean = raw_clean.replace(",", "")
+    elif "," in raw_clean:
+        # Si exactement 3 chiffres après virgule → décimal tunisien (millimes)
+        parts = raw_clean.split(",")
+        if len(parts) == 2 and len(parts[1]) == 3:
+            raw_clean = raw_clean.replace(",", ".")
+        else:
+            raw_clean = raw_clean.replace(",", ".")
+    elif "." in raw_clean:
+        # Si exactement 3 chiffres après point → probablement aussi décimal tunisien
+        parts = raw_clean.split(".")
+        if len(parts) == 2 and len(parts[1]) == 3:
+            pass  # Garder le point comme décimal
+        # Sinon : si plusieurs points → enlever les points (milliers)
+        elif raw_clean.count(".") > 1:
+            raw_clean = raw_clean.replace(".", "")
+
+    if raw_clean in {"", ".", "-", "-."}:
         return 0.0
     try:
-        amount = float(raw)
+        amount = float(raw_clean)
         if abs(amount) >= 1e9:
             return 0.0
         return amount
@@ -75,16 +96,26 @@ def _parse_date(value) -> Optional[date]:
         return value
     raw = str(value).strip()
 
-    # --- Gestion des mois français pour BIAT (ex: "25 juin 26") ---
+    # --- Gestion des mois français (abréviés avec ou sans point) ---
     french_months = {
-        'janvier': 1, 'février': 2, 'fevrier': 2, 'mars': 3, 'avril': 4,
-        'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8, 'aout': 8,
-        'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12, 'decembre': 12
+        'janvier': 1, 'janv': 1,
+        'février': 2, 'fevrier': 2, 'févr': 2, 'fevr': 2,
+        'mars': 3,
+        'avril': 4, 'avr': 4,
+        'mai': 5,
+        'juin': 6,
+        'juillet': 7, 'juil': 7,
+        'août': 8, 'aout': 8,
+        'septembre': 9, 'sept': 9,
+        'octobre': 10, 'oct': 10,
+        'novembre': 11, 'nov': 11,
+        'décembre': 12, 'decembre': 12, 'déc': 12, 'dec': 12,
     }
-    m = re.match(r'(\d{1,2})\s+([a-zA-Zéûôîâäëïöüùç]+)\s+(\d{2,4})', raw, re.IGNORECASE)
+    # Pattern : "01 juil. 26" ou "30 juin 26" ou "03 août 26"
+    m = re.match(r'(\d{1,2})\s+([a-zA-Zéûôîâäëïöüùç]+)\.?\s+(\d{2,4})', raw, re.IGNORECASE)
     if m:
         day = int(m.group(1))
-        month_str = m.group(2).lower()
+        month_str = m.group(2).lower().rstrip('.')
         year = int(m.group(3))
         month = french_months.get(month_str)
         if month:
@@ -284,11 +315,11 @@ def _parse_pdf_atb_text(file_bytes: bytes) -> pd.DataFrame:
 
 
 # =============================================================================
-# PARSER PDF BIAT TEXTE BRUT (NOUVELLE VERSION)
+# PARSER PDF BIAT (texte brut + tableaux)
 # =============================================================================
 
 def _is_biat_text_format(lines: list) -> bool:
-    sample = " ".join(lines[:120]).upper()
+    sample = " ".join(lines[:150]).upper()
     has_biat = "BIAT" in sample or "BANQUE INTERNATIONALE ARABE" in sample
     has_releve = (
         "RELEV" in sample
@@ -297,24 +328,126 @@ def _is_biat_text_format(lines: list) -> bool:
         or "كشف" in sample
         or "كشفحساب" in sample
     )
-    # Détection robuste du header BIAT moderne même si "BIAT" est en image
+    # Détection robuste du header BIAT même si "BIAT" est en image
     has_biat_header = (
-        ("DATE OPÉ" in sample or "DATE OPE" in sample)
+        ("DATE OPÉ" in sample or "DATE OPE" in sample or "DATE OPE" in sample)
         and ("LIBELLÉ OPÉRATION" in sample or "LIBELLE OPERATION" in sample)
         and ("DATE VALEUR" in sample)
     )
-    return (has_biat and has_releve) or has_biat_header
+    # Détection par tableau avec pipes
+    has_pipe_table = any('|' in line and 'Date' in line for line in lines[:30])
+    return (has_biat and has_releve) or has_biat_header or has_pipe_table
+
+
+def _parse_pdf_biat_tables(pdf) -> pd.DataFrame:
+    """
+    Essaie d'extraire les tableaux BIAT (pages 2+ avec pipes).
+    Retourne un DataFrame ou lève une exception.
+    """
+    all_rows = []
+    for page in pdf.pages:
+        tables = page.extract_tables()
+        for table in tables or []:
+            if not table or len(table) < 2:
+                continue
+            # Chercher la ligne d'en-tête
+            header_idx = None
+            for idx, row in enumerate(table):
+                if not row:
+                    continue
+                joined = " ".join(str(c or "").upper() for c in row)
+                if ("DATE" in joined or "OPÉ" in joined or "OPE" in joined) and \
+                   ("DÉBIT" in joined or "DEBIT" in joined) and \
+                   ("CRÉDIT" in joined or "CREDIT" in joined):
+                    header_idx = idx
+                    break
+            if header_idx is None:
+                continue
+
+            header = [str(c or "").strip() for c in table[header_idx]]
+            # Nettoyer les en-têtes vides ou pipes
+            header = [h.strip('|').strip() for h in header]
+            header = [h for h in header if h]
+
+            for row in table[header_idx + 1:]:
+                if not row:
+                    continue
+                row = [str(c or "").strip().strip('|').strip() for c in row]
+                # Filtrer les lignes vides ou de fin
+                if all(not c for c in row):
+                    continue
+                if any("solde fin" in (c or "").lower() for c in row):
+                    continue
+                if any("sauf erreur" in (c or "").lower() for c in row):
+                    continue
+
+                # Mapper les colonnes par contenu
+                date_op = None
+                date_val = None
+                libelle = ""
+                ref = ""
+                debit = 0.0
+                credit = 0.0
+
+                # Si le row a le bon nombre de colonnes, les assigner par position
+                # Typiquement : [Date Opé, Libellé, Référence, Date valeur, Débit, Crédit]
+                if len(row) >= 5:
+                    date_op = _parse_date(row[0])
+                    libelle = row[1] if len(row) > 1 else ""
+                    ref = row[2] if len(row) > 2 else ""
+                    date_val = _parse_date(row[3]) if len(row) > 3 else None
+                    debit_str = row[4] if len(row) > 4 else ""
+                    credit_str = row[5] if len(row) > 5 else ""
+
+                    # Parfois débit et crédit sont inversés ou collés
+                    debit_val = _parse_amount(debit_str)
+                    credit_val = _parse_amount(credit_str)
+
+                    # Si le montant est dans la colonne crédit mais pas débit
+                    if debit_val == 0 and credit_val > 0:
+                        debit = 0.0
+                        credit = credit_val
+                    elif debit_val > 0 and credit_val == 0:
+                        debit = debit_val
+                        credit = 0.0
+                    elif debit_val < 0:
+                        debit = abs(debit_val)
+                        credit = 0.0
+                    else:
+                        debit = debit_val
+                        credit = credit_val
+
+                    if date_op:
+                        all_rows.append({
+                            "date_operation": date_op,
+                            "date_valeur": date_val,
+                            "reference": ref or None,
+                            "libelle": libelle.strip() or "(sans libellé)",
+                            "debit": debit,
+                            "credit": credit,
+                        })
+
+    if not all_rows:
+        raise HTTPException(status_code=400, detail="Aucun tableau BIAT détecté")
+
+    return pd.DataFrame(all_rows)
 
 
 def _parse_pdf_biat_text(file_bytes: bytes) -> pd.DataFrame:
     """
-    Parse BIAT par extraction texte brute avec pdfplumber.
-    Chaque transaction commence par une ligne contenant :
-    Date Opé  Libellé...  Référence  Date Valeur  Montant
-    Les lignes suivantes sans cette structure sont des suites de libellé.
+    Parse BIAT : d'abord essaie les tableaux, puis fallback sur texte brut.
     """
-    text = ""
     with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        # --- ÉTAPE 1 : Essayer les tableaux (pages 2+) ---
+        try:
+            df = _parse_pdf_biat_tables(pdf)
+            if len(df) > 0:
+                return df
+        except HTTPException:
+            pass
+
+        # --- ÉTAPE 2 : Fallback texte brut (page 1 ou PDF sans tableaux) ---
+        text = ""
         for page in pdf.pages:
             pt = page.extract_text()
             if pt:
@@ -325,36 +458,39 @@ def _parse_pdf_biat_text(file_bytes: bytes) -> pd.DataFrame:
 
     lines = [line.strip() for line in text.splitlines() if line.strip()]
 
-    # Références : FT, CHG, TT, PDL, LD (échéances crédit)
-    ref_pattern = r'(?:FT|CHG|TT|PDL|LD)[A-Z0-9\\/_;.-]+'
+    # Références : FT, CHG, TT, PDL, LD, ET (présent dans ce PDF)
+    ref_pattern = r'(?:FT|CHG|TT|PDL|LD|ET)[A-Z0-9\\/_;.\-]+'
+    date_pattern = r'\d{1,2}\s+[a-zA-Zéûôîâäëïöüùç]+\.?\s+\d{2,4}'
     line_re = re.compile(
-        r'^(?P<date_op>\d{1,2}\s+[a-zA-Zéûôîâäëïöüùç]+\s+\d{2,4})\s+'
+        r'^(?P<date_op>' + date_pattern + r')\s+'
         r'(?P<libelle>.+?)\s+'
         r'(?P<ref>' + ref_pattern + r')\s+'
-        r'(?P<date_val>\d{1,2}\s+[a-zA-Zéûôîâäëïöüùç]+\s+\d{2,4})\s+'
-        r'(?P<amount>-?\d{1,3}(?:\s\d{3})*,\d{3})$',
+        r'(?P<date_val>' + date_pattern + r')\s+'
+        r'(?P<amount>-?\d[\d\s.,]*)$',
         re.IGNORECASE
     )
 
     skip_patterns = [
-        re.compile(r'^Date\s+Opé', re.IGNORECASE),
-        re.compile(r'^Libellé\s+Opération', re.IGNORECASE),
-        re.compile(r'^Référence$', re.IGNORECASE),
+        re.compile(r'^Date\s+Op[ée]', re.IGNORECASE),
+        re.compile(r'^Libell[ée]\s+Op[ée]ration', re.IGNORECASE),
+        re.compile(r'^R[ée]f[ée]rence$', re.IGNORECASE),
         re.compile(r'^Date\s+valeur', re.IGNORECASE),
-        re.compile(r'^Débit$', re.IGNORECASE),
-        re.compile(r'^Crédit$', re.IGNORECASE),
-        re.compile(r'^Solde\s+(départ|fin|actuel)', re.IGNORECASE),
+        re.compile(r'^D[ée]bit$', re.IGNORECASE),
+        re.compile(r'^Cr[ée]dit$', re.IGNORECASE),
+        re.compile(r'^Solde\s+(d[ée]part|fin|actuel)', re.IGNORECASE),
         re.compile(r'^Page\s+\d+', re.IGNORECASE),
         re.compile(r'^BIAT$', re.IGNORECASE),
+        re.compile(r'^#\s+Extrait\s+de\s+compte', re.IGNORECASE),
         re.compile(r'^Extrait\s+de\s+compte', re.IGNORECASE),
-        re.compile(r'^Numéro\s+de\s+Compte', re.IGNORECASE),
+        re.compile(r'^Num[ée]ro\s+de\s+Compte', re.IGNORECASE),
         re.compile(r'^Devise', re.IGNORECASE),
         re.compile(r'^RIB', re.IGNORECASE),
-        re.compile(r'^Catégorie\s+Compte', re.IGNORECASE),
+        re.compile(r'^Cat[ée]gorie\s+Compte', re.IGNORECASE),
         re.compile(r'^Nom\s+du\s+Client', re.IGNORECASE),
         re.compile(r'^Sauf\s+erreur', re.IGNORECASE),
-        re.compile(r'^Edité\s+le', re.IGNORECASE),
-        re.compile(r'^#\s+Extrait\s+de\s+compte', re.IGNORECASE),
+        re.compile(r'^Edit[ée]\s+le', re.IGNORECASE),
+        re.compile(r'^Date\s*:', re.IGNORECASE),
+        re.compile(r'^Heure\s*:', re.IGNORECASE),
     ]
 
     rows = []
@@ -363,6 +499,31 @@ def _parse_pdf_biat_text(file_bytes: bytes) -> pd.DataFrame:
     for line in lines:
         if any(p.match(line) for p in skip_patterns):
             continue
+
+        # Lignes de tableau avec pipes (si extract_tables a échoué mais pipes présents)
+        if line.startswith('|') and line.endswith('|'):
+            parts = [p.strip() for p in line.split('|')[1:-1]]
+            if len(parts) >= 5:
+                date_op = _parse_date(parts[0])
+                if date_op:
+                    libelle = parts[1] if len(parts) > 1 else ""
+                    ref = parts[2] if len(parts) > 2 else ""
+                    date_val = _parse_date(parts[3]) if len(parts) > 3 else None
+                    debit = _parse_amount(parts[4]) if len(parts) > 4 else 0.0
+                    credit = _parse_amount(parts[5]) if len(parts) > 5 else 0.0
+                    # Si montant négatif dans débit
+                    if debit < 0:
+                        debit = abs(debit)
+                        credit = 0.0
+                    rows.append({
+                        "date_operation": date_op,
+                        "date_valeur": date_val,
+                        "reference": ref or None,
+                        "libelle": libelle.strip() or "(sans libellé)",
+                        "debit": debit,
+                        "credit": credit,
+                    })
+                    continue
 
         m = line_re.match(line)
         if m:
@@ -383,6 +544,7 @@ def _parse_pdf_biat_text(file_bytes: bytes) -> pd.DataFrame:
             }
         else:
             if current is not None:
+                # C'est une suite de libellé
                 current['libelle'] += ' ' + line.strip()
 
     if current:
@@ -545,6 +707,8 @@ def _extract_movements(df: pd.DataFrame) -> List[dict]:
         libelle = str(row.get(mapping["libelle"]) or "").replace("\n", " ").strip()
         libelle_upper = libelle.upper()
         if "OPENING BALANCE" in libelle_upper or "CLOSING BALANCE" in libelle_upper:
+            continue
+        if "SOLDE DEPART" in libelle_upper or "SOLDE FIN" in libelle_upper:
             continue
 
         debit_col = mapping.get("debit")

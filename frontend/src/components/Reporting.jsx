@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import ReactDOM from 'react-dom';
 import ApiService from '../services/api';
 import '../styles/Reporting.css';
 
@@ -15,6 +16,11 @@ function Reporting({ refreshTrigger = 0 }) {
     const [error, setError] = useState('');
     const [preview, setPreview] = useState(null);
 
+    const [showPreviewModal, setShowPreviewModal] = useState(false);
+    const [previewSections, setPreviewSections] = useState(null);
+    const [previewAction, setPreviewAction] = useState(null);
+    const [previewLoading, setPreviewLoading] = useState(false);
+
     const [exportConfig, setExportConfig] = useState({
         includePnlSelected: true,
         includePnlGlobal: false,
@@ -22,8 +28,8 @@ function Reporting({ refreshTrigger = 0 }) {
         monthlyDetailMonths: [],
         includeExecutiveSummary: true,
         includePnlFormatted: false,
-        includeBudgetForecast: false,
-        includeGlobalState: true,
+        includeBudgetForecast: true,
+        includeGlobalState: false,
         includeMonthlyForecast: false,
         includeCycles: false,
         includeAlerts: false,
@@ -60,14 +66,31 @@ function Reporting({ refreshTrigger = 0 }) {
         loadPreview();
     }, [refreshTrigger, loadPreview]);
 
+    const configPayload = useMemo(() => ({
+        ...exportConfig,
+        budgetCycleCode,
+    }), [exportConfig, budgetCycleCode]);
+
+    const openPreview = async (action) => {
+        setPreviewLoading(true);
+        setPreviewAction(action);
+        setError('');
+        try {
+            const data = await ApiService.getReportingPreviewSections(targetYear, 'INITIAL', null, configPayload);
+            setPreviewSections(data);
+            setShowPreviewModal(true);
+        } catch (e) {
+            setError(e.message || 'Erreur chargement prévisualisation');
+        } finally {
+            setPreviewLoading(false);
+        }
+    };
+
     const handleExport = async () => {
         setExportLoading(true);
         setError('');
         try {
-            await ApiService.exportReportingExcel(targetYear, 'INITIAL', null, {
-                ...exportConfig,
-                budgetCycleCode,
-            });
+            await ApiService.exportReportingExcel(targetYear, 'INITIAL', null, configPayload);
         } catch (e) {
             setError(e.message || 'Erreur export reporting');
         } finally {
@@ -79,15 +102,29 @@ function Reporting({ refreshTrigger = 0 }) {
         setPrintLoading(true);
         setError('');
         try {
-            await ApiService.printReporting(targetYear, 'INITIAL', null, {
-                ...exportConfig,
-                budgetCycleCode,
-            });
+            await ApiService.printReporting(targetYear, 'INITIAL', null, configPayload);
         } catch (e) {
             setError(e.message || 'Erreur impression reporting');
         } finally {
             setPrintLoading(false);
         }
+    };
+
+    const handleConfirmPreview = async () => {
+        setShowPreviewModal(false);
+        if (previewAction === 'excel') {
+            await handleExport();
+        } else if (previewAction === 'print') {
+            await handlePrint();
+        }
+        setPreviewSections(null);
+        setPreviewAction(null);
+    };
+
+    const handleCancelPreview = () => {
+        setShowPreviewModal(false);
+        setPreviewSections(null);
+        setPreviewAction(null);
     };
 
     const availableMonths = useMemo(() => preview?.available_months || [], [preview]);
@@ -199,8 +236,8 @@ function Reporting({ refreshTrigger = 0 }) {
                 </div>
 
                 <div className="reporting-actions">
-                    <button className="btn-reporting" onClick={handlePrint} disabled={printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{printLoading ? 'Impression...' : '🖨 Imprimer'}</button>
-                    <button className="btn-reporting primary" onClick={handleExport} disabled={exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{exportLoading ? 'Export...' : '⬇ Export Excel'}</button>
+                    <button className="btn-reporting" onClick={() => openPreview('print')} disabled={previewLoading || printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'print' ? 'Chargement...' : printLoading ? 'Impression...' : '🖨 Imprimer'}</button>
+                    <button className="btn-reporting primary" onClick={() => openPreview('excel')} disabled={previewLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'excel' ? 'Chargement...' : exportLoading ? 'Export...' : '⬇ Export Excel'}</button>
                 </div>
             </div>
 
@@ -276,7 +313,68 @@ function Reporting({ refreshTrigger = 0 }) {
 
             {error && <div className="reporting-error">{error}</div>}
 
-            
+            {showPreviewModal && previewSections && ReactDOM.createPortal(
+                <div className="csv-preview-modal">
+                    <div className="csv-preview-backdrop" onClick={handleCancelPreview}></div>
+                    <div className="csv-preview-container">
+                        <div className="csv-preview-header">
+                            <div className="csv-preview-title">
+                                <span>📄</span>
+                                <h3>Prévisualisation Reporting</h3>
+                            </div>
+                            <div className="csv-preview-meta">
+                                <span className="csv-filename">{previewSections.target_year} — {previewSections.cycle_code}</span>
+                                <span className="csv-count">{previewSections.sections?.length || 0} sections</span>
+                            </div>
+                            <button className="csv-preview-close" onClick={handleCancelPreview}>✕</button>
+                        </div>
+
+                        <div className="csv-preview-body">
+                            {(previewSections.sections || []).map((section, sIdx) => (
+                                <div key={sIdx} className="reporting-preview-section">
+                                    <h4 className="reporting-preview-section-title">{section.title}</h4>
+                                    {section.headers.length === 0 ? (
+                                        <div className="csv-preview-empty">Aucune donnée</div>
+                                    ) : (
+                                        <table className="csv-preview-table">
+                                            <thead>
+                                                <tr>
+                                                    {section.headers.map((h, hIdx) => (
+                                                        <th key={hIdx}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {section.rows.map((row, rIdx) => (
+                                                    <tr key={rIdx} className={section.row_classes?.[rIdx] || ''}>
+                                                        {row.map((cell, cIdx) => (
+                                                            <td key={cIdx}>{cell}</td>
+                                                        ))}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="csv-preview-footer">
+                            <button className="btn btn-secondary" onClick={handleCancelPreview}>
+                                ✕ Annuler
+                            </button>
+                            <button
+                                className="btn btn-primary"
+                                onClick={handleConfirmPreview}
+                                disabled={exportLoading || printLoading}
+                            >
+                                {previewAction === 'print' ? '🖨 Confirmer et Imprimer' : '⬇ Confirmer et Télécharger'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
         </div>
     );
 }

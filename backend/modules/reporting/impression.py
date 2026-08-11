@@ -3,7 +3,7 @@ from datetime import date
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 
 from modules.auth.dependencies import get_current_user, require_permission
 from modules.forecast.engine import get_annual_comparison, get_comparison, get_cycle_status, get_subagregats
@@ -13,6 +13,7 @@ from .router import (
     _build_hierarchical_annual_df,
     _build_hierarchical_monthly_detail_df,
     _build_pnl_formatted_hierarchical_df,
+    _format_df_reste_budget,
     _get_realized_months,
     _normalize_month_param,
     _resolve_detail_months,
@@ -388,3 +389,240 @@ def print_reporting_html(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur impression reporting: {str(e)}")
+
+
+def _df_to_section(df: pd.DataFrame, sheet_name: str, title: str) -> dict:
+    if df is None or df.empty:
+        return {"title": title, "sheet_name": sheet_name, "headers": [], "rows": [], "row_classes": []}
+
+    cols = list(df.columns)
+    headers = [str(c) for c in cols]
+    rows = []
+    row_classes = []
+    for record in df.to_dict(orient="records"):
+        row_classes.append(_row_class(sheet_name, record))
+        rows.append([_fmt_cell_custom(record.get(c), c, record) for c in cols])
+    return {"title": title, "sheet_name": sheet_name, "headers": headers, "rows": rows, "row_classes": row_classes}
+
+
+@router.get("/preview/sections")
+def preview_reporting_sections(
+    target_year: int = Query(..., ge=2000, le=2100),
+    cycle_code: str = Query("INITIAL"),
+    budget_cycle_code: str | None = Query(None),
+    month: int | None = Query(None, ge=1, le=12),
+    pnl_scope: str = Query("selected"),
+    pnl_months: list[int] | None = Query(None),
+    monthly_detail_months: list[int] | None = Query(None),
+    include_executive_summary: bool = Query(True),
+    include_pnl_formatted: bool = Query(True),
+    include_budget_forecast: bool = Query(True),
+    include_monthly_forecast: bool = Query(True),
+    include_cycles: bool = Query(True),
+    include_alerts: bool = Query(False),
+    include_subaggregates: bool = Query(True),
+    include_global_state: bool = Query(False),
+    include_pnl_selected: bool = Query(False),
+    include_pnl_global: bool = Query(False),
+    _user: dict = Depends(require_permission("reporting", "read")),
+):
+    try:
+        if not any([
+            include_executive_summary,
+            include_pnl_formatted,
+            include_budget_forecast,
+            include_cycles,
+            include_alerts,
+            include_global_state,
+        ]):
+            if include_pnl_selected or include_pnl_global:
+                include_pnl_formatted = True
+            else:
+                include_global_state = True
+
+        selected_month = _normalize_month_param(target_year, month)
+        effective_budget_cycle = budget_cycle_code or cycle_code
+        realized_months = _get_realized_months(target_year)
+
+        detail_months = []
+        if include_budget_forecast and include_monthly_forecast:
+            detail_months = _resolve_detail_months(realized_months, selected_month, monthly_detail_months)
+
+        effective_pnl_months_selected = []
+        effective_pnl_months_global = []
+        export_pnl_selected = False
+        export_pnl_global = False
+        if include_pnl_formatted:
+            if include_pnl_selected or include_pnl_global:
+                export_pnl_selected = include_pnl_selected
+                export_pnl_global = include_pnl_global
+            else:
+                export_pnl_selected = pnl_scope == "selected"
+                export_pnl_global = pnl_scope in {"all", "global"}
+
+            if export_pnl_selected:
+                effective_pnl_months_selected = _resolve_pnl_months(realized_months, "selected", selected_month, pnl_months)
+            if export_pnl_global:
+                effective_pnl_months_global = _resolve_pnl_months(realized_months, "global", selected_month, pnl_months)
+
+        annual = get_annual_comparison(target_year=target_year, cycle_code=effective_budget_cycle)
+        monthly = get_comparison(target_year=target_year, cycle_code=effective_budget_cycle, month=selected_month)
+        cycle_status = get_cycle_status(target_year=target_year)
+
+        annual_raw_rows = annual.get("rows", [])
+        annual_df = pd.DataFrame(_build_annual_forecast_export_rows(annual_raw_rows))
+
+        sub_ann_map: dict[str, list[dict]] = {}
+        need_annual_sub = include_subaggregates or include_pnl_formatted or include_global_state
+        if need_annual_sub:
+            for row in annual_raw_rows:
+                key = row.get("agregat_key")
+                if key:
+                    sub_ann_map[key] = list(get_subagregats(target_year, effective_budget_cycle, key, None).get("items", []))
+
+        pnl_selected_df = pd.DataFrame()
+        pnl_global_df = pd.DataFrame()
+        if include_pnl_formatted:
+            annual_base = get_annual_comparison(target_year=target_year, cycle_code=cycle_code)
+            annual_pnl_rows = annual_base.get("rows", [])
+            pnl_sub_map: dict[str, list[dict]] = {}
+            for row in annual_pnl_rows:
+                key = row.get("agregat_key")
+                if key and key in PNL_KEYS:
+                    pnl_sub_map[key] = list(get_subagregats(target_year, cycle_code, key, None).get("items", []))
+
+            if export_pnl_selected:
+                pnl_selected_df = _build_pnl_formatted_hierarchical_df(
+                    target_year=target_year,
+                    cycle_code=cycle_code,
+                    annual_rows=annual_pnl_rows,
+                    sub_ann_map=pnl_sub_map,
+                    pnl_months=effective_pnl_months_selected,
+                    pnl_scope="selected",
+                )
+            if export_pnl_global:
+                pnl_global_df = _build_pnl_formatted_hierarchical_df(
+                    target_year=target_year,
+                    cycle_code=cycle_code,
+                    annual_rows=annual_pnl_rows,
+                    sub_ann_map=pnl_sub_map,
+                    pnl_months=effective_pnl_months_global,
+                    pnl_scope="global",
+                )
+
+        by_key_annual = {r["agregat_key"]: r for r in annual_raw_rows}
+        executive_df = pd.DataFrame([
+            {
+                "KPI": "CA Net",
+                "Prévision Annuelle": by_key_annual.get("ca_net", {}).get("forecast_annual"),
+                "Réalisé Cumulé": by_key_annual.get("ca_net", {}).get("actual_total"),
+                "Reste budget": by_key_annual.get("ca_net", {}).get("remaining_budget"),
+            },
+            {
+                "KPI": "EBITDA",
+                "Prévision Annuelle": by_key_annual.get("ebitda", {}).get("forecast_annual"),
+                "Réalisé Cumulé": by_key_annual.get("ebitda", {}).get("actual_total"),
+                "Reste budget": by_key_annual.get("ebitda", {}).get("remaining_budget"),
+            },
+            {
+                "KPI": "Résultat Net",
+                "Prévision Annuelle": by_key_annual.get("resultat_net", {}).get("forecast_annual"),
+                "Réalisé Cumulé": by_key_annual.get("resultat_net", {}).get("actual_total"),
+                "Reste budget": by_key_annual.get("resultat_net", {}).get("remaining_budget"),
+            },
+        ])
+
+        cycles_df = pd.DataFrame(cycle_status.get("cycles", []))
+        annual_alerts_df = pd.DataFrame([
+            {
+                "Type": "Annuel",
+                "Agrégat": r.get("agregat_label"),
+                "Nature": r.get("nature"),
+                "Prévision": r.get("forecast_annual"),
+                "Réalisé": r.get("actual_total"),
+                "Indice / alerte": r.get("indicator_label") or "—",
+                "Niveau": "Défavorable",
+            }
+            for r in annual_raw_rows if r.get("alert_level") == "negative"
+        ])
+        monthly_alerts_df = pd.DataFrame([
+            {
+                "Type": f"Mensuel M{selected_month:02d}",
+                "Agrégat": r.get("agregat_label"),
+                "Nature": r.get("nature"),
+                "Prévision": r.get("forecast_value"),
+                "Réalisé": r.get("actual_value"),
+                "Indice / alerte": "Défavorable",
+                "Niveau": "Défavorable",
+            }
+            for r in monthly if r.get("alert_level") == "negative"
+        ])
+
+        annual_detail_df = _build_hierarchical_annual_df(annual_raw_rows, sub_ann_map, only_pnl=False)
+        monthly_detail_df = _build_hierarchical_monthly_detail_df(
+            target_year=target_year,
+            cycle_code=effective_budget_cycle,
+            detail_months=detail_months,
+            include_subaggregates=include_subaggregates,
+        ) if include_budget_forecast and include_monthly_forecast else pd.DataFrame()
+
+        global_state_df = _build_global_state_df(
+            target_year=target_year,
+            cycle_code=effective_budget_cycle,
+            annual_rows=annual_raw_rows,
+            sub_ann_map=sub_ann_map,
+            realized_months=realized_months,
+        ) if include_global_state else pd.DataFrame()
+
+        executive_df = _format_df_reste_budget(executive_df)
+        pnl_selected_df = _format_df_reste_budget(pnl_selected_df)
+        pnl_global_df = _format_df_reste_budget(pnl_global_df)
+        annual_df = _format_df_reste_budget(annual_df)
+        annual_detail_df = _format_df_reste_budget(annual_detail_df)
+        monthly_detail_df = _format_df_reste_budget(monthly_detail_df)
+        global_state_df = _format_df_reste_budget(global_state_df)
+
+        title_map = {
+            "Executive_Summary": "Executive Summary",
+            "PnL_Formate": "P&L Formaté",
+            "PnL_Formate_Selection": "P&L Formaté (Mois sélectionnés)",
+            "PnL_Formate_Global": "P&L Formaté (Global)",
+            "Forecast_Annuel": "Prévision Budget Annuelle",
+            "Forecast_Annuel_Detail": "Prévision Budget Annuelle Détaillée",
+            "Forecast_Mensuel_Detail": "Prévision Budget Mensuelle Détaillée",
+            "Etat_Globale": "État Globale",
+            "Cycles": "Statut des Cycles",
+            "Alertes": "Alertes",
+        }
+
+        sections = []
+        if include_executive_summary:
+            sections.append(_df_to_section(executive_df, "Executive_Summary", title_map["Executive_Summary"]))
+        if include_pnl_formatted:
+            has_selected = not pnl_selected_df.empty
+            has_global = not pnl_global_df.empty
+            if has_selected and has_global:
+                sections.append(_df_to_section(pnl_selected_df, "PnL_Formate_Selection", title_map["PnL_Formate_Selection"]))
+                sections.append(_df_to_section(pnl_global_df, "PnL_Formate_Global", title_map["PnL_Formate_Global"]))
+            elif has_selected:
+                sections.append(_df_to_section(pnl_selected_df, "PnL_Formate", title_map["PnL_Formate"]))
+            elif has_global:
+                sections.append(_df_to_section(pnl_global_df, "PnL_Formate", title_map["PnL_Formate"]))
+        if include_budget_forecast:
+            sections.append(_df_to_section(annual_df, "Forecast_Annuel", title_map["Forecast_Annuel"]))
+            sections.append(_df_to_section(annual_detail_df, "Forecast_Annuel_Detail", title_map["Forecast_Annuel_Detail"]))
+            if include_monthly_forecast:
+                sections.append(_df_to_section(monthly_detail_df, "Forecast_Mensuel_Detail", title_map["Forecast_Mensuel_Detail"]))
+        if include_global_state:
+            sections.append(_df_to_section(global_state_df, "Etat_Globale", title_map["Etat_Globale"]))
+        if include_cycles:
+            sections.append(_df_to_section(cycles_df, "Cycles", title_map["Cycles"]))
+        if include_alerts:
+            alerts_df = pd.concat([annual_alerts_df, monthly_alerts_df], ignore_index=True)
+            sections.append(_df_to_section(alerts_df, "Alertes", title_map["Alertes"]))
+
+        return {"sections": sections, "target_year": target_year, "cycle_code": effective_budget_cycle}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur preview sections reporting: {str(e)}")

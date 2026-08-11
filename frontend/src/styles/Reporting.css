@@ -548,3 +548,90 @@
     background: color-mix(in srgb, var(--bg-hover) 70%, transparent);
     border-color: var(--border-light);
 }
+
+/* ─── Preview Modal Sections ─── */
+
+.reporting-preview-section {
+    margin-bottom: 1.5rem;
+}
+
+.reporting-preview-section:last-child {
+    margin-bottom: 0;
+}
+
+.reporting-preview-section-title {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0 0 0.5rem;
+    padding: 0.6rem 0.85rem;
+    font-size: 0.92rem;
+    font-weight: 800;
+    color: var(--text-primary, #0f172a);
+    background: linear-gradient(90deg, color-mix(in srgb, var(--olea-anthracite, #2d3436) 10%, transparent), color-mix(in srgb, var(--primary-500, #b7482b) 12%, transparent));
+    border-bottom: 1px solid var(--border-light, #e2e8f0);
+    border-radius: var(--radius-sm, 6px) var(--radius-sm, 6px) 0 0;
+    backdrop-filter: blur(6px);
+}
+
+/* Row classes inside csv-preview-table (coherent with print/excel palette) */
+
+.csv-preview-table .row-kpi td {
+    background: #EEF2FF;
+    font-weight: 700;
+}
+
+.csv-preview-table .row-agg td {
+    background: #E0F2FE;
+    font-weight: 700;
+}
+
+.csv-preview-table .row-sub td {
+    background: #F8FAFC;
+}
+
+.csv-preview-table .row-produit td {
+    background: #ECFDF5;
+}
+
+.csv-preview-table .row-charge td {
+    background: #FEF2F2;
+}
+
+.csv-preview-table .row-result td {
+    background: #EFF6FF;
+    font-weight: 700;
+}
+
+/* Dark mode overrides */
+
+.dark-mode .csv-preview-table .row-kpi td {
+    background: rgba(99, 102, 241, 0.15);
+}
+
+.dark-mode .csv-preview-table .row-agg td {
+    background: rgba(56, 189, 248, 0.12);
+}
+
+.dark-mode .csv-preview-table .row-sub td {
+    background: rgba(148, 163, 184, 0.08);
+}
+
+.dark-mode .csv-preview-table .row-produit td {
+    background: rgba(52, 211, 153, 0.12);
+}
+
+.dark-mode .csv-preview-table .row-charge td {
+    background: rgba(248, 113, 113, 0.12);
+}
+
+.dark-mode .csv-preview-table .row-result td {
+    background: rgba(96, 165, 250, 0.15);
+    font-weight: 700;
+}
+
+.dark-mode .reporting-preview-section-title {
+    color: var(--text-primary);
+    background: linear-gradient(90deg, rgba(255,255,255,0.05), rgba(183, 72, 43, 0.15));
+    border-color: var(--border-light);
+}
