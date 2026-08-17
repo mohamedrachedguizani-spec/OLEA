@@ -89,7 +89,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     // Données mensuelles chargées depuis le backend
     const [monthlyData, setMonthlyData] = useState({});
     const [selectedMonth, setSelectedMonth] = useState(null);
-    const [selectedYearFilter, setSelectedYearFilter] = useState(String(currentYear));
+    const [selectedYearFilter, setSelectedYearFilter] = useState('');
 
     // Mois triés chronologiquement
     const sortedMonths = useMemo(() => {
@@ -111,7 +111,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     }, [sortedMonths]);
 
     const filteredMonths = useMemo(() => {
-        if (selectedYearFilter === 'all') return sortedMonths;
+        if (!selectedYearFilter || selectedYearFilter === 'all') return sortedMonths;
         const yearNum = Number(selectedYearFilter);
         if (!Number.isFinite(yearNum)) return sortedMonths;
         return sortedMonths.filter((m) => {
@@ -123,15 +123,13 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     // Sélectionner toutes les périodes par défaut
     useEffect(() => {
         if (!availableYears.length) {
-           
             return;
         }
 
-        const selectedYearNum = Number(selectedYearFilter);
-        if (selectedYearFilter !== 'all' && !availableYears.includes(selectedYearNum)) {
-            setSelectedYearFilter(availableYears.includes(currentYear) ? String(currentYear) : String(availableYears[0]));
+        if (!selectedYearFilter || (selectedYearFilter !== 'all' && !availableYears.includes(Number(selectedYearFilter)))) {
+            setSelectedYearFilter(String(availableYears[0]));
         }
-    }, [availableYears, currentYear, selectedYearFilter]);
+    }, [availableYears, selectedYearFilter]);
 
     useEffect(() => {
         if (!filteredMonths.length) {

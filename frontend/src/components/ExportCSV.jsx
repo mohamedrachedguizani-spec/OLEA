@@ -178,11 +178,11 @@ function ExportCSV() {
                             ✕ Annuler
                         </button>
                         <button 
-                            className="btn btn-success btn-lg"
+                            className="btn btn-primary"
                             onClick={handleConfirmExport}
                             disabled={rows.length === 0}
                         >
-                            ⬇️ Confirmer et Télécharger
+                            ⬇ Confirmer et Télécharger
                         </button>
                     </div>
                 </div>
@@ -267,11 +267,11 @@ function ExportCSV() {
                             ✕ Annuler
                         </button>
                         <button 
-                            className="btn btn-success btn-lg"
+                            className="btn btn-primary"
                             onClick={handleConfirmBrouillardExport}
                             disabled={brouillardParsed.rows.length === 0}
                         >
-                            ⬇️ Télécharger Brouillard
+                            ⬇ Télécharger Brouillard
                         </button>
                     </div>
                 </div>
@@ -342,7 +342,7 @@ function ExportCSV() {
                                 </>
                             ) : (
                                 <>
-                                    <span className="icon">👁️</span>
+                                    <span className="icon"></span>
                                     Prévisualiser CSV
                                 </>
                             )}
@@ -414,7 +414,7 @@ function ExportCSV() {
                                     </>
                                 ) : (
                                     <>
-                                        <span className="icon">📒</span>
+                                        <span className="icon"></span>
                                         Prévisualiser Brouillard
                                     </>
                                 )}

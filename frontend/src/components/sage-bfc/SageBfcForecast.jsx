@@ -45,9 +45,11 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         return now.getMonth() + 1;
     }, [selectedMonth, now]);
 
-    const [targetYear, setTargetYear] = useState(inferredYear);
+    const [targetYear, setTargetYear] = useState(null);
     const [compareCycle, setCompareCycle] = useState('INITIAL');
     const [compareMonth, setCompareMonth] = useState(inferredMonth);
+    const [availableYears, setAvailableYears] = useState([]);
+    const [yearsReady, setYearsReady] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [actionLoading, setActionLoading] = useState('');
@@ -76,8 +78,28 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     const [manualSaveLoading, setManualSaveLoading] = useState('');
 
     useEffect(() => {
-        setTargetYear(inferredYear);
-    }, [inferredYear]);
+        ApiService.getAvailableYears()
+            .then((data) => {
+                const years = data.years || [];
+                setAvailableYears(years);
+                if (data.latest != null) {
+                    setTargetYear(data.latest);
+                } else {
+                    setTargetYear(inferredYear);
+                }
+                setYearsReady(true);
+            })
+            .catch(() => {
+                setTargetYear(inferredYear);
+                setYearsReady(true);
+            });
+    }, []);
+
+    useEffect(() => {
+        if (!yearsReady || !availableYears.length) return;
+        // Supprimé : la ligne qui écrasait automatiquement l'année la plus récente (latest) 
+        // avec inferredYear à chaque fois que inferredYear ou la liste d'années changeait.
+    }, [inferredYear, availableYears, yearsReady]);
 
     useEffect(() => {
         setCompareMonth(inferredMonth);
@@ -131,6 +153,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     };
 
     const loadStatus = useCallback(async () => {
+        if (targetYear == null) return;
         const status = await ApiService.getForecastCyclesStatus(targetYear);
         setCycleStatus(status.cycles || []);
     }, [targetYear]);
@@ -141,11 +164,13 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     }, [chartAgregatKey]);
 
     const loadComparison = useCallback(async () => {
+        if (targetYear == null) return;
         const res = await ApiService.getForecastComparison(targetYear, compareCycle, compareMonth);
         setComparisonRows(res.rows || []);
     }, [targetYear, compareCycle, compareMonth]);
 
     const loadAnnualComparison = useCallback(async () => {
+        if (targetYear == null) return;
         const res = await ApiService.getForecastAnnualComparison(targetYear, compareCycle);
         setAnnualRows(res.rows || []);
         setAnnualMeta({
@@ -156,6 +181,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     }, [targetYear, compareCycle]);
 
     const reloadAll = useCallback(async () => {
+        if (targetYear == null) return;
         setLoading(true);
         setError('');
         try {
@@ -165,17 +191,18 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         } finally {
             setLoading(false);
         }
-    }, [loadStatus, loadComparison, loadAnnualComparison, loadCatalog]);
+    }, [loadStatus, loadComparison, loadAnnualComparison, loadCatalog, targetYear]);
 
     useEffect(() => {
+        if (targetYear == null) return;
         reloadAll();
-    }, [reloadAll]);
+    }, [reloadAll, targetYear]);
 
     useEffect(() => {
-        if (refreshTrigger > 0) {
+        if (refreshTrigger > 0 && targetYear != null) {
             reloadAll();
         }
-    }, [refreshTrigger, reloadAll]);
+    }, [refreshTrigger, reloadAll, targetYear]);
 
     const runAction = async (key, fn, okMessage) => {
         setActionLoading(key);
@@ -354,7 +381,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     }, [recomputeDraftAggregate]);
 
     const loadChartData = useCallback(async () => {
-        if (!chartAgregatKey) return;
+        if (!chartAgregatKey || targetYear == null) return;
         setChartLoading(true);
         try {
             const yearSeries = await ApiService.getForecastYearValues(targetYear, compareCycle, chartAgregatKey);
@@ -460,13 +487,14 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 <div className="forecast-toolbar-left forecast-filters-grid">
                     <label className="forecast-field compact">
                         <span>Année</span>
-                        <input
-                            type="number"
-                            min="2000"
-                            max="2100"
+                        <select
                             value={targetYear}
-                            onChange={(e) => setTargetYear(Number(e.target.value || now.getFullYear()))}
-                        />
+                            onChange={(e) => setTargetYear(Number(e.target.value))}
+                        >
+                            {availableYears.map((y) => (
+                                <option key={y} value={y}>{y}</option>
+                            ))}
+                        </select>
                     </label>
 
                     <label className="forecast-field compact">
@@ -507,7 +535,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 </div>
             )}
 
-            <div className="forecast-section-head">
+            {/* <div className="forecast-section-head">
                 <h3>Pilotage des cycles d'ajustement</h3>
                 <span>{selectedCycleMeta?.cycle_label || 'Cycle non disponible'}</span>
             </div>
@@ -559,7 +587,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                     </div>
                 ))}
             </div>
-
+ */}
             <div className="forecast-section-head">
                 <h3>Vue de comparaison</h3>
                 <span>Basculez entre l'analyse annuelle et mensuelle</span>

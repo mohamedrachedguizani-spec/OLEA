@@ -793,6 +793,13 @@ class ApiService {
         return response.json();
     }
 
+    // Récupérer toutes les années disponibles (clôturées + année en cours avec données)
+    static async getAvailableYears() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/available-years`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
     // Récupérer un tableau BFC depuis le cache
     static async getSageBfcTableau(tableauId) {
         const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/tableau/${tableauId}`);

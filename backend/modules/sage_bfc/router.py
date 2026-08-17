@@ -1339,6 +1339,37 @@ async def get_closed_years():
     }
 
 
+@router.get("/available-years")
+async def get_available_years():
+    """
+    Retourne toutes les années disponibles pour Forecast / Reporting :
+    union des années clôturées (sage_bfc_year_closure), des années
+    ayant des données uploadées dans sage_bfc_monthly, et des années
+    ayant des prévisions (bfc_forecast_values).
+    Trié par année décroissante.
+    """
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT DISTINCT y FROM (
+                SELECT closed_year AS y FROM sage_bfc_year_closure
+                UNION
+                SELECT DISTINCT YEAR(periode) AS y FROM sage_bfc_monthly
+                UNION
+                SELECT DISTINCT forecast_year AS y FROM bfc_forecast_values
+            ) t
+            ORDER BY y DESC
+            """
+        )
+        rows = cursor.fetchall() or []
+
+    years = [int(r["y"]) for r in rows if r.get("y") is not None]
+    return {
+        "years": years,
+        "latest": years[0] if years else None,
+    }
+
+
 @router.get("/audit/cumulative-delta")
 async def get_audit_cumulative_delta(
     year: int = Query(..., ge=2000, le=2100, description="Année fiscale"),

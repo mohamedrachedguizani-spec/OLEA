@@ -7,8 +7,10 @@ const CYCLE_OPTIONS = ['INITIAL', 'M03', 'M06', 'M08'];
 
 function Reporting({ refreshTrigger = 0 }) {
     const now = new Date();
-    const [targetYear, setTargetYear] = useState(now.getFullYear());
+    const [targetYear, setTargetYear] = useState(null);
     const [budgetCycleCode, setBudgetCycleCode] = useState('INITIAL');
+    const [availableYears, setAvailableYears] = useState([]);
+    const [yearsReady, setYearsReady] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
@@ -45,6 +47,7 @@ function Reporting({ refreshTrigger = 0 }) {
     };
 
     const loadPreview = useCallback(async () => {
+        if (targetYear == null) return;
         setLoading(true);
         setError('');
         try {
@@ -56,6 +59,24 @@ function Reporting({ refreshTrigger = 0 }) {
             setLoading(false);
         }
     }, [targetYear]);
+
+    useEffect(() => {
+        ApiService.getAvailableYears()
+            .then((data) => {
+                const years = data.years || [];
+                setAvailableYears(years);
+                if (data.latest != null) {
+                    setTargetYear(data.latest);
+                } else {
+                    setTargetYear(now.getFullYear());
+                }
+                setYearsReady(true);
+            })
+            .catch(() => {
+                setTargetYear(now.getFullYear());
+                setYearsReady(true);
+            });
+    }, []);
 
     useEffect(() => {
         loadPreview();
@@ -225,7 +246,9 @@ function Reporting({ refreshTrigger = 0 }) {
                 <div className="reporting-toolbar-grid">
                     <label>
                         <span>Année</span>
-                        <input type="number" min="2000" max="2100" value={targetYear} onChange={(e) => setTargetYear(Number(e.target.value || now.getFullYear()))} />
+                        <select value={targetYear} onChange={(e) => setTargetYear(Number(e.target.value))}>
+                            {availableYears.map((y) => <option key={y} value={y}>{y}</option>)}
+                        </select>
                     </label>
                     <label>
                         <span>Cycle budget</span>
