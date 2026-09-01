@@ -1,5 +1,6 @@
 // src/components/sage-bfc/SageBfcDashboard.js
 import React, { useMemo } from 'react';
+import { FiBarChart2 } from 'react-icons/fi';
 
 function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatMonthShort, currentResume, previousResume, selectedMonth }) {
     const fmt = (val) => {
@@ -133,7 +134,7 @@ function SageBfcDashboard({ monthlyData, sortedMonths, formatMonthLabel, formatM
     if (sortedMonths.length === 0) {
         return (
             <div className="dashboard-empty">
-                <div className="dashboard-empty-icon">📊</div>
+                <div className="dashboard-empty-icon"><FiBarChart2 /></div>
                 <h4>Aucune donnée mensuelle</h4>
                 <p>Chargez une balance SAGE pour commencer l'analyse.</p>
             </div>

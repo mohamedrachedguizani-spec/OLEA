@@ -11,6 +11,34 @@ import {
 } from 'recharts';
 import ApiService, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import {
+    FiActivity,
+    FiArrowDown,
+    FiArrowDownCircle,
+    FiArrowUp,
+    FiArrowUpCircle,
+    FiBarChart2,
+    FiCalendar,
+    FiCheckCircle,
+    FiClipboard,
+    FiDollarSign,
+    FiFileText,
+    FiGrid,
+    FiHome,
+    FiMonitor,
+    FiPieChart,
+    FiRefreshCw,
+    FiShield,
+    FiTag,
+    FiTarget,
+    FiTrendingDown,
+    FiTrendingUp,
+    FiUser,
+    FiUserCheck,
+    FiUsers,
+    FiUserX,
+    FiZap,
+} from 'react-icons/fi';
 
 // ─── WebSocket URL ───
 const WS_URL = API_BASE_URL.replace(/^http/i, 'ws') + '/ws/live';
@@ -18,15 +46,15 @@ const WS_RECONNECT_DELAY = 3000;
 
 // ─── Section definitions ───
 const SECTIONS = [
-    { id: 'overview',   label: 'Vue d\'ensemble', icon: '🏠', desc: 'Résumé global',       badgeKey: null,       accent: '#d4a528' },
-    { id: 'tresorerie', label: 'Trésorerie',      icon: '💰', desc: 'Flux & solde caisse', badgeKey: 'ecritures', accent: '#b7482b' },
-    { id: 'bfc',        label: 'Analyse BFC',     icon: '📊', desc: 'Résultat financier',  badgeKey: 'periodes',  accent: '#2f343a' },
+    { id: 'overview',   label: 'Vue d\'ensemble', icon: <FiHome />,       desc: 'Résumé global',       badgeKey: null,        accent: '#d4a528' },
+    { id: 'tresorerie', label: 'Trésorerie',      icon: <FiDollarSign />, desc: 'Flux & solde caisse', badgeKey: 'ecritures', accent: '#b7482b' },
+    { id: 'bfc',        label: 'Analyse BFC',      icon: <FiBarChart2 />,  desc: 'Résultat financier', badgeKey: 'periodes',   accent: '#2f343a' },
 ];
 
 const ADMIN_SECTIONS = [
-    { id: 'overview', label: 'Vue d\'ensemble', icon: '🛡️', desc: 'Superadmin', badgeKey: 'users', accent: '#863421' },
-    { id: 'audit', label: 'Audit', icon: '🧾', desc: 'Activité & modules', badgeKey: 'audit', accent: '#b7482b' },
-    { id: 'users', label: 'Utilisateurs', icon: '👥', desc: 'Comptes & sessions', badgeKey: 'sessions', accent: '#2f343a' },
+    { id: 'overview', label: 'Vue d\'ensemble', icon: <FiShield />,   desc: 'Superadmin',         badgeKey: 'users',    accent: '#863421' },
+    { id: 'audit',    label: 'Audit',            icon: <FiFileText />, desc: 'Activité & modules', badgeKey: 'audit',    accent: '#b7482b' },
+    { id: 'users',    label: 'Utilisateurs',     icon: <FiUsers />,    desc: 'Comptes & sessions', badgeKey: 'sessions', accent: '#2f343a' },
 ];
 
 // ─── Couleurs thématiques ───
@@ -373,26 +401,26 @@ function Dashboard({ refreshTrigger }) {
                     {(activeSection === 'overview') && (
                         <>
                             <div className="gd-kpi-row">
-                                <KpiCard icon="👥" label="Utilisateurs" color="primary"
+                                <KpiCard icon={<FiUsers />} label="Utilisateurs" color="primary"
                                     value={adminUsers?.total || 0}
                                     sub={`${adminUsers?.active || 0} actifs`} loading={loading} />
-                                <KpiCard icon="✅" label="Actifs" color="success"
+                                <KpiCard icon={<FiUserCheck />} label="Actifs" color="success"
                                     value={adminUsers?.active || 0}
                                     sub={`${adminUsers?.inactive || 0} inactifs`} loading={loading} />
-                                <KpiCard icon="🔒" label="Inactifs" color="danger"
+                                <KpiCard icon={<FiUserX />} label="Inactifs" color="danger"
                                     value={adminUsers?.inactive || 0} loading={loading} />
-                                <KpiCard icon="🧠" label="Sessions actives" color="purple"
+                                <KpiCard icon={<FiMonitor />} label="Sessions actives" color="purple"
                                     value={adminSessions?.total_sessions || 0}
                                     sub={`Utilisateurs: ${adminSessions?.active_users || 0}`} loading={loading} />
-                                <KpiCard icon="🧾" label="Audit 24h" color="debit"
+                                <KpiCard icon={<FiFileText />} label="Audit 24h" color="debit"
                                     value={adminAudit?.total_24h || 0} loading={loading} />
-                                <KpiCard icon="📅" label="Audit 7j" color="neutral"
+                                <KpiCard icon={<FiCalendar />} label="Audit 7j" color="neutral"
                                     value={adminAudit?.total_7d || 0}
                                     sub={`WS: ${adminRealtime?.ws_clients || 0}`} loading={loading} />
                             </div>
 
                             <div className="gd-row-2col">
-                                <Section title="Activité d'audit" subtitle="Évolution des actions" icon="📈" className="gd-col-large">
+                                <Section title="Activité d'audit" subtitle="Évolution des actions" icon={<FiTrendingUp />} className="gd-col-large">
                                     {auditTimelineData.length > 0 ? (
                                         <ResponsiveContainer width="100%" height={280}>
                                             <LineChart data={auditTimelineData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -407,7 +435,7 @@ function Dashboard({ refreshTrigger }) {
                                     ) : <EmptyChart message="Aucune activité sur cette période" />}
                                 </Section>
 
-                                <Section title="Répartition des rôles" subtitle="Utilisateurs par rôle" icon="🥧" className="gd-col-small">
+                                <Section title="Répartition des rôles" subtitle="Utilisateurs par rôle" icon={<FiPieChart />} className="gd-col-small">
                                     {rolePieData.length > 0 ? (
                                         <div className="gd-pie-wrap">
                                             <ResponsiveContainer width="100%" height={200}>
@@ -431,7 +459,7 @@ function Dashboard({ refreshTrigger }) {
                     {/* ══════ SECTION: SUPERADMIN AUDIT ══════ */}
                     {(activeSection === 'audit') && (
                         <div className="gd-row-2col">
-                            <Section title="Activité par module" subtitle="Top modules sur la période" icon="🧩" className="gd-col-large">
+                            <Section title="Activité par module" subtitle="Top modules sur la période" icon={<FiGrid />} className="gd-col-large">
                                 {auditModuleData.length > 0 ? (
                                     <ResponsiveContainer width="100%" height={280}>
                                         <BarChart data={auditModuleData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -446,7 +474,7 @@ function Dashboard({ refreshTrigger }) {
                                 ) : <EmptyChart message="Aucune activité" />}
                             </Section>
 
-                            <Section title="Chronologie" subtitle="Flux d'actions" icon="📆" className="gd-col-small">
+                            <Section title="Chronologie" subtitle="Flux d'actions" icon={<FiCalendar />} className="gd-col-small">
                                 {auditTimelineData.length > 0 ? (
                                     <ResponsiveContainer width="100%" height={200}>
                                         <AreaChart data={auditTimelineData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -471,7 +499,7 @@ function Dashboard({ refreshTrigger }) {
                     {/* ══════ SECTION: SUPERADMIN USERS ══════ */}
                     {(activeSection === 'users') && (
                         <div className="gd-row-2col">
-                            <Section title="Actifs vs Inactifs" subtitle="Statut des comptes" icon="👤" className="gd-col-large">
+                            <Section title="Actifs vs Inactifs" subtitle="Statut des comptes" icon={<FiUser />} className="gd-col-large">
                                 {userStatusData.some(d => d.value > 0) ? (
                                     <ResponsiveContainer width="100%" height={280}>
                                         <BarChart data={userStatusData} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
@@ -485,7 +513,7 @@ function Dashboard({ refreshTrigger }) {
                                 ) : <EmptyChart message="Aucun compte" />}
                             </Section>
 
-                            <Section title="Rôles" subtitle="Répartition par rôle" icon="🧩" className="gd-col-small">
+                            <Section title="Rôles" subtitle="Répartition par rôle" icon={<FiGrid />} className="gd-col-small">
                                 {rolePieData.length > 0 ? (
                                     <div className="gd-pie-wrap">
                                         <ResponsiveContainer width="100%" height={200}>
@@ -512,29 +540,29 @@ function Dashboard({ refreshTrigger }) {
                         <>
                             {/* KPI GLOBAUX */}
                             <div className="gd-kpi-row">
-                                <KpiCard icon="💰" label="Solde Caisse" color="primary"
+                                <KpiCard icon={<FiDollarSign />} label="Solde Caisse" color="primary"
                                     value={fmtMontant(caisse?.solde_actuel || 0)} unit="TND"
                                     trend={caisse?.solde_actuel >= 0 ? 'up' : 'down'}
                                     trendLabel={caisse?.solde_actuel >= 0 ? 'Positif' : 'Négatif'} loading={loading} />
-                                <KpiCard icon="📥" label="Total Entrées" color="debit"
+                                <KpiCard icon={<FiArrowDownCircle />} label="Total Entrées" color="debit"
                                     value={fmtMontant(caisse?.total_debit || 0)} unit="TND"
                                     sub={`${caisse?.nombre_ecritures || 0} écritures`} loading={loading} />
-                                <KpiCard icon="📤" label="Total Sorties" color="credit"
+                                <KpiCard icon={<FiArrowUpCircle />} label="Total Sorties" color="credit"
                                     value={fmtMontant(caisse?.total_credit || 0)} unit="TND" loading={loading} />
-                                <KpiCard icon="🔄" label="Taux Migration" color="purple"
+                                <KpiCard icon={<FiRefreshCw />} label="Taux Migration" color="purple"
                                     value={`${tauxMigration}%`}
                                     sub={`${caisse?.ecritures_migrees || 0} / ${caisse?.nombre_ecritures || 0}`} loading={loading} />
-                                <KpiCard icon="⚖️" label="Balance Sage" color={migration?.equilibre ? 'success' : 'danger'}
+                                <KpiCard icon={<FiCheckCircle />} label="Balance Sage" color={migration?.equilibre ? 'success' : 'danger'}
                                     value={migration?.equilibre ? 'Équilibrée' : 'Déséquilibrée'}
                                     sub={`${migration?.nb_pieces || 0} pièces`} loading={loading} />
-                                <KpiCard icon="📊" label="Périodes BFC" color="neutral"
+                                <KpiCard icon={<FiBarChart2 />} label="Périodes BFC" color="neutral"
                                     value={bfc?.nb_periodes || 0}
                                     sub={bfc?.derniere_periode ? `Dernier : ${bfc.derniere_periode}` : 'Aucune donnée'} loading={loading} />
                             </div>
 
                             {/* Résumé rapide — Flux + Répartition */}
                             <div className="gd-row-2col">
-                                <Section title="Flux de Trésorerie" subtitle="Évolution journalière" icon="📈" className="gd-col-large">
+                                <Section title="Flux de Trésorerie" subtitle="Évolution journalière" icon={<FiTrendingUp />} className="gd-col-large">
                                     {caisse?.evolution?.length > 0 ? (
                                         <ResponsiveContainer width="100%" height={280}>
                                             <ComposedChart data={caisse.evolution} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -561,7 +589,7 @@ function Dashboard({ refreshTrigger }) {
                                     ) : <EmptyChart message="Aucune écriture sur cette période" />}
                                 </Section>
 
-                                <Section title="Répartition" subtitle="Entrées vs Sorties" icon="🍩" className="gd-col-small">
+                                <Section title="Répartition" subtitle="Entrées vs Sorties" icon={<FiPieChart />} className="gd-col-small">
                                     {pieData.length > 0 ? (
                                         <div className="gd-pie-wrap">
                                             <ResponsiveContainer width="100%" height={200}>
@@ -608,21 +636,21 @@ function Dashboard({ refreshTrigger }) {
                 <>
                     {/* KPIs Caisse */}
                     <div className="gd-kpi-row gd-kpi-row-4">
-                        <KpiCard icon="💰" label="Solde Caisse" color="primary"
+                        <KpiCard icon={<FiDollarSign />} label="Solde Caisse" color="primary"
                             value={fmtMontant(caisse?.solde_actuel || 0)} unit="TND"
                             trend={caisse?.solde_actuel >= 0 ? 'up' : 'down'}
                             trendLabel={caisse?.solde_actuel >= 0 ? 'Positif' : 'Négatif'} loading={loading} />
-                        <KpiCard icon="📥" label="Total Entrées" color="debit"
+                        <KpiCard icon={<FiArrowDownCircle />} label="Total Entrées" color="debit"
                             value={fmtMontant(caisse?.total_debit || 0)} unit="TND"
                             sub={`${caisse?.nombre_ecritures || 0} écritures`} loading={loading} />
-                        <KpiCard icon="📤" label="Total Sorties" color="credit"
+                        <KpiCard icon={<FiArrowUpCircle />} label="Total Sorties" color="credit"
                             value={fmtMontant(caisse?.total_credit || 0)} unit="TND" loading={loading} />
-                        <KpiCard icon="💹" label="Différence Nette" color={((caisse?.total_debit || 0) - (caisse?.total_credit || 0)) >= 0 ? 'success' : 'danger'}
+                        <KpiCard icon={<FiActivity />} label="Différence Nette" color={((caisse?.total_debit || 0) - (caisse?.total_credit || 0)) >= 0 ? 'success' : 'danger'}
                             value={fmtMontant((caisse?.total_debit || 0) - (caisse?.total_credit || 0))} unit="TND" loading={loading} />
                     </div>
 
                     {/* Flux Area Chart — full width */}
-                    <Section title="Flux de Trésorerie" subtitle="Évolution journalière avec solde cumulé" icon="📈">
+                    <Section title="Flux de Trésorerie" subtitle="Évolution journalière avec solde cumulé" icon={<FiTrendingUp />}>
                         {caisse?.evolution?.length > 0 ? (
                             <ResponsiveContainer width="100%" height={320}>
                                 <ComposedChart data={caisse.evolution} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -651,7 +679,7 @@ function Dashboard({ refreshTrigger }) {
 
                     {/* Top libellés + Répartition */}
                     <div className="gd-row-2col">
-                        <Section title="Top Libellés" subtitle="Par volume d'opérations" icon="🏷️" className="gd-col-large">
+                        <Section title="Top Libellés" subtitle="Par volume d'opérations" icon={<FiTag />} className="gd-col-large">
                             {caisse?.top_libelles?.length > 0 ? (
                                 <ResponsiveContainer width="100%" height={280}>
                                     <BarChart data={caisse.top_libelles} layout="vertical" margin={{ top: 5, right: 20, left: 10, bottom: 5 }}>
@@ -669,7 +697,7 @@ function Dashboard({ refreshTrigger }) {
                             ) : <EmptyChart message="Aucun libellé pour cette période" />}
                         </Section>
 
-                        <Section title="Répartition" subtitle="Entrées vs Sorties" icon="🍩" className="gd-col-small">
+                        <Section title="Répartition" subtitle="Entrées vs Sorties" icon={<FiPieChart />} className="gd-col-small">
                             {pieData.length > 0 ? (
                                 <div className="gd-pie-wrap">
                                     <ResponsiveContainer width="100%" height={200}>
@@ -718,23 +746,23 @@ function Dashboard({ refreshTrigger }) {
                         <>
                             {/* KPIs BFC */}
                             <div className="gd-kpi-row gd-kpi-row-4">
-                                <KpiCard icon="📊" label="Périodes" color="neutral"
+                                <KpiCard icon={<FiBarChart2 />} label="Périodes" color="neutral"
                                     value={bfc.nb_periodes}
                                     sub={`Dernière : ${bfc.derniere_periode}`} loading={loading} />
-                                <KpiCard icon="💵" label="CA Net" color="primary"
+                                <KpiCard icon={<FiDollarSign />} label="CA Net" color="primary"
                                     value={fmtMontant(bfc.pnl_cumule?.ca_net || 0)} unit="TND"
                                     sub="Cumul réalisé" loading={loading} />
-                                <KpiCard icon="📈" label="EBITDA" color={bfc.pnl_cumule?.ebitda >= 0 ? 'success' : 'danger'}
+                                <KpiCard icon={<FiTrendingUp />} label="EBITDA" color={bfc.pnl_cumule?.ebitda >= 0 ? 'success' : 'danger'}
                                     value={fmtMontant(bfc.pnl_cumule?.ebitda || 0)} unit="TND"
                                     sub={`${(bfc.pnl_cumule?.ebitda_pct || 0).toFixed(3)}% (cumul)`} loading={loading} />
-                                <KpiCard icon="🎯" label="Résultat Net" color={bfc.pnl_cumule?.resultat_net >= 0 ? 'success' : 'danger'}
+                                <KpiCard icon={<FiTarget />} label="Résultat Net" color={bfc.pnl_cumule?.resultat_net >= 0 ? 'success' : 'danger'}
                                     value={fmtMontant(bfc.pnl_cumule?.resultat_net || 0)} unit="TND"
                                     sub={`${(bfc.pnl_cumule?.resultat_net_pct || 0).toFixed(3)}% (cumul)`} loading={loading} />
                             </div>
 
                             {/* Tendance + P&L */}
                             <div className="gd-row-2col">
-                                <Section title="Tendance Financière" subtitle="CA Net / EBITDA / Résultat Net" icon="📉" className="gd-col-large">
+                                <Section title="Tendance Financière" subtitle="CA Net / EBITDA / Résultat Net" icon={<FiTrendingDown />} className="gd-col-large">
                                     <ResponsiveContainer width="100%" height={300}>
                                         <LineChart data={bfc.tendance} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
@@ -752,7 +780,7 @@ function Dashboard({ refreshTrigger }) {
                                     </ResponsiveContainer>
                                 </Section>
 
-                                <Section title="Compte de Résultat" subtitle={`Période : ${bfc.derniere_periode}`} icon="📋" className="gd-col-small">
+                                <Section title="Compte de Résultat" subtitle={`Période : ${bfc.derniere_periode}`} icon={<FiClipboard />} className="gd-col-small">
                                     {bfc.pnl_detail ? (
                                         <div className="gd-pnl-detail">
                                             <PnlRow label="CA Net" value={bfc.pnl_detail.ca_net} bold />
@@ -773,7 +801,7 @@ function Dashboard({ refreshTrigger }) {
 
                             {/* Produits vs Charges */}
                             {bfc.tendance.length > 1 && (
-                                <Section title="Produits vs Charges" subtitle="Comparaison mensuelle" icon="⚡">
+                                <Section title="Produits vs Charges" subtitle="Comparaison mensuelle" icon={<FiZap />}>
                                     <ResponsiveContainer width="100%" height={260}>
                                         <BarChart data={bfc.tendance} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
                                             <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
@@ -789,7 +817,7 @@ function Dashboard({ refreshTrigger }) {
                             )}
                         </>
                     ) : (
-                        <Section title="Analyse BFC" subtitle="Aucune donnée disponible" icon="📊">
+                        <Section title="Analyse BFC" subtitle="Aucune donnée disponible" icon={<FiBarChart2 />}>
                             <EmptyChart message="Aucune période BFC importée. Importez un fichier balance Sage pour alimenter cette section." />
                         </Section>
                     )}
@@ -877,7 +905,7 @@ function KpiCard({ icon, label, color, value, unit, sub, trend, trendLabel, load
             <div className="gd-kpi-bot">
                 {trend && (
                     <span className={`gd-kpi-trend ${trend}`}>
-                        {trend === 'up' ? '▲' : '▼'} {trendLabel}
+                        {trend === 'up' ? <FiArrowUp /> : <FiArrowDown />} {trendLabel}
                     </span>
                 )}
                 {sub && <span className="gd-kpi-sub">{sub}</span>}

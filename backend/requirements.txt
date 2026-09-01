@@ -18,3 +18,4 @@ numpy
 scipy
 prophet
 pdfplumber
+reportlab

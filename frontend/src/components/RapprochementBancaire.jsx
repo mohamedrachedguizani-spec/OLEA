@@ -1,6 +1,15 @@
 // src/components/RapprochementBancaire.jsx
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
+import {
+    FiAlertTriangle,
+    FiBookOpen,
+    FiCheckCircle,
+    FiCreditCard,
+    FiDownload,
+    FiTrendingDown,
+    FiZap,
+} from 'react-icons/fi';
 import ApiService from '../services/api';
 import './sage-bfc/SageBfcParser.css';
 
@@ -27,6 +36,7 @@ function KpiCard({ icon, label, color, value, unit, sub }) {
 function RapprochementBancaire() {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
+    const [exportingPdf, setExportingPdf] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState('');
     
@@ -143,6 +153,34 @@ function RapprochementBancaire() {
         if (sageInputRef.current) sageInputRef.current.value = '';
         if (bankInputRef.current) bankInputRef.current.value = '';
         setStep(1);
+    };
+
+    const handleExportPdf = async () => {
+        if (!result || exportingPdf) return;
+
+        setError('');
+        setSuccess('');
+        setExportingPdf(true);
+        try {
+            const pdfBlob = await ApiService.exportReconciliationPdf({
+                result,
+                sage_filename: sageFile?.name || null,
+                bank_filename: bankFile?.name || null,
+            });
+            const downloadUrl = URL.createObjectURL(pdfBlob);
+            const link = document.createElement('a');
+            link.href = downloadUrl;
+            link.download = `rapprochement_bancaire_${new Date().toISOString().slice(0, 10)}.pdf`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(downloadUrl);
+            setSuccess('Le rapport PDF a été généré avec succès.');
+        } catch (err) {
+            setError(err.message || 'Une erreur est survenue lors de l’export PDF.');
+        } finally {
+            setExportingPdf(false);
+        }
     };
 
     const formatAmount = (val) => {
@@ -375,12 +413,12 @@ function RapprochementBancaire() {
             
             {/* KPI CARDS */}
             <div className="gd-kpi-row">
-                <KpiCard icon="" label="Total Relevé Banque" color="neutral" value={result.stats.total_bank_movements} unit="mvmts" />
-                <KpiCard icon="" label="Total Écritures Sage" color="neutral" value={result.stats.total_sage_movements} unit="lignes" />
-                <KpiCard icon="" label="Rapprochées Auto" color="success" value={result.stats.auto_reconciled_count} />
-                <KpiCard icon="" label="Écarts de Montant" color="danger" value={result.stats.discrepancies_count} />
-                <KpiCard icon="" label="Montant des Écarts" color="primary" value={formatAmount(result.stats.total_discrepancy_amount)} unit="DT" />
-                <KpiCard icon="" label="Taux d'Automatisation" color="purple" value={`${result.stats.automation_rate}%`} />
+                <KpiCard icon={<FiCreditCard />} label="Total Relevé Banque" color="neutral" value={result.stats.total_bank_movements} unit="mvmts" />
+                <KpiCard icon={<FiBookOpen />} label="Total Écritures Sage" color="neutral" value={result.stats.total_sage_movements} unit="lignes" />
+                <KpiCard icon={<FiCheckCircle />} label="Rapprochées Auto" color="success" value={result.stats.auto_reconciled_count} />
+                <KpiCard icon={<FiAlertTriangle />} label="Écarts de Montant" color="danger" value={result.stats.discrepancies_count} />
+                <KpiCard icon={<FiTrendingDown />} label="Montant des Écarts" color="primary" value={formatAmount(result.stats.total_discrepancy_amount)} unit="DT" />
+                <KpiCard icon={<FiZap />} label="Taux d'Automatisation" color="purple" value={`${result.stats.automation_rate}%`} />
             </div>
 
             {/* Navigation Tabs and Search inside Results */}
@@ -589,9 +627,22 @@ function RapprochementBancaire() {
             </div>
             
             {/* Step 2 Back Actions */}
-            <div className="form-actions" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'flex-start' }}>
+            <div className="form-actions" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
                 <button className="btn btn-secondary" onClick={handleReset}>
                     Retour à l’import
+                </button>
+                <button className="btn btn-primary" onClick={handleExportPdf} disabled={exportingPdf}>
+                    {exportingPdf ? (
+                        <>
+                            <span className="spinner" style={{ marginRight: '0.5rem' }} />
+                            Génération du PDF...
+                        </>
+                    ) : (
+                        <>
+                            <FiDownload aria-hidden="true" style={{ marginRight: '0.5rem' }} />
+                            Exporter les résultats en PDF
+                        </>
+                    )}
                 </button>
             </div>
         </div>

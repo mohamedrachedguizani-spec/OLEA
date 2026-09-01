@@ -456,6 +456,18 @@ class ApiService {
         return response.json();
     }
 
+    static async exportReconciliationPdf(payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/export-pdf`, {
+            method: 'POST',
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de l’export PDF' }));
+            throw new Error(err.detail || 'Erreur lors de l’export PDF');
+        }
+        return response.blob();
+    }
+
     
     // ===================== Configuration =====================
 

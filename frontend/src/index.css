@@ -780,6 +780,33 @@ body {
     font-size: 1.5rem;
 }
 
+.export-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--primary-500);
+}
+
+.export-icon svg {
+    width: 1em;
+    height: 1em;
+    stroke-width: 2;
+}
+
+.card-title .export-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .16);
+    color: #fff;
+    -webkit-text-fill-color: initial;
+}
+
+.dark-mode .card-title .export-icon {
+    background: rgba(183, 72, 43, .2);
+    color: var(--primary-300);
+}
+
 /* ==================== Forms ==================== */
 .olea-form {
     padding: 1.5rem 2rem;
@@ -822,6 +849,11 @@ body {
 
 .form-group label .icon {
     margin-right: 0.25rem;
+}
+
+.form-group label .export-icon {
+    color: var(--accent-700);
+    vertical-align: -0.16em;
 }
 
 .form-control {
@@ -1488,6 +1520,15 @@ body {
     font-size: 1.5rem;
 }
 
+.info-box .export-icon {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    border-radius: 8px;
+    background: rgba(183, 72, 43, .1);
+    color: var(--primary-500);
+}
+
 .info-box strong {
     display: block;
     margin-bottom: 0.25rem;
@@ -1559,6 +1600,14 @@ body {
     font-size: 1.5rem;
 }
 
+.csv-preview-title .export-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, .16);
+    color: #fff;
+}
+
 .csv-preview-title h3 {
     margin: 0;
     font-size: 1.2rem;
@@ -1597,6 +1646,15 @@ body {
 
 .csv-preview-close:hover {
     background: rgba(255, 255, 255, 0.3);
+}
+
+.csv-preview-close svg,
+.csv-preview-footer .btn svg,
+.export-card .btn svg {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    stroke-width: 2.25;
 }
 
 .csv-preview-body {
@@ -1833,6 +1891,15 @@ body {
 
 .dark-mode .csv-preview-title h3 {
     color: #f0c2b6;
+}
+
+.dark-mode .form-group label .export-icon {
+    color: var(--accent-300);
+}
+
+.dark-mode .info-box .export-icon {
+    background: rgba(183, 72, 43, .2);
+    color: var(--primary-300);
 }
 
 .dark-mode .csv-filename,
@@ -4136,7 +4203,24 @@ body {
     align-items: center;
     gap: 0.5rem;
 }
-.gd-kpi-icon { font-size: 1.15rem; }
+.gd-kpi-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    flex: 0 0 30px;
+    border-radius: 8px;
+    font-size: 1.15rem;
+}
+.gd-kpi-icon svg { width: 19px; height: 19px; stroke-width: 2; }
+.gd-kpi-primary .gd-kpi-icon { color: var(--primary-500); background: rgba(183, 72, 43, .12); }
+.gd-kpi-debit .gd-kpi-icon { color: var(--accent-700); background: rgba(212, 165, 40, .14); }
+.gd-kpi-credit .gd-kpi-icon { color: var(--primary-400); background: rgba(205, 116, 88, .14); }
+.gd-kpi-purple .gd-kpi-icon { color: #657383; background: rgba(101, 115, 131, .14); }
+.gd-kpi-success .gd-kpi-icon { color: var(--success); background: rgba(31, 157, 85, .12); }
+.gd-kpi-danger .gd-kpi-icon { color: var(--error); background: rgba(183, 72, 43, .12); }
+.gd-kpi-neutral .gd-kpi-icon { color: var(--info); background: rgba(106, 114, 123, .12); }
 .gd-kpi-label {
     font-size: 0.7rem;
     font-weight: 600;
@@ -4217,7 +4301,19 @@ body {
     align-items: center;
     gap: 0.65rem;
 }
-.gd-section-icon { font-size: 1.1rem; }
+.gd-section-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 31px;
+    height: 31px;
+    flex: 0 0 31px;
+    border-radius: 8px;
+    color: var(--primary-500);
+    background: rgba(183, 72, 43, .1);
+    font-size: 1.1rem;
+}
+.gd-section-icon svg { width: 19px; height: 19px; stroke-width: 2; }
 .gd-section-title {
     font-size: 0.95rem;
     font-weight: 600;
@@ -4606,11 +4702,16 @@ body {
     box-shadow: 0 3px 12px color-mix(in srgb, var(--snav-accent) 30%, transparent);
 }
 .gd-snav-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--snav-accent);
     font-size: 1.3rem;
     transition: transform 0.3s, filter 0.3s;
     line-height: 1;
 }
 .gd-snav-card.active .gd-snav-icon {
+    color: #fff;
     transform: scale(1.1);
     filter: brightness(1.2) saturate(1.2);
 }
@@ -4842,6 +4943,29 @@ body {
 }
 .dark-mode .gd-snav-card.active .gd-snav-icon-wrap {
     background: var(--snav-accent);
+}
+.dark-mode .gd-kpi-primary .gd-kpi-icon,
+.dark-mode .gd-kpi-credit .gd-kpi-icon,
+.dark-mode .gd-kpi-danger .gd-kpi-icon {
+    color: var(--primary-300);
+    background: rgba(183, 72, 43, .22);
+}
+.dark-mode .gd-kpi-debit .gd-kpi-icon {
+    color: var(--accent-300);
+    background: rgba(212, 165, 40, .2);
+}
+.dark-mode .gd-kpi-purple .gd-kpi-icon,
+.dark-mode .gd-kpi-neutral .gd-kpi-icon {
+    color: #b9c3cf;
+    background: rgba(148, 163, 184, .16);
+}
+.dark-mode .gd-kpi-success .gd-kpi-icon {
+    color: #5fd394;
+    background: rgba(31, 157, 85, .2);
+}
+.dark-mode .gd-section-icon {
+    color: var(--primary-300);
+    background: rgba(183, 72, 43, .2);
 }
 .dark-mode .gd-snav-badge {
     background: var(--bg-elevated);
@@ -6300,6 +6424,304 @@ body {
 
 .dark-mode .sidebar-dropdown-logout:hover {
     background: rgba(183, 72, 43, 0.16);
+}
+.gd-snav-icon svg { width: 21px; height: 21px; stroke-width: 2; }
+
+/* ==================== Sidebar — alignement visuel OleaERP ==================== */
+:root {
+    --sidebar-width: 268px;
+    --sidebar-collapsed-width: 78px;
+}
+
+.sidebar {
+    padding: 26px 18px 18px;
+    border-right: 0;
+}
+
+.sidebar-brand {
+    min-height: 43px;
+    padding: 0 8px;
+    gap: 12px;
+    border-bottom: 0;
+}
+
+.sidebar:not(.collapsed) .brand-logo {
+    width: 158px;
+    min-height: 46px;
+    padding: 0.25rem 0.35rem;
+}
+
+.sidebar-collapse-toggle {
+    position: absolute;
+    z-index: 3;
+    right: -12px;
+    top: 50%;
+    bottom: auto;
+    width: 27px;
+    height: 27px;
+    transform: translateY(-50%);
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, .1);
+    color: rgba(255, 255, 255, .85);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+}
+
+.sidebar-collapse-toggle svg {
+    width: 15px;
+    height: 15px;
+}
+
+.sidebar.collapsed .sidebar-collapse-toggle {
+    display: none;
+}
+
+.sidebar-collapse-toggle:hover {
+    background: rgba(255, 255, 255, .16);
+    color: #fff;
+    transform: translateY(-50%) scale(1.06);
+}
+
+.sidebar.collapsed .sidebar-collapse-toggle {
+    right: -14px;
+}
+
+.sidebar-menu,
+.sidebar.collapsed .sidebar-menu {
+    padding: 0;
+    margin-top: 48px;
+}
+
+.menu-section {
+    margin-bottom: 18px;
+}
+
+.menu-title {
+    padding: 0 13px;
+    margin-bottom: 9px;
+    color: #77736e;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .13em;
+}
+
+.menu-list {
+    gap: 5px;
+}
+
+.menu-item,
+.sidebar.collapsed .menu-item {
+    min-height: 43px;
+    padding: 11px 13px;
+    gap: 13px;
+    border-radius: 9px;
+    color: #bbb8b3;
+    font-size: 14px;
+    font-weight: 600;
+    transition: background-color .2s ease, color .2s ease, box-shadow .2s ease;
+}
+
+.menu-item::before,
+.menu-active-dot {
+    display: none;
+}
+
+.menu-item:hover {
+    background: #302f2d;
+    color: #fff;
+    transform: none;
+}
+
+.menu-item.active {
+    background: linear-gradient(100deg, #b24528, #9a3c23);
+    color: #fff;
+    box-shadow: 0 8px 18px rgba(20, 19, 18, .4);
+}
+
+.menu-icon {
+    width: 19px;
+    height: 19px;
+    opacity: 1;
+}
+
+.menu-item.active .menu-icon {
+    color: #fff;
+}
+
+.sidebar-bottom {
+    position: relative;
+    padding: 0;
+    border-top: 0;
+}
+
+.sidebar-settings-btn,
+.sidebar-copyright {
+    display: none;
+}
+
+.sidebar-settings-wrapper {
+    position: static;
+    margin: 0;
+}
+
+.theme-switcher {
+    display: none;
+}
+
+.erp-profile-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 57px;
+    margin-top: 14px;
+    padding: 14px 0 0;
+    border-top: 1px solid #393734;
+}
+
+.erp-profile-avatar {
+    display: grid;
+    place-content: center;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    border-radius: 50%;
+    background: #f4a93a;
+    color: #52200f;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.erp-profile-copy {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+}
+
+.erp-profile-copy strong {
+    overflow: hidden;
+    color: #eae8e4;
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.erp-profile-copy span {
+    overflow: hidden;
+    color: #9a9792;
+    font-size: 10px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.erp-profile-action {
+    display: grid;
+    width: 28px;
+    height: 32px;
+    flex: 0 0 28px;
+    place-content: center;
+    padding: 5px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #aaa7a2;
+}
+
+.erp-profile-action:hover {
+    background: #302f2d;
+    color: #fff;
+}
+
+.erp-profile-action svg {
+    width: 17px;
+    height: 17px;
+}
+
+.sidebar-settings-dropdown {
+    right: 0;
+    bottom: 58px;
+    left: 0;
+    border-color: #45423e;
+    background: #302f2d;
+    box-shadow: 0 14px 30px rgba(0, 0, 0, .35);
+}
+
+.sidebar-dropdown-item {
+    color: #d0ccc6;
+}
+
+.sidebar-dropdown-item:hover {
+    background: #3a3835;
+    color: #fff;
+}
+
+.sidebar.collapsed {
+    padding-right: 10px;
+    padding-left: 10px;
+}
+
+.sidebar.collapsed .sidebar-brand {
+    padding: 0;
+}
+
+.sidebar.collapsed .erp-profile-copy {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-menu {
+    margin-top: 48px;
+}
+
+.sidebar.collapsed .erp-profile-card {
+    justify-content: center;
+}
+
+.sidebar.collapsed .theme-switcher,
+.sidebar.collapsed .erp-profile-action {
+    display: none;
+}
+
+.sidebar.collapsed .sidebar-settings-dropdown {
+    right: auto;
+    bottom: 55px;
+    left: 50%;
+}
+
+@media (max-width: 1024px) {
+    .sidebar,
+    .sidebar.collapsed {
+        width: 268px;
+        padding: 26px 18px 18px;
+    }
+
+    .sidebar.collapsed .sidebar-brand {
+        min-height: 43px;
+        padding: 0 8px;
+        border: 0;
+    }
+
+    .sidebar.collapsed .sidebar-menu {
+        padding: 0;
+        margin-top: 48px;
+    }
+
+    .sidebar.collapsed .erp-profile-copy {
+        display: flex;
+    }
+
+    .sidebar.collapsed .erp-profile-card {
+        justify-content: flex-start;
+    }
+
+    .sidebar.collapsed .erp-profile-action {
+        display: grid;
+    }
+
+    .sidebar.collapsed .menu-item {
+        min-height: 43px;
+        padding: 11px 13px;
+    }
 }
 
 

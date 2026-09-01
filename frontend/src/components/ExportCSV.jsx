@@ -1,6 +1,7 @@
 // src/components/ExportCSV.jsx
 import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
+import { FiBarChart2, FiBookOpen, FiCalendar, FiDownload, FiEye, FiFileText, FiInfo, FiX } from 'react-icons/fi';
 import ApiService from '../services/api';
 
 function ExportCSV() {
@@ -134,14 +135,14 @@ function ExportCSV() {
                 <div className="csv-preview-container">
                     <div className="csv-preview-header">
                         <div className="csv-preview-title">
-                            <span>📄</span>
+                            <span className="export-icon export-icon-inverse"><FiFileText /></span>
                             <h3>Prévisualisation Export Sage</h3>
                         </div>
                         <div className="csv-preview-meta">
                             <span className="csv-filename">{previewData.filename}</span>
                             <span className="csv-count">{rows.length} lignes</span>
                         </div>
-                        <button className="csv-preview-close" onClick={handleCancelPreview}>✕</button>
+                        <button className="csv-preview-close" onClick={handleCancelPreview} aria-label="Fermer"><FiX /></button>
                     </div>
                     
                     <div className="csv-preview-body">
@@ -175,14 +176,14 @@ function ExportCSV() {
                     
                     <div className="csv-preview-footer">
                         <button className="btn btn-secondary" onClick={handleCancelPreview}>
-                            ✕ Annuler
+                            <FiX /> Annuler
                         </button>
                         <button 
                             className="btn btn-primary"
                             onClick={handleConfirmExport}
                             disabled={rows.length === 0}
                         >
-                            ⬇ Confirmer et Télécharger
+                            <FiDownload /> Confirmer et Télécharger
                         </button>
                     </div>
                 </div>
@@ -201,14 +202,14 @@ function ExportCSV() {
                 <div className="csv-preview-container">
                     <div className="csv-preview-header brouillard">
                         <div className="csv-preview-title">
-                            <span>📒</span>
+                            <span className="export-icon export-icon-inverse"><FiBookOpen /></span>
                             <h3>Brouillard de Caisse</h3>
                         </div>
                         <div className="csv-preview-meta">
                             <span className="csv-filename">{brouillardPreviewData.filename}</span>
                             <span className="csv-count">{brouillardPreviewData.stats?.nb_ecritures || 0} écritures</span>
                         </div>
-                        <button className="csv-preview-close" onClick={handleCancelBrouillardPreview}>✕</button>
+                        <button className="csv-preview-close" onClick={handleCancelBrouillardPreview} aria-label="Fermer"><FiX /></button>
                     </div>
                     
                     {/* Stats résumé */}
@@ -264,14 +265,14 @@ function ExportCSV() {
                     
                     <div className="csv-preview-footer">
                         <button className="btn btn-secondary" onClick={handleCancelBrouillardPreview}>
-                            ✕ Annuler
+                            <FiX /> Annuler
                         </button>
                         <button 
                             className="btn btn-primary"
                             onClick={handleConfirmBrouillardExport}
                             disabled={brouillardParsed.rows.length === 0}
                         >
-                            ⬇ Télécharger Brouillard
+                            <FiDownload /> Télécharger Brouillard
                         </button>
                     </div>
                 </div>
@@ -292,7 +293,7 @@ function ExportCSV() {
             <div className="olea-card fade-in">
                 <div className="card-header">
                     <h2 className="card-title">
-                        <span className="icon">📊</span>
+                        <span className="icon export-icon"><FiBarChart2 /></span>
                         Export CSV pour Sage
                     </h2>
                 </div>
@@ -302,7 +303,7 @@ function ExportCSV() {
                     <div className="form-col">
                         <div className="form-group">
                             <label>
-                                <span className="icon">📅</span>
+                                <span className="icon export-icon"><FiCalendar /></span>
                                 Date début
                             </label>
                             <input
@@ -317,7 +318,7 @@ function ExportCSV() {
                     <div className="form-col">
                         <div className="form-group">
                             <label>
-                                <span className="icon">📅</span>
+                                <span className="icon export-icon"><FiCalendar /></span>
                                 Date fin
                             </label>
                             <input
@@ -342,7 +343,7 @@ function ExportCSV() {
                                 </>
                             ) : (
                                 <>
-                                    <span className="icon"></span>
+                                    <span className="icon export-icon"><FiEye /></span>
                                     Prévisualiser CSV
                                 </>
                             )}
@@ -351,7 +352,7 @@ function ExportCSV() {
                 </div>
                 
                 <div className="info-box">
-                    <span className="icon">ℹ️</span>
+                    <span className="icon export-icon"><FiInfo /></span>
                     <div>
                         <strong>Format d'export Sage</strong>
                         <p>Exporte les écritures migrées au format compatible Sage avec séparateur point-virgule.</p>
@@ -364,7 +365,7 @@ function ExportCSV() {
             <div className="olea-card fade-in" style={{ marginTop: '20px' }}>
                 <div className="card-header">
                     <h2 className="card-title">
-                        <span className="icon">📒</span>
+                        <span className="icon export-icon"><FiBookOpen /></span>
                         Brouillard de Caisse
                     </h2>
                 </div>
@@ -374,7 +375,7 @@ function ExportCSV() {
                         <div className="form-col">
                             <div className="form-group">
                                 <label>
-                                    <span className="icon">📅</span>
+                                    <span className="icon export-icon"><FiCalendar /></span>
                                     Date début
                                 </label>
                                 <input
@@ -389,7 +390,7 @@ function ExportCSV() {
                         <div className="form-col">
                             <div className="form-group">
                                 <label>
-                                    <span className="icon">📅</span>
+                                    <span className="icon export-icon"><FiCalendar /></span>
                                     Date fin
                                 </label>
                                 <input
@@ -414,7 +415,7 @@ function ExportCSV() {
                                     </>
                                 ) : (
                                     <>
-                                        <span className="icon"></span>
+                                        <span className="icon export-icon"><FiEye /></span>
                                         Prévisualiser Brouillard
                                     </>
                                 )}
@@ -423,7 +424,7 @@ function ExportCSV() {
                     </div>
                     
                     <div className="info-box">
-                        <span className="icon">ℹ️</span>
+                        <span className="icon export-icon"><FiInfo /></span>
                         <div>
                             <strong>Brouillard de Caisse</strong>
                             <p>Exporte toutes les écritures de caisse avec le solde calculé pour la période sélectionnée. Inclut le solde initial et final.</p>

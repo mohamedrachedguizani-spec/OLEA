@@ -1,9 +1,14 @@
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
-from typing import Optional
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import StreamingResponse
 
-from modules.auth.dependencies import get_current_user, restrict_superadmin, require_permission
+from modules.auth.dependencies import restrict_superadmin, require_permission
 from modules.audit.service import log_audit_action
-from modules.rapprochement_bancaire.models import ReconciliationResult, ReconciliationOptions
+from modules.rapprochement_bancaire.models import (
+    ReconciliationOptions,
+    ReconciliationPdfRequest,
+    ReconciliationResult,
+)
+from modules.rapprochement_bancaire.pdf_export import build_reconciliation_pdf
 from modules.rapprochement_bancaire.service import parse_sage_file, parse_bank_file, reconcile
 
 router = APIRouter(
@@ -75,3 +80,37 @@ def compare_files(
     )
 
     return result
+
+
+@router.post("/rapprochement/export-pdf")
+def export_reconciliation_pdf(
+    payload: ReconciliationPdfRequest,
+    request: Request,
+    user: dict = Depends(require_permission("rapprochement_bancaire", "read")),
+):
+    """Génère un rapport PDF complet à partir des résultats affichés."""
+    pdf_buffer = build_reconciliation_pdf(payload)
+    filename = "rapprochement_bancaire.pdf"
+
+    log_audit_action(
+        user=user,
+        action="export_pdf",
+        module="rapprochement_bancaire",
+        entity_type="reconciliation",
+        entity_id="reconciliation_pdf",
+        detail={
+            "sage_file": payload.sage_filename,
+            "bank_file": payload.bank_filename,
+            "total_bank_movements": payload.result.stats.total_bank_movements,
+            "total_sage_movements": payload.result.stats.total_sage_movements,
+            "auto_reconciled": payload.result.stats.auto_reconciled_count,
+            "discrepancies": payload.result.stats.discrepancies_count,
+        },
+        request=request,
+    )
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

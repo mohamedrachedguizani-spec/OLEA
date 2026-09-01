@@ -57,3 +57,9 @@ class ReconciliationResult(BaseModel):
     bank_only: List[BankMovement]
     sage_only: List[SageMovement]
     discrepancies: List[DiscrepancyPair]
+
+
+class ReconciliationPdfRequest(BaseModel):
+    result: ReconciliationResult
+    sage_filename: Optional[str] = None
+    bank_filename: Optional[str] = None

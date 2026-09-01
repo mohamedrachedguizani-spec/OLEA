@@ -1,6 +1,24 @@
 // src/components/SaisieBancaire.jsx
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import {
+    FiAlertTriangle,
+    FiBookOpen,
+    FiCalendar,
+    FiCheckCircle,
+    FiClipboard,
+    FiCreditCard,
+    FiDownload,
+    FiEye,
+    FiFile,
+    FiFileText,
+    FiFolder,
+    FiPlay,
+    FiRefreshCw,
+    FiSave,
+    FiUser,
+    FiX,
+} from 'react-icons/fi';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
@@ -395,7 +413,7 @@ function SaisieBancaire() {
                 <div className="form-col">
                     <div className="form-group">
                         <label>
-                            <span className="icon">📅</span> Période début
+                            <span className="icon bank-form-icon"><FiCalendar /></span> Période début
                         </label>
                         <input
                             type="date"
@@ -409,7 +427,7 @@ function SaisieBancaire() {
                 <div className="form-col">
                     <div className="form-group">
                         <label>
-                            <span className="icon">📅</span> Période fin
+                            <span className="icon bank-form-icon"><FiCalendar /></span> Période fin
                         </label>
                         <input
                             type="date"
@@ -423,7 +441,7 @@ function SaisieBancaire() {
                 <div className="form-col">
                     <div className="form-group">
                         <label>
-                            <span className="icon"></span> Compte bancaire (journal)
+                            <span className="icon bank-form-icon"><FiCreditCard /></span> Compte bancaire (journal)
                         </label>
                         <select
                             name="compte_banque"
@@ -442,7 +460,7 @@ function SaisieBancaire() {
                 <div className="form-col">
                     <div className="form-group">
                         <label>
-                            <span className="icon"></span> Compte comptable
+                            <span className="icon bank-form-icon"><FiBookOpen /></span> Compte comptable
                         </label>
                         <input
                             list="comptes-list"
@@ -459,7 +477,7 @@ function SaisieBancaire() {
                     <div className="form-col">
                         <div className="form-group">
                             <label>
-                                <span className="icon">💱</span> Taux (1 {deviseComptes[formData.compte_banque]} = ? TND)
+                                <span className="icon bank-form-icon"><FiRefreshCw /></span> Taux (1 {deviseComptes[formData.compte_banque]} = ? TND)
                             </label>
                             <input
                                 type="number"
@@ -480,7 +498,7 @@ function SaisieBancaire() {
             {/* Magnifique zone de Drag & Drop inspirée de SAGE → BFC */}
             <div className="form-group mb-4">
                {/*  <label className="periode-label" style={{ fontWeight: 600, color: 'var(--text-secondary)', display: 'block', marginBottom: '0.5rem' }}>
-                    <span className="icon">📁</span> Fichier de saisie bancaire
+                    Fichier de saisie bancaire
                 </label> */}
                 <div
                     className={`sage-dropzone ${dragActive ? 'drag-active' : ''} ${formData.file ? 'has-file' : ''}`}
@@ -532,8 +550,8 @@ function SaisieBancaire() {
                         </div>
                     ) : (
                         <div className="dropzone-file-preview" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '1.5rem', width: '100%' }}>
-                            <div className="file-preview-icon" style={{ fontSize: '2.5rem' }}>
-                                {formData.file.name.endsWith('.pdf') ? '📕' : formData.file.name.endsWith('.csv') ? '📗' : '📗'}
+                            <div className={`file-preview-icon bank-file-icon ${formData.file.name.endsWith('.pdf') ? 'pdf' : 'sheet'}`}>
+                                {formData.file.name.endsWith('.pdf') ? <FiFileText /> : <FiFile />}
                             </div>
                             <div className="file-preview-info" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
                                 <span className="file-preview-name" style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)' }}>{formData.file.name}</span>
@@ -563,7 +581,7 @@ function SaisieBancaire() {
                         </>
                     ) : (
                         <>
-                         Lancer l'analyse du relevé
+                            <FiPlay /> Lancer l'analyse du relevé
                         </>
                     )}
                 </button>
@@ -589,17 +607,17 @@ function SaisieBancaire() {
             <>
                 <div className="section-header">
                     <h3>
-                        <span className="icon">📋</span>
+                        <span className="icon bank-section-icon"><FiClipboard /></span>
                         Mouvements importés
                     </h3>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                         <span className="badge badge-info">{movements.length} mouvements</span>
                         <span className={`badge ${stats.isBalanced ? 'badge-success' : 'badge-danger'}`}>
-                            {stats.isBalanced ? '⚖️ Équilibré' : '⚠️ Déséquilibré'}
+                            {stats.isBalanced ? <><FiCheckCircle /> Équilibré</> : <><FiAlertTriangle /> Déséquilibré</>}
                         </span>
                         {batch?.devise_source && batch?.taux_conversion && (
                             <span className="badge badge-info" style={{ background: 'rgba(183, 72, 43, 0.12)', color: 'var(--olea-terracotta)' }}>
-                                💱 {batch.devise_source} → TND | Taux: {Number(batch.taux_conversion).toFixed(3)}
+                                <FiRefreshCw /> {batch.devise_source} → TND | Taux: {Number(batch.taux_conversion).toFixed(3)}
                             </span>
                         )}
                     </div>
@@ -615,14 +633,14 @@ function SaisieBancaire() {
                                 disabled={loading || !stats.isBalanced}
                                 title={!stats.isBalanced ? "Le fichier est déséquilibré et ne peut pas être importé dans Sage." : "Sauvegarder les lignes dans la base de données."}
                             >
-                                {loading ? 'Sauvegarde…' : 'Sauvegarder Sage'}
+                                {loading ? 'Sauvegarde…' : <><FiSave /> Sauvegarder Sage</>}
                             </button>
                             <button
                                 type="button"
                                 className="btn btn-secondary"
                                 onClick={() => setShowPreview(true)}
                             >
-                                Prévisualiser format Sage
+                                <FiEye /> Prévisualiser format Sage
                             </button>
                         </div>
                         
@@ -646,7 +664,7 @@ function SaisieBancaire() {
                     </div>
                     {!stats.isBalanced && (
                         <div className="alert alert-danger slide-down" style={{ marginTop: '1rem', padding: '0.75rem 1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem' }}>
-                            <span>⚠️</span>
+                            <span className="bank-alert-icon"><FiAlertTriangle /></span>
                             <span>
                                 <strong>Rejet Global Sage :</strong> Le rapprochement est déséquilibré de <strong>{Math.abs(stats.solde).toFixed(3)} TND</strong>. Toute pièce déséquilibrée entraîne le rejet global du fichier d’import par Sage. Veuillez vérifier vos écritures.
                             </span>
@@ -922,13 +940,13 @@ function SaisieBancaire() {
                 <div className="csv-preview-container">
                     <div className="csv-preview-header">
                         <div className="csv-preview-title">
-                            <span>📄</span>
+                            <span className="bank-modal-icon"><FiFileText /></span>
                             <h3>Prévisualisation format Sage</h3>
                         </div>
                         <div className="csv-preview-meta">
                             <span className="csv-count">{previewLines.length} lignes</span>
                         </div>
-                        <button className="csv-preview-close" onClick={() => setShowPreview(false)}>✕</button>
+                        <button className="csv-preview-close" onClick={() => setShowPreview(false)} aria-label="Fermer"><FiX /></button>
                     </div>
                     <div className="csv-preview-body">
                         <table className="csv-preview-table">
@@ -982,10 +1000,10 @@ function SaisieBancaire() {
                             onClick={handleExportSageCsv}
                             disabled={exportLoading}
                         >
-                            {exportLoading ? 'Export…' : 'Exporter CSV'}
+                            {exportLoading ? 'Export…' : <><FiDownload /> Exporter CSV</>}
                         </button>
                         <button className="btn btn-secondary" onClick={() => setShowPreview(false)}>
-                            ✕ Fermer
+                            <FiX /> Fermer
                         </button>
                     </div>
                 </div>
@@ -1003,10 +1021,10 @@ function SaisieBancaire() {
                 <div className="csv-preview-container" style={{ maxWidth: '700px' }}>
                     <div className="csv-preview-header">
                         <div className="csv-preview-title">
-                            <span>📂</span>
+                            <span className="bank-modal-icon"><FiFolder /></span>
                             <h3>Sessions de saisie en cours</h3>
                         </div>
-                        <button className="csv-preview-close" onClick={() => setShowResumeModal(false)}>✕</button>
+                        <button className="csv-preview-close" onClick={() => setShowResumeModal(false)} aria-label="Fermer"><FiX /></button>
                     </div>
                     <div className="csv-preview-body" style={{ padding: '1.5rem' }}>
                         <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
@@ -1033,13 +1051,13 @@ function SaisieBancaire() {
                                         </span>
                                         <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                                             {session.created_by_username && session.created_by_username !== currentUser?.username && (
-                                                <span>👤 {session.created_by_username}</span>
+                                                <span className="bank-session-meta"><FiUser /> {session.created_by_username}</span>
                                             )}
-                                            <span>📗 {session.compte_banque}</span>
-                                            <span>📅 {new Date(session.created_at).toLocaleDateString('fr-FR')}</span>
-                                            <span>✅ {session.completed_movements}/{session.total_movements} saisis</span>
+                                            <span className="bank-session-meta"><FiCreditCard /> {session.compte_banque}</span>
+                                            <span className="bank-session-meta"><FiCalendar /> {new Date(session.created_at).toLocaleDateString('fr-FR')}</span>
+                                            <span className="bank-session-meta"><FiCheckCircle /> {session.completed_movements}/{session.total_movements} saisis</span>
                                             {session.devise_source && (
-                                                <span>💱 {session.devise_source} (taux: {Number(session.taux_conversion).toFixed(3)})</span>
+                                                <span className="bank-session-meta"><FiRefreshCw /> {session.devise_source} (taux: {Number(session.taux_conversion).toFixed(3)})</span>
                                             )}
                                         </div>
                                     </div>

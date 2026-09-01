@@ -614,6 +614,124 @@
     font-size: 2.5rem;
 }
 
+/* Icônes professionnelles — Saisie bancaire */
+.bank-form-icon,
+.bank-section-icon,
+.bank-modal-icon,
+.bank-alert-icon,
+.bank-session-meta {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.bank-form-icon {
+    margin-right: 0.3rem;
+    color: var(--primary-500);
+    vertical-align: -0.16em;
+}
+
+.bank-form-icon svg {
+    width: 16px;
+    height: 16px;
+    stroke-width: 2.2;
+}
+
+.bank-section-icon {
+    width: 32px;
+    height: 32px;
+    margin-right: 0.45rem;
+    border-radius: 8px;
+    background: rgba(183, 72, 43, 0.12);
+    color: var(--primary-500);
+}
+
+.bank-section-icon svg,
+.bank-modal-icon svg {
+    width: 18px;
+    height: 18px;
+}
+
+.bank-file-icon {
+    display: grid;
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    place-content: center;
+    border-radius: 12px;
+}
+
+.bank-file-icon.pdf {
+    background: rgba(183, 72, 43, 0.12);
+    color: var(--primary-500);
+}
+
+.bank-file-icon.sheet {
+    background: rgba(31, 157, 85, 0.12);
+    color: var(--success);
+}
+
+.bank-file-icon svg {
+    width: 28px;
+    height: 28px;
+    stroke-width: 1.8;
+}
+
+.bank-modal-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.16);
+    color: #fff;
+}
+
+.bank-alert-icon {
+    width: 25px;
+    height: 25px;
+    flex: 0 0 25px;
+    border-radius: 7px;
+    background: rgba(183, 72, 43, 0.14);
+    color: var(--error);
+}
+
+.bank-alert-icon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.bank-session-meta {
+    gap: 0.3rem;
+}
+
+.bank-session-meta svg,
+.badge svg,
+.sage-upload-section .btn svg,
+.csv-preview-footer .btn svg {
+    width: 15px;
+    height: 15px;
+    flex: 0 0 15px;
+    stroke-width: 2.2;
+}
+
+.dark-mode .bank-form-icon,
+.dark-mode .bank-section-icon {
+    color: var(--primary-300);
+}
+
+.dark-mode .bank-section-icon,
+.dark-mode .bank-file-icon.pdf {
+    background: rgba(183, 72, 43, 0.2);
+}
+
+.dark-mode .bank-file-icon.pdf {
+    color: var(--primary-300);
+}
+
+.dark-mode .bank-file-icon.sheet {
+    background: rgba(31, 157, 85, 0.2);
+    color: #5fd394;
+}
+
 .file-preview-info {
     display: flex;
     flex-direction: column;
@@ -3298,8 +3416,26 @@
 }
 
 .dashboard-empty-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 72px;
+    height: 72px;
+    border-radius: 18px;
+    color: var(--primary-500);
+    background: rgba(183, 72, 43, 0.1);
     font-size: 3rem;
-    opacity: 0.5;
+}
+
+.dashboard-empty-icon svg {
+    width: 48px;
+    height: 48px;
+    stroke-width: 1.6;
+}
+
+.dark-mode .dashboard-empty-icon {
+    color: var(--primary-300);
+    background: rgba(183, 72, 43, 0.2);
 }
 
 .dashboard-empty h4 {

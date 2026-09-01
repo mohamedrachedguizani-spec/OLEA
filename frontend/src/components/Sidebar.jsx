@@ -26,6 +26,21 @@ function Sidebar({
     const [pwdSuccess, setPwdSuccess] = useState('');
     const [pwdLoading, setPwdLoading] = useState(false);
 
+    const roleLabel = {
+        superadmin: 'Super administrateur',
+        comptable: 'Comptable',
+        financier: 'Financier',
+        dirigeant: 'Dirigeant',
+    }[user?.role] || user?.role || '';
+
+    const userInitials = (user?.full_name || user?.username || 'OL')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map(part => part.charAt(0))
+        .slice(0, 2)
+        .join('')
+        .toUpperCase();
+
     // Menu items filtrés selon les permissions de l'utilisateur
     const allMenuItems = [
         { id: 'dashboard', label: 'Tableau de Bord', icon: 'dashboard', alwaysVisible: true },
@@ -182,21 +197,24 @@ function Sidebar({
                             <line x1="6" y1="6" x2="18" y2="18"/>
                         </svg>
                     </button>
-                    {!sidebarCollapsed && (
-                        <button
-                            className="sidebar-collapse-toggle"
-                            onClick={() => setSidebarCollapsed(true)}
-                            title="Réduire la barre latérale"
-                        >
-                            ⮜
-                        </button>
-                    )}
+                    <button
+                        className="sidebar-collapse-toggle"
+                        onClick={() => setSidebarCollapsed(prev => !prev)}
+                        title={sidebarCollapsed ? 'Ouvrir la barre latérale' : 'Réduire la barre latérale'}
+                        aria-label={sidebarCollapsed ? 'Ouvrir la barre latérale' : 'Réduire la barre latérale'}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden="true">
+                            {sidebarCollapsed
+                                ? <polyline points="9 18 15 12 9 6"/>
+                                : <polyline points="15 18 9 12 15 6"/>}
+                        </svg>
+                    </button>
                 </div>
 
                 {/* Navigation */}
                 <nav className="sidebar-menu">
                     <div className="menu-section">
-                        <span className="menu-title">Navigation</span>
+                        <span className="menu-title">Espace de gestion</span>
                         <ul className="menu-list">
                             {menuItems.map(item => (
                                 <li key={item.id}>
@@ -320,6 +338,28 @@ function Sidebar({
                     </div>
                     <div className="sidebar-copyright">
                         <span>© 2026 OLEA Africa</span>
+                    </div>
+                    <div className="erp-profile-card">
+                        <div className="erp-profile-avatar">{userInitials}</div>
+                        <div className="erp-profile-copy">
+                            <strong>{user?.full_name || user?.username}</strong>
+                            <span>{roleLabel}</span>
+                        </div>
+                        <button
+                            className="erp-profile-action erp-profile-settings"
+                            onClick={() => setShowSettingsMenu(prev => !prev)}
+                            title="Paramètres"
+                            aria-label="Ouvrir les paramètres"
+                        >
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        </button>
+                        <button className="erp-profile-action" onClick={() => setDarkMode(prev => !prev)} title={darkMode ? 'Mode clair' : 'Mode sombre'} aria-label={darkMode ? 'Activer le mode clair' : 'Activer le mode sombre'}>
+                            {darkMode ? (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                            ) : (
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                            )}
+                        </button>
                     </div>
                 </div>
 
