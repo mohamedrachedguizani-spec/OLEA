@@ -63,6 +63,9 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         cycle_phase: 'INITIAL',
         uploaded_months: [],
         cycle_cutoff_month: null,
+        ca_actual_total: null,
+        expenses_actual_total: null,
+        ca_to_expenses_ratio_pct: null,
     });
     const [catalogItems, setCatalogItems] = useState([]);
     const [chartCatalogMode, setChartCatalogMode] = useState('base'); // base | derived
@@ -117,6 +120,14 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
         if (v == null || Number.isNaN(Number(v))) return '—';
         const n = Number(v);
         return `${n >= 0 ? '+' : ''}${n.toFixed(digits)}%`;
+    };
+
+    const fmtRatio = (v, digits = 2) => {
+        if (v == null || Number.isNaN(Number(v))) return '—';
+        return `${new Intl.NumberFormat('fr-TN', {
+            minimumFractionDigits: digits,
+            maximumFractionDigits: digits,
+        }).format(Number(v))}%`;
     };
 
     const fmtRemainingBudget = (value, nature, forecast, actual, digits = 3) => {
@@ -177,6 +188,9 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
             cycle_phase: res.cycle_phase || 'INITIAL',
             uploaded_months: res.uploaded_months || [],
             cycle_cutoff_month: res.cycle_cutoff_month ?? null,
+            ca_actual_total: res.ca_actual_total ?? null,
+            expenses_actual_total: res.expenses_actual_total ?? null,
+            ca_to_expenses_ratio_pct: res.ca_to_expenses_ratio_pct ?? null,
         });
     }, [targetYear, compareCycle]);
 
@@ -618,6 +632,14 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                             {annualMeta.cycle_cutoff_month != null && (
                                 <span>Palier cycle: M{String(annualMeta.cycle_cutoff_month).padStart(2, '0')}</span>
                             )}
+                            <span>CA net réalisé: {fmt(annualMeta.ca_actual_total, 3)}</span>
+                            <span>Dépenses réalisées: {fmt(annualMeta.expenses_actual_total, 3)}</span>
+                            <span
+                                className="annual-global-ratio"
+                                title="CA net réalisé ÷ total des dépenses réalisées"
+                            >
+                                Ratio global CA / dépenses: {fmtRatio(annualMeta.ca_to_expenses_ratio_pct)}
+                            </span>
                         </div>
                     </div>
                     <div className="annual-table-controls">
@@ -654,6 +676,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                         <th>Réalisé cumulé</th>
                                         <th>Taux réalisation annuel</th>
                                         <th>Reste budget</th>
+                                        <th>Ratio CA / dépense</th>
                                         <th>Indice / alerte</th>
                                     </tr>
                                 </thead>
@@ -687,6 +710,14 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                 <td className={Number(row.taux_realisation_annuel_pct || 0) < 100 ? 'neg' : 'pos'}>{fmtPct(row.taux_realisation_annuel_pct)}</td>
                                                 <td className={Number(row.remaining_budget || 0) < 0 ? 'neg' : 'pos'}>{fmtRemainingBudget(row.remaining_budget, row.nature, row.forecast_annual, row.actual_total, 3)}</td>
                                                 <td>
+                                                    <span
+                                                        className={`annual-expense-ratio ${row.ca_to_expense_ratio_pct == null ? 'empty' : ''}`}
+                                                        title={row.nature === 'charge' ? 'CA net réalisé ÷ dépense réalisée' : 'Indicateur réservé aux dépenses'}
+                                                    >
+                                                        {fmtRatio(row.ca_to_expense_ratio_pct)}
+                                                    </span>
+                                                </td>
+                                                <td>
                                                     <div className="annual-indicator-cell">
                                                         <span className={`alert-pill ${row.alert_level || 'none'}`}>
                                                             {alertLabel(row.alert_level)}
@@ -701,7 +732,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                 const saveKey = `${row.agregat_key}:ANNUAL`;
                                                 return (
                                                     <tr className="forecast-subrow">
-                                                        <td colSpan={7}>
+                                                        <td colSpan={8}>
                                                             <div className="forecast-subpanel">
                                                                 <div className="forecast-subpanel-head">
                                                                     <strong>Sous-agrégats annuels (global)</strong>

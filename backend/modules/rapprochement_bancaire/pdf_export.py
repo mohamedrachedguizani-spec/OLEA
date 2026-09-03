@@ -9,7 +9,6 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     KeepTogether,
-    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -176,21 +175,6 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
     ]))
     story.extend([summary, Spacer(1, 6 * mm)])
 
-    reconciled_rows = [[
-        _date(pair.sage.date_ecriture), pair.sage.libelle_ecriture, pair.sage.reference_piece,
-        _money(pair.sage.debit), _money(pair.sage.credit), _date(pair.bank.date_operation),
-        pair.bank.libelle, pair.bank.reference, _money(pair.bank.debit),
-        _money(pair.bank.credit),
-    ] for pair in result.reconciled]
-    story.extend(_table(
-        f"Rapprochements validés ({len(reconciled_rows)})",
-        ["Date Sage", "Libellé Sage", "Réf. Sage", "Débit", "Crédit", "Date banque", "Libellé banque", "Réf. banque", "Débit", "Crédit"],
-        reconciled_rows,
-        [17*mm, 45*mm, 24*mm, 19*mm, 19*mm, 17*mm, 45*mm, 24*mm, 19*mm, 19*mm],
-        styles,
-    ))
-
-    story.append(PageBreak())
     discrepancy_rows = [[
         _date(pair.sage.date_ecriture), pair.sage.libelle_ecriture, pair.sage.reference_piece,
         _money(pair.sage.amount), _date(pair.bank.date_operation), pair.bank.libelle,

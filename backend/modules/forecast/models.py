@@ -121,6 +121,7 @@ class ForecastAnnualComparisonRow(BaseModel):
     alert_level: Optional[str] = None
     indicator_label: Optional[str] = None
     indicator_value: Optional[float] = None
+    ca_to_expense_ratio_pct: Optional[float] = None
 
 
 class ForecastAnnualComparisonResponse(BaseModel):
@@ -129,6 +130,9 @@ class ForecastAnnualComparisonResponse(BaseModel):
     cycle_phase: str
     uploaded_months: List[int]
     cycle_cutoff_month: Optional[int] = None
+    ca_actual_total: Optional[float] = None
+    expenses_actual_total: Optional[float] = None
+    ca_to_expenses_ratio_pct: Optional[float] = None
     rows: List[ForecastAnnualComparisonRow]
 
 

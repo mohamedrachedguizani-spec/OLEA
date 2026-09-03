@@ -215,6 +215,9 @@ def get_forecast_annual_comparison(
         cycle_phase=payload["cycle_phase"],
         uploaded_months=payload["uploaded_months"],
         cycle_cutoff_month=payload.get("cycle_cutoff_month"),
+        ca_actual_total=payload.get("ca_actual_total"),
+        expenses_actual_total=payload.get("expenses_actual_total"),
+        ca_to_expenses_ratio_pct=payload.get("ca_to_expenses_ratio_pct"),
         rows=mapped_rows,
     )
 

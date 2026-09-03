@@ -1051,8 +1051,8 @@ def _annual_indicator(
         if remaining_budget < 0:
             return "Surplus de budget fixé", remaining_budget, "negative"
         if remaining_budget <= vigilance_floor:
-            return "Reste à consommer (vigilance)", remaining_budget, "neutral"
-        return "Reste à consommer", remaining_budget, "positive"
+            return "Budget disponible (vigilance)", remaining_budget, "neutral"
+        return "Budget disponible", remaining_budget, "positive"
 
     # Produits
     is_exceeded = (
@@ -1161,6 +1161,41 @@ def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object
         )
 
     response_rows.sort(key=_aggregate_sort_key)
+
+    ca_row = next((row for row in response_rows if row["agregat_key"] == "ca_net"), None)
+    ca_actual_total = float(ca_row["actual_total"]) if ca_row and uploaded_months else None
+
+    # Le total global porte uniquement sur les postes de dépenses de base.
+    # Les agrégats calculés sont exclus pour éviter tout double comptage et les
+    # rétrocessions ne sont pas reprises car elles sont déjà déduites du CA net.
+    expense_rows = [
+        row for row in response_rows
+        if row["nature"] == "charge"
+        and not row["is_derived"]
+        and row["agregat_key"] != "retrocessions"
+    ]
+    expenses_actual_total = (
+        float(sum(abs(float(row["actual_total"])) for row in expense_rows))
+        if uploaded_months else None
+    )
+    ca_to_expenses_ratio_pct = (
+        abs(ca_actual_total) / expenses_actual_total * 100.0
+        if ca_actual_total is not None
+        and expenses_actual_total is not None
+        and expenses_actual_total > 1e-9
+        else None
+    )
+
+    for row in response_rows:
+        expense_actual = abs(float(row["actual_total"]))
+        row["ca_to_expense_ratio_pct"] = (
+            abs(ca_actual_total) / expense_actual * 100.0
+            if row["nature"] == "charge"
+            and ca_actual_total is not None
+            and expense_actual > 1e-9
+            else None
+        )
+
     clean_rows = [{k: v for k, v in row.items() if k != "is_derived"} for row in response_rows]
 
     return {
@@ -1169,6 +1204,9 @@ def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object
         "cycle_phase": _resolve_cycle_phase(uploaded_months),
         "uploaded_months": uploaded_months,
         "cycle_cutoff_month": _get_cycle_cutoff_month(cycle_code),
+        "ca_actual_total": ca_actual_total,
+        "expenses_actual_total": expenses_actual_total,
+        "ca_to_expenses_ratio_pct": ca_to_expenses_ratio_pct,
         "rows": clean_rows,
     }
 

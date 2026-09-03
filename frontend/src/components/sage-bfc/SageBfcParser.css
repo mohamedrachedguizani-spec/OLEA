@@ -4658,6 +4658,43 @@
     font-weight: 600;
 }
 
+.comparison-totals.annual-totals .annual-global-ratio {
+    border-color: color-mix(in srgb, var(--primary-500) 45%, var(--border-light));
+    background: color-mix(in srgb, var(--primary-500) 12%, var(--bg-muted));
+    color: var(--primary-700);
+    font-weight: 700;
+}
+
+.annual-expense-ratio {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 76px;
+    padding: 0.2rem 0.5rem;
+    border-radius: var(--radius-full);
+    border: 1px solid color-mix(in srgb, var(--accent-500) 42%, var(--border-light));
+    background: color-mix(in srgb, var(--accent-500) 14%, var(--bg-card));
+    color: var(--accent-700);
+    font-size: 0.74rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+
+.annual-expense-ratio.empty {
+    min-width: auto;
+    border-color: transparent;
+    background: transparent;
+    color: var(--text-muted);
+}
+
+.dark-mode .comparison-totals.annual-totals .annual-global-ratio {
+    color: var(--primary-300);
+}
+
+.dark-mode .annual-expense-ratio {
+    color: var(--accent-300);
+}
+
 .dark-mode .forecast-kpi-card,
 .dark-mode .annual-table-controls,
 .dark-mode .comparison-totals.annual-totals span,
