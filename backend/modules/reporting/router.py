@@ -1,10 +1,12 @@
 import io
 import json
+import unicodedata
 from datetime import date
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
+from xlsxwriter.utility import xl_col_to_name
 
 from database import db
 from modules.auth.dependencies import get_current_user, require_permission, restrict_superadmin
@@ -46,6 +48,12 @@ PNL_LINE_SPECS = [
     ("Resultat Net %", "resultat_net_pct", "pct"),
 ]
 PNL_KEYS = {k for _, k, _ in PNL_LINE_SPECS}
+
+
+def _export_label_key(value) -> str:
+    """Normalise les libellés utilisés pour relier les feuilles Excel."""
+    normalized = unicodedata.normalize("NFKD", str(value or ""))
+    return " ".join(normalized.encode("ascii", "ignore").decode("ascii").casefold().split())
 
 
 def _normalize_month_param(target_year: int, month: int | None) -> int:
@@ -348,6 +356,292 @@ def _format_df_reste_budget(df: pd.DataFrame) -> pd.DataFrame:
         new_rows.append(row)
         
     return pd.DataFrame(new_rows)
+
+
+DERIVED_BUDGET_DEPENDENCIES = {
+    "ca_net": ("ca_brut", "retrocessions"),
+    "total_produits": ("ca_net", "autres_produits"),
+    "total_charges": (
+        "frais_personnel",
+        "honoraires",
+        "frais_commerciaux",
+        "impots_taxes",
+        "fonctionnement",
+        "autres_charges",
+    ),
+    "ebitda": ("total_produits", "total_charges"),
+    "ebitda_pct": ("ebitda", "ca_net"),
+    "resultat_financier": ("produits_financiers", "charges_financieres"),
+    "resultat_exceptionnel": ("produits_exceptionnels", "charges_exceptionnelles"),
+    "resultat_avant_impot": ("ebitda", "resultat_financier", "dotations", "resultat_exceptionnel"),
+    "resultat_net": ("resultat_avant_impot", "impot_societes"),
+    "resultat_net_pct": ("resultat_net", "ca_net"),
+}
+
+
+def _formula_number(value) -> float:
+    try:
+        return float(
+            str(value)
+            .replace("\u202f", "")
+            .replace(" ", "")
+            .replace(",", ".")
+        )
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _derived_budget_formula(agregat_key: str, row_refs: dict[str, int], value_col_idx: int) -> str | None:
+    dependencies = DERIVED_BUDGET_DEPENDENCIES.get(agregat_key)
+    if not dependencies or any(key not in row_refs for key in dependencies):
+        return None
+
+    col = xl_col_to_name(value_col_idx)
+    ref = lambda key: f"{col}{row_refs[key]}"
+
+    if agregat_key == "ca_net":
+        return f"={ref('ca_brut')}-{ref('retrocessions')}"
+    if agregat_key == "total_produits":
+        return f"={ref('ca_net')}+{ref('autres_produits')}"
+    if agregat_key == "total_charges":
+        return "=" + "+".join(ref(key) for key in dependencies)
+    if agregat_key == "ebitda":
+        return f"={ref('total_produits')}-{ref('total_charges')}"
+    if agregat_key == "ebitda_pct":
+        return f"=IFERROR({ref('ebitda')}/{ref('ca_net')}*100,0)"
+    if agregat_key == "resultat_financier":
+        return f"={ref('produits_financiers')}-{ref('charges_financieres')}"
+    if agregat_key == "resultat_exceptionnel":
+        return f"={ref('produits_exceptionnels')}-{ref('charges_exceptionnelles')}"
+    if agregat_key == "resultat_avant_impot":
+        return f"={ref('ebitda')}+{ref('resultat_financier')}-{ref('dotations')}+{ref('resultat_exceptionnel')}"
+    if agregat_key == "resultat_net":
+        return f"={ref('resultat_avant_impot')}-{ref('impot_societes')}"
+    if agregat_key == "resultat_net_pct":
+        return f"=IFERROR({ref('resultat_net')}/{ref('ca_net')}*100,0)"
+    return None
+
+
+def _hierarchical_formula_context(
+    dataframe: pd.DataFrame,
+    data_start_row: int,
+    aggregate_key_by_label: dict[str, str],
+) -> list[tuple[dict[str, int], dict[int, list[int]]]]:
+    """Construit les groupes de lignes et les plages de sous-agrégats par période."""
+    rows = dataframe.to_dict(orient="records")
+    has_month = "Mois" in dataframe.columns
+    groups: dict[str, list[int]] = {}
+    for offset, row in enumerate(rows):
+        if str(row.get("Niveau") or "") not in {"Agrégat", "Sous-agrégat"}:
+            continue
+        group_key = str(row.get("Mois") or "ANNUEL") if has_month else "ANNUEL"
+        groups.setdefault(group_key, []).append(offset)
+
+    contexts = []
+    for offsets in groups.values():
+        row_refs: dict[str, int] = {}
+        children_by_parent: dict[int, list[int]] = {}
+        current_parent = None
+
+        for offset in offsets:
+            row = rows[offset]
+            level = str(row.get("Niveau") or "")
+            excel_row = data_start_row + offset + 1
+            if level == "Agrégat":
+                current_parent = offset
+                label = str(row.get("Libellé") or "")
+                agregat_key = aggregate_key_by_label.get(label)
+                if agregat_key:
+                    row_refs[agregat_key] = excel_row
+                children_by_parent.setdefault(offset, [])
+            elif level == "Sous-agrégat" and current_parent is not None:
+                children_by_parent.setdefault(current_parent, []).append(offset)
+
+        contexts.append((row_refs, children_by_parent))
+    return contexts
+
+
+def _write_budget_formulas(
+    worksheet,
+    dataframe: pd.DataFrame,
+    data_start_row: int,
+    money_format,
+    positive_money_format,
+    percent_format,
+    aggregate_formula_format,
+    aggregate_percent_format,
+    linked_formula_format,
+    linked_percent_format,
+    sheet_name: str,
+    aggregate_key_by_label: dict[str, str],
+    annual_dataframe: pd.DataFrame | None = None,
+    annual_detail_dataframe: pd.DataFrame | None = None,
+) -> None:
+    """Écrit toute la chaîne de calcul budget dans le classeur Excel."""
+    if dataframe is None or dataframe.empty:
+        return
+
+    rows = dataframe.to_dict(orient="records")
+    columns = list(dataframe.columns)
+    column_indexes = {str(name).lower().strip(): idx for idx, name in enumerate(columns)}
+    forecast_idx = column_indexes.get("prévision annuelle", column_indexes.get("prévision"))
+    actual_idx = column_indexes.get("réalisé cumulé", column_indexes.get("réalisé"))
+    nature_idx = column_indexes.get("nature")
+    remaining_idx = column_indexes.get("reste budget")
+    difference_idx = column_indexes.get("écart")
+    difference_pct_idx = column_indexes.get("écart %")
+
+    value_column_indexes = [idx for idx in (forecast_idx, actual_idx) if idx is not None]
+
+    if sheet_name in {"Forecast_Annuel_Detail", "Forecast_Mensuel_Detail"}:
+        contexts = _hierarchical_formula_context(dataframe, data_start_row, aggregate_key_by_label)
+        for row_refs, children_by_parent in contexts:
+            for parent_offset, child_offsets in children_by_parent.items():
+                parent_row = rows[parent_offset]
+                label = str(parent_row.get("Libellé") or "")
+                agregat_key = aggregate_key_by_label.get(label)
+                if not agregat_key:
+                    continue
+
+                for value_col_idx in value_column_indexes:
+                    formula = _derived_budget_formula(agregat_key, row_refs, value_col_idx)
+                    if formula is None and child_offsets:
+                        col = xl_col_to_name(value_col_idx)
+                        first_child_row = data_start_row + child_offsets[0] + 1
+                        last_child_row = data_start_row + child_offsets[-1] + 1
+                        formula = f"=SUM({col}{first_child_row}:{col}{last_child_row})"
+                    if formula is None:
+                        continue
+
+                    cached_value = _formula_number(parent_row.get(columns[value_col_idx]))
+                    formula_format = (
+                        aggregate_percent_format
+                        if agregat_key in {"ebitda_pct", "resultat_net_pct"}
+                        else aggregate_formula_format
+                    )
+                    worksheet.write_formula(
+                        data_start_row + parent_offset,
+                        value_col_idx,
+                        formula,
+                        formula_format,
+                        cached_value,
+                    )
+
+    if sheet_name == "Forecast_Annuel" and annual_detail_dataframe is not None and not annual_detail_dataframe.empty:
+        detail_columns = list(annual_detail_dataframe.columns)
+        detail_indexes = {str(name).lower().strip(): idx for idx, name in enumerate(detail_columns)}
+        detail_rows_by_label = {
+            str(row.get("Libellé") or ""): data_start_row + offset + 1
+            for offset, row in enumerate(annual_detail_dataframe.to_dict(orient="records"))
+            if str(row.get("Niveau") or "") == "Agrégat"
+        }
+        for offset, row in enumerate(rows):
+            label = str(row.get("Agrégat") or "")
+            detail_excel_row = detail_rows_by_label.get(label)
+            agregat_key = aggregate_key_by_label.get(label)
+            if detail_excel_row is None or not agregat_key:
+                continue
+            for local_idx, detail_name in (
+                (forecast_idx, "prévision annuelle"),
+                (actual_idx, "réalisé cumulé"),
+            ):
+                detail_idx = detail_indexes.get(detail_name)
+                if local_idx is None or detail_idx is None:
+                    continue
+                detail_ref = f"{xl_col_to_name(detail_idx)}{detail_excel_row}"
+                cached_value = _formula_number(row.get(columns[local_idx]))
+                formula_format = (
+                    linked_percent_format
+                    if agregat_key in {"ebitda_pct", "resultat_net_pct"}
+                    else linked_formula_format
+                )
+                worksheet.write_formula(
+                    data_start_row + offset,
+                    local_idx,
+                    f"='Forecast_Annuel_Detail'!{detail_ref}",
+                    formula_format,
+                    cached_value,
+                )
+
+    if sheet_name == "Executive_Summary" and annual_dataframe is not None and not annual_dataframe.empty:
+        annual_columns = list(annual_dataframe.columns)
+        annual_indexes = {str(name).lower().strip(): idx for idx, name in enumerate(annual_columns)}
+        annual_rows_by_label = {
+            _export_label_key(row.get("Agrégat")): data_start_row + offset + 1
+            for offset, row in enumerate(annual_dataframe.to_dict(orient="records"))
+            if row.get("Agrégat")
+        }
+        executive_links = (
+            ("prévision annuelle", "prévision annuelle"),
+            ("réalisé cumulé", "réalisé cumulé"),
+            ("reste budget", "reste budget"),
+        )
+        for offset, row in enumerate(rows):
+            label = _export_label_key(row.get("KPI"))
+            annual_excel_row = annual_rows_by_label.get(label)
+            if annual_excel_row is None:
+                continue
+            for local_name, annual_name in executive_links:
+                local_idx = column_indexes.get(local_name)
+                annual_idx = annual_indexes.get(annual_name)
+                if local_idx is None or annual_idx is None:
+                    continue
+                annual_ref = f"{xl_col_to_name(annual_idx)}{annual_excel_row}"
+                worksheet.write_formula(
+                    data_start_row + offset,
+                    local_idx,
+                    f"='Forecast_Annuel'!{annual_ref}",
+                    linked_formula_format,
+                    _formula_number(row.get(columns[local_idx])),
+                )
+
+    for offset, row in enumerate(rows):
+        worksheet_row = data_start_row + offset
+        excel_row = worksheet_row + 1
+
+        if all(value in (None, "") for value in row.values()):
+            continue
+
+        if forecast_idx is not None and actual_idx is not None:
+            forecast_ref = f"{xl_col_to_name(forecast_idx)}{excel_row}"
+            actual_ref = f"{xl_col_to_name(actual_idx)}{excel_row}"
+
+            if remaining_idx is not None and nature_idx is not None:
+                nature_ref = f"{xl_col_to_name(nature_idx)}{excel_row}"
+                formula = (
+                    f'=IF({nature_ref}="produit",'
+                    f"IF({forecast_ref}>=0,IF({actual_ref}>{forecast_ref},{actual_ref}-{forecast_ref},{forecast_ref}-{actual_ref}),"
+                    f"IF({actual_ref}<{forecast_ref},{forecast_ref}-{actual_ref},{actual_ref}-{forecast_ref})),"
+                    f"IF({forecast_ref}>=0,{forecast_ref}-{actual_ref},{actual_ref}-{forecast_ref}))"
+                )
+                cached_value = row.get(columns[remaining_idx])
+                formula_format = positive_money_format if str(cached_value).strip().startswith("+") else money_format
+                worksheet.write_formula(
+                    worksheet_row,
+                    remaining_idx,
+                    formula,
+                    formula_format,
+                    _formula_number(cached_value),
+                )
+
+            if difference_idx is not None:
+                difference_ref = f"{xl_col_to_name(difference_idx)}{excel_row}"
+                worksheet.write_formula(
+                    worksheet_row,
+                    difference_idx,
+                    f"={actual_ref}-{forecast_ref}",
+                    money_format,
+                    _formula_number(row.get(columns[difference_idx])),
+                )
+
+                if difference_pct_idx is not None:
+                    worksheet.write_formula(
+                        worksheet_row,
+                        difference_pct_idx,
+                        f"=IFERROR({difference_ref}/ABS({forecast_ref})*100,0)",
+                        percent_format,
+                        _formula_number(row.get(columns[difference_pct_idx])),
+                    )
 
 
 def _build_global_state_df(
@@ -751,6 +1045,11 @@ def export_reporting_excel(
                 )
 
         by_key_annual = {r["agregat_key"]: r for r in annual_raw_rows}
+        aggregate_key_by_label = {
+            str(r.get("agregat_label") or ""): str(r.get("agregat_key") or "")
+            for r in annual_raw_rows
+            if r.get("agregat_label") and r.get("agregat_key")
+        }
         executive_rows = [
             {
                 "KPI": "CA Net",
@@ -863,10 +1162,15 @@ def export_reporting_excel(
 
             workbook = writer.book
             money_fmt = workbook.add_format({"num_format": "#,##0.000"})
+            positive_money_fmt = workbook.add_format({"num_format": "+#,##0.000;-#,##0.000;0.000"})
             pct_fmt = workbook.add_format({"num_format": "0.000"})
             header_fmt = workbook.add_format({"bold": True, "font_color": "#FFFFFF", "bg_color": "#1E3A8A", "border": 1, "align": "center"})
             kpi_row_fmt = workbook.add_format({"bg_color": "#EEF2FF", "bold": True, "num_format": "#,##0.000"})
             aggregate_row_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True, "num_format": "#,##0.000"})
+            aggregate_formula_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True, "font_color": "#000000", "num_format": "#,##0.000"})
+            aggregate_pct_formula_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True, "font_color": "#000000", "num_format": "0.000"})
+            linked_formula_fmt = workbook.add_format({"font_color": "#008000", "num_format": "#,##0.000"})
+            linked_pct_formula_fmt = workbook.add_format({"font_color": "#008000", "num_format": "0.000"})
             subaggregate_row_fmt = workbook.add_format({"bg_color": "#F8FAFC", "num_format": "#,##0.000"})
             pnl_products_fmt = workbook.add_format({"bg_color": "#ECFDF5", "num_format": "#,##0.000"})
             pnl_charges_fmt = workbook.add_format({"bg_color": "#FEF2F2", "num_format": "#,##0.000"})
@@ -940,6 +1244,29 @@ def export_reporting_excel(
                         elif any(token in name for token in ["nature", "indice", "alerte", "modèle", "agrégat", "sous-agrégat", "mois"]):
                             ws.set_column(idx, idx, 28)
 
+                    if sheet_name in {
+                        "Executive_Summary",
+                        "Forecast_Annuel",
+                        "Forecast_Annuel_Detail",
+                        "Forecast_Mensuel_Detail",
+                    }:
+                        _write_budget_formulas(
+                            worksheet=ws,
+                            dataframe=df_source,
+                            data_start_row=DATA_START_ROW,
+                            money_format=money_fmt,
+                            positive_money_format=positive_money_fmt,
+                            percent_format=pct_fmt,
+                            aggregate_formula_format=aggregate_formula_fmt,
+                            aggregate_percent_format=aggregate_pct_formula_fmt,
+                            linked_formula_format=linked_formula_fmt,
+                            linked_percent_format=linked_pct_formula_fmt,
+                            sheet_name=sheet_name,
+                            aggregate_key_by_label=aggregate_key_by_label,
+                            annual_dataframe=annual_df,
+                            annual_detail_dataframe=annual_detail_df,
+                        )
+
                     if "statut" in [str(c).lower() for c in df_source.columns]:
                         stat_idx = [str(c).lower() for c in df_source.columns].index("statut")
                         ws.conditional_format(DATA_START_ROW, stat_idx, HEADER_ROW + len(df_source), stat_idx, {
@@ -968,6 +1295,16 @@ def export_reporting_excel(
                     if sheet_name in {"Forecast_Annuel_Detail", "Forecast_Mensuel_Detail", "PnL_Formate", "PnL_Formate_Selection", "PnL_Formate_Global", "Etat_Globale"}:
                         lvl_idx = [str(c).lower() for c in df_source.columns].index("niveau") if "Niveau" in df_source.columns else -1
                         lib_idx = [str(c).lower() for c in df_source.columns].index("libellé") if "Libellé" in df_source.columns else -1
+
+                        if sheet_name in {"Forecast_Annuel_Detail", "Forecast_Mensuel_Detail"}:
+                            if lvl_idx >= 0:
+                                ws.set_column(lvl_idx, lvl_idx, 15)
+                            if lib_idx >= 0:
+                                ws.set_column(lib_idx, lib_idx, 40)
+                            if "Nature" in df_source.columns:
+                                nature_idx = list(df_source.columns).index("Nature")
+                                ws.set_column(nature_idx, nature_idx, 14)
+
                         for ridx, row in enumerate(df_source.to_dict(orient="records"), start=DATA_START_ROW):
                             level = row.get("Niveau")
                             if level == "Agrégat":

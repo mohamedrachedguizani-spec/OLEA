@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
+import { FiBarChart2, FiDownload, FiFileText, FiPrinter, FiX } from 'react-icons/fi';
 import ApiService from '../services/api';
 import '../styles/Reporting.css';
 
@@ -14,6 +15,7 @@ function Reporting({ refreshTrigger = 0 }) {
 
     const [loading, setLoading] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
+    const [pdfLoading, setPdfLoading] = useState(false);
     const [printLoading, setPrintLoading] = useState(false);
     const [error, setError] = useState('');
     const [preview, setPreview] = useState(null);
@@ -131,10 +133,24 @@ function Reporting({ refreshTrigger = 0 }) {
         }
     };
 
+    const handlePdf = async () => {
+        setPdfLoading(true);
+        setError('');
+        try {
+            await ApiService.exportReportingPdf(targetYear, 'INITIAL', null, configPayload);
+        } catch (e) {
+            setError(e.message || 'Erreur export PDF reporting');
+        } finally {
+            setPdfLoading(false);
+        }
+    };
+
     const handleConfirmPreview = async () => {
         setShowPreviewModal(false);
         if (previewAction === 'excel') {
             await handleExport();
+        } else if (previewAction === 'pdf') {
+            await handlePdf();
         } else if (previewAction === 'print') {
             await handlePrint();
         }
@@ -229,7 +245,7 @@ function Reporting({ refreshTrigger = 0 }) {
         <div className="reporting-container fade-in">
             <div className="reporting-header">
                 <div className="reporting-title-wrap">
-                    <div className="reporting-title-icon">📊</div>
+                    <div className="reporting-title-icon"><FiBarChart2 /></div>
                     <div>
                         <h2 className="reporting-title">Reporting Décisionnel</h2>
                         <p className="reporting-subtitle">Pilotage d'export homogène avec les autres modules</p>
@@ -240,7 +256,7 @@ function Reporting({ refreshTrigger = 0 }) {
             <div className="reporting-toolbar reporting-toolbar-shell">
                 <div className="reporting-toolbar-head">
                     <h3>Filtres et actions</h3>
-                    <span>Export et impression selon la configuration sélectionnée</span>
+                    <span>Exports Excel/PDF et impression selon la configuration sélectionnée</span>
                 </div>
 
                 <div className="reporting-toolbar-grid">
@@ -259,8 +275,9 @@ function Reporting({ refreshTrigger = 0 }) {
                 </div>
 
                 <div className="reporting-actions">
-                    <button className="btn-reporting" onClick={() => openPreview('print')} disabled={previewLoading || printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'print' ? 'Chargement...' : printLoading ? 'Impression...' : '🖨 Imprimer'}</button>
-                    <button className="btn-reporting primary" onClick={() => openPreview('excel')} disabled={previewLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'excel' ? 'Chargement...' : exportLoading ? 'Export...' : '⬇ Export Excel'}</button>
+                    <button className="btn-reporting" onClick={() => openPreview('print')} disabled={previewLoading || printLoading || pdfLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'print' ? 'Chargement...' : printLoading ? 'Impression...' : <><FiPrinter /> Imprimer</>}</button>
+                    <button className="btn-reporting pdf" onClick={() => openPreview('pdf')} disabled={previewLoading || pdfLoading || printLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'pdf' ? 'Chargement...' : pdfLoading ? 'Export PDF...' : <><FiFileText /> Export PDF</>}</button>
+                    <button className="btn-reporting primary" onClick={() => openPreview('excel')} disabled={previewLoading || exportLoading || pdfLoading || printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'excel' ? 'Chargement...' : exportLoading ? 'Export...' : <><FiDownload /> Export Excel</>}</button>
                 </div>
             </div>
 
@@ -302,6 +319,7 @@ function Reporting({ refreshTrigger = 0 }) {
                     <div className="reporting-config-card">
                         <h4>Prévision budget</h4>
                         <div className="reporting-hint">Le cycle budget sélectionné en haut pilote les prévisions exportées.</div>
+                        <div className="reporting-hint">Les colonnes calculées sont conservées sous forme de formules Excel modifiables.</div>
                         <label><input type="checkbox" checked={exportConfig.includeMonthlyForecast} onChange={() => toggleConfigBool('includeMonthlyForecast')} /> Inclure Forecast_Mensuel_Detail</label>
                         <label><input type="checkbox" checked={exportConfig.includeSubaggregates} onChange={() => toggleConfigBool('includeSubaggregates')} /> Inclure agrégats + sous-agrégats</label>
                         <div className="reporting-hint">Mois pour Forecast_Mensuel_Detail :</div>
@@ -342,14 +360,14 @@ function Reporting({ refreshTrigger = 0 }) {
                     <div className="csv-preview-container">
                         <div className="csv-preview-header">
                             <div className="csv-preview-title">
-                                <span>📄</span>
+                                <span><FiFileText /></span>
                                 <h3>Prévisualisation Reporting</h3>
                             </div>
                             <div className="csv-preview-meta">
                                 <span className="csv-filename">{previewSections.target_year} — {previewSections.cycle_code}</span>
                                 <span className="csv-count">{previewSections.sections?.length || 0} sections</span>
                             </div>
-                            <button className="csv-preview-close" onClick={handleCancelPreview}>✕</button>
+                            <button className="csv-preview-close" onClick={handleCancelPreview}><FiX /></button>
                         </div>
 
                         <div className="csv-preview-body">
@@ -384,14 +402,18 @@ function Reporting({ refreshTrigger = 0 }) {
 
                         <div className="csv-preview-footer">
                             <button className="btn btn-secondary" onClick={handleCancelPreview}>
-                                ✕ Annuler
+                                <FiX /> Annuler
                             </button>
                             <button
                                 className="btn btn-primary"
                                 onClick={handleConfirmPreview}
-                                disabled={exportLoading || printLoading}
+                                disabled={exportLoading || printLoading || pdfLoading}
                             >
-                                {previewAction === 'print' ? '🖨 Confirmer et Imprimer' : '⬇ Confirmer et Télécharger'}
+                                {previewAction === 'print'
+                                    ? <><FiPrinter /> Confirmer et Imprimer</>
+                                    : previewAction === 'pdf'
+                                        ? <><FiFileText /> Confirmer et télécharger le PDF</>
+                                        : <><FiDownload /> Confirmer et télécharger Excel</>}
                             </button>
                         </div>
                     </div>
