@@ -1179,20 +1179,20 @@ def get_annual_comparison(target_year: int, cycle_code: str) -> Dict[str, object
         if uploaded_months else None
     )
     ca_to_expenses_ratio_pct = (
-        abs(ca_actual_total) / expenses_actual_total * 100.0
+        expenses_actual_total / abs(ca_actual_total) * 100.0
         if ca_actual_total is not None
         and expenses_actual_total is not None
-        and expenses_actual_total > 1e-9
+        and abs(ca_actual_total) > 1e-9
         else None
     )
 
     for row in response_rows:
         expense_actual = abs(float(row["actual_total"]))
         row["ca_to_expense_ratio_pct"] = (
-            abs(ca_actual_total) / expense_actual * 100.0
+            expense_actual / abs(ca_actual_total) * 100.0
             if row["nature"] == "charge"
             and ca_actual_total is not None
-            and expense_actual > 1e-9
+            and abs(ca_actual_total) > 1e-9
             else None
         )
 

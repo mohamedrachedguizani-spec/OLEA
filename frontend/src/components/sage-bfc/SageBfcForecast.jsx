@@ -636,9 +636,9 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                             <span>Dépenses réalisées: {fmt(annualMeta.expenses_actual_total, 3)}</span>
                             <span
                                 className="annual-global-ratio"
-                                title="CA net réalisé ÷ total des dépenses réalisées"
+                                title="Total des dépenses réalisées ÷ CA net réalisé"
                             >
-                                Ratio global CA / dépenses: {fmtRatio(annualMeta.ca_to_expenses_ratio_pct)}
+                                Ratio global dépenses / CA net: {fmtRatio(annualMeta.ca_to_expenses_ratio_pct)}
                             </span>
                         </div>
                     </div>
@@ -676,7 +676,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                         <th>Réalisé cumulé</th>
                                         <th>Taux réalisation annuel</th>
                                         <th>Reste budget</th>
-                                        <th>Ratio CA / dépense</th>
+                                        <th>Ratio dépense / CA net</th>
                                         <th>Indice / alerte</th>
                                     </tr>
                                 </thead>
@@ -712,7 +712,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                 <td>
                                                     <span
                                                         className={`annual-expense-ratio ${row.ca_to_expense_ratio_pct == null ? 'empty' : ''}`}
-                                                        title={row.nature === 'charge' ? 'CA net réalisé ÷ dépense réalisée' : 'Indicateur réservé aux dépenses'}
+                                                        title={row.nature === 'charge' ? 'Dépense réalisée ÷ CA net réalisé' : 'Indicateur réservé aux dépenses'}
                                                     >
                                                         {fmtRatio(row.ca_to_expense_ratio_pct)}
                                                     </span>
