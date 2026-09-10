@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import ApiService from '../services/api';
 
-function Configuration() {
-    const [activeTab, setActiveTab] = useState('comptes');
+function Configuration({ initialTab = 'comptes' }) {
+    const [activeTab, setActiveTab] = useState(initialTab);
     
     // Comptes
     const [form, setForm] = useState({ code_compte: '', libelle_compte: '' });

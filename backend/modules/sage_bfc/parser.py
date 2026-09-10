@@ -9,6 +9,21 @@ from pathlib import Path
 from .models import LigneComptableSage, LigneBudgetBFC, TableauBFCResponse, TableauBFCSummary
 from .mapper import SageBFCMapper
 
+
+class UnmappedAccountsError(Exception):
+    """Raised when class 6/7 accounts are missing from the BFC mapping."""
+
+    def __init__(self, accounts: List[Dict]):
+        self.accounts = accounts
+        self.total_balance = sum(
+            (Decimal(str(account["solde"])) for account in accounts),
+            Decimal("0"),
+        )
+        super().__init__(
+            f"{len(accounts)} compte(s) de classe 6 ou 7 ne disposent pas de mapping SAGE → BFC."
+        )
+
+
 class SageBalanceParser:
     """
     Parser des balances SAGE avec mapping automatique BFC
@@ -38,6 +53,12 @@ class SageBalanceParser:
         
         # Parsing des lignes
         lignes_sage = self._parse_dataframe(df)
+
+        # Un compte de charge/produit sans mapping rendrait le P&L incomplet.
+        # Le contrôle intervient avant tout calcul ou enregistrement en base.
+        comptes_non_mappes = self._find_unmapped_class_6_7_accounts(lignes_sage)
+        if comptes_non_mappes:
+            raise UnmappedAccountsError(comptes_non_mappes)
         
         # Mapping vers BFC
         lignes_bfc = []
@@ -87,6 +108,37 @@ class SageBalanceParser:
             lignes=lignes_bfc,
             resume=resume
         )
+
+    def _find_unmapped_class_6_7_accounts(
+        self, lignes_sage: List[LigneComptableSage]
+    ) -> List[Dict]:
+        """Regroupe les comptes 6/7 absents du mapping avec leurs montants."""
+        grouped: Dict[str, Dict] = {}
+
+        for ligne in lignes_sage:
+            code = ligne.code_compte.strip()
+            if not code.startswith(("6", "7")) or code in self.mapper.flat_mapping:
+                continue
+
+            if code not in grouped:
+                grouped[code] = {
+                    "code_compte": code,
+                    "libelle": ligne.libelle or "",
+                    "debit": Decimal("0"),
+                    "credit": Decimal("0"),
+                    "solde": Decimal("0"),
+                    "nombre_lignes": 0,
+                }
+
+            account = grouped[code]
+            if not account["libelle"] and ligne.libelle:
+                account["libelle"] = ligne.libelle
+            account["debit"] += ligne.debit
+            account["credit"] += ligne.credit
+            account["solde"] += ligne.solde
+            account["nombre_lignes"] += 1
+
+        return [grouped[code] for code in sorted(grouped)]
     
     def _read_excel(self, content: bytes) -> pd.DataFrame:
         """Lit un fichier Excel depuis des bytes et valide qu'il ne contient qu'une seule feuille"""

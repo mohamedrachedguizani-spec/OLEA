@@ -33,6 +33,12 @@ function App() {
     const [forecastRefresh, setForecastRefresh] = useState(0);
     const [reportingRefresh, setReportingRefresh] = useState(0);
     const [configurationRefresh, setConfigurationRefresh] = useState(0);
+    const [configurationInitialTab, setConfigurationInitialTab] = useState('comptes');
+
+    const openMappingConfiguration = useCallback(() => {
+        setConfigurationInitialTab('mapping');
+        setActiveTab('configuration');
+    }, []);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -164,8 +170,12 @@ function App() {
                     {activeTab === 'reporting' && hasPermission('reporting', 'read') && <Reporting refreshTrigger={reportingRefresh} />}
                     {activeTab === 'saisie' && <SaisieCaisse refreshTrigger={refreshTrigger} />}
                     {activeTab === 'export' && <ExportCSV />}
-                    {activeTab === 'sage-bfc' && <SageBfcParser refreshTrigger={sageBfcRefresh} forecastRefresh={forecastRefresh} />}
-                    {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration />}
+                    {activeTab === 'sage-bfc' && <SageBfcParser
+                        refreshTrigger={sageBfcRefresh}
+                        forecastRefresh={forecastRefresh}
+                        onOpenMappingConfiguration={hasPermission('configuration', 'read') ? openMappingConfiguration : null}
+                    />}
+                    {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration initialTab={configurationInitialTab} />}
                     {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire />}
                     {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire />}
                     {activeTab === 'users' && <UserManagement />}

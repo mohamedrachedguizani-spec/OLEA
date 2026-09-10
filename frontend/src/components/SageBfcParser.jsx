@@ -7,6 +7,8 @@ import SageBfcPnl from './sage-bfc/SageBfcPnl';
 import SageBfcLignes from './sage-bfc/SageBfcLignes';
 import SageBfcDashboard from './sage-bfc/SageBfcDashboard';
 import SageBfcForecast from './sage-bfc/SageBfcForecast';
+import SageBfcMappingAlert from './sage-bfc/SageBfcMappingAlert';
+import SageBfcSuccessModal from './sage-bfc/SageBfcSuccessModal';
 import './sage-bfc/SageBfcParser.css';
 
 const ALL_PERIODS_KEY = '__all_periods__';
@@ -73,13 +75,15 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
     };
 }
 
-function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
+function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfiguration }) {
     const currentYear = new Date().getFullYear();
     const [activeStep, setActiveStep] = useState('upload'); // upload | results
     const [activeTab, setActiveTab] = useState('dashboard'); // dashboard | pnl | lignes | forecast
     const [loading, setLoading] = useState(false);
     const [loadingData, setLoadingData] = useState(true);
     const [error, setError] = useState(null);
+    const [mappingAlert, setMappingAlert] = useState(null);
+    const [importSuccess, setImportSuccess] = useState(null);
     const [successMessage, setSuccessMessage] = useState(null);
     const [mappingStats, setMappingStats] = useState(null);
     const [fileName, setFileName] = useState('');
@@ -316,6 +320,8 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     const handleFileParse = useCallback(async (file, periode) => {
         setLoading(true);
         setError(null);
+        setMappingAlert(null);
+        setImportSuccess(null);
         setSuccessMessage(null);
         setFileName(file.name);
 
@@ -337,8 +343,19 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
             setSelectedMonth(monthKey);
             setActiveStep('results');
             setActiveTab('dashboard');
+            const lignes = Array.isArray(data.lignes) ? data.lignes : [];
+            setImportSuccess({
+                periode: data.periode,
+                fileName: file.name,
+                linesCount: lignes.length,
+                mappedAccounts: new Set(lignes.map((line) => line.code_sage).filter(Boolean)).size,
+            });
         } catch (err) {
-            setError(err.message || 'Erreur lors du parsing du fichier');
+            if (err.code === 'SAGE_BFC_MAPPING_MISSING' && err.mappingDetails) {
+                setMappingAlert(err.mappingDetails);
+            } else {
+                setError(err.message || 'Erreur lors du parsing du fichier');
+            }
         } finally {
             setLoading(false);
         }
@@ -347,9 +364,26 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
     const handleNewUpload = useCallback(() => {
         setActiveStep('upload');
         setError(null);
+        setMappingAlert(null);
+        setImportSuccess(null);
         setSuccessMessage(null);
         setFileName('');
     }, []);
+
+    const dismissImportSuccess = useCallback(() => {
+        setImportSuccess(null);
+    }, []);
+
+    const handleSuccessViewResults = useCallback(() => {
+        setImportSuccess(null);
+        setActiveStep('results');
+        setActiveTab('dashboard');
+    }, []);
+
+    const handleSuccessNewUpload = useCallback(() => {
+        setImportSuccess(null);
+        handleNewUpload();
+    }, [handleNewUpload]);
 
     const handleViewResults = useCallback(() => {
         setActiveStep('results');
@@ -478,6 +512,14 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
 
     return (
         <div className="sage-bfc-container fade-in">
+            {importSuccess && (
+                <SageBfcSuccessModal
+                    details={importSuccess}
+                    onDismiss={dismissImportSuccess}
+                    onViewResults={handleSuccessViewResults}
+                    onNewUpload={handleSuccessNewUpload}
+                />
+            )}
             {/* Header du module */}
             <div className="sage-bfc-header">
                 <div>
@@ -594,6 +636,13 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0 }) {
             {/* Étape 1: Upload */}
             {activeStep === 'upload' && (
                 <div className="sage-upload-step">
+                    {mappingAlert && (
+                        <SageBfcMappingAlert
+                            details={mappingAlert}
+                            onDismiss={() => setMappingAlert(null)}
+                            onOpenConfiguration={onOpenMappingConfiguration}
+                        />
+                    )}
                     <SageBfcUpload
                         onFileParse={handleFileParse}
                         loading={loading}

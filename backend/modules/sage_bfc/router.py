@@ -16,7 +16,7 @@ from modules.audit.service import log_audit_action
 from modules.notifications.service import notify_module_users
 from .config import get_mapping_config, save_mapping_config
 from .mapper import SageBFCMapper
-from .parser import SageBalanceParser
+from .parser import SageBalanceParser, UnmappedAccountsError
 from .models import (
     TableauBFCResponse,
     TableauBFCSummary,
@@ -715,6 +715,29 @@ async def parse_balance(
 
         return resultat_reel
         
+    except UnmappedAccountsError as e:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "SAGE_BFC_MAPPING_MISSING",
+                "message": (
+                    "Mapping introuvable pour certains comptes de classe 6 ou 7. "
+                    "Ajoutez ces codes dans Configuration → Mapping SAGE → BFC, "
+                    "puis relancez l'import."
+                ),
+                "nombre_comptes": len(e.accounts),
+                "solde_total": float(e.total_balance),
+                "comptes_non_mappes": [
+                    {
+                        **account,
+                        "debit": float(account["debit"]),
+                        "credit": float(account["credit"]),
+                        "solde": float(account["solde"]),
+                    }
+                    for account in e.accounts
+                ],
+            },
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

@@ -746,7 +746,14 @@ class ApiService {
         });
         if (!response.ok) {
             const error = await response.json().catch(() => ({ detail: 'Erreur inconnue' }));
-            throw new Error(error.detail || `Erreur ${response.status}`);
+            const detail = error.detail;
+            if (response.status === 422 && detail?.code === 'SAGE_BFC_MAPPING_MISSING') {
+                const mappingError = new Error(detail.message);
+                mappingError.code = detail.code;
+                mappingError.mappingDetails = detail;
+                throw mappingError;
+            }
+            throw new Error(typeof detail === 'string' ? detail : `Erreur ${response.status}`);
         }
         return response.json();
     }
