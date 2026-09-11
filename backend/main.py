@@ -1,7 +1,10 @@
 # main.py
 import os
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from ipaddress import ip_address
+
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html
 
 from database import db, init_sage_bfc_tables, init_forecast_tables
 from ws_manager import manager
@@ -25,13 +28,57 @@ from modules.access import router as access_router, init_access_tables
 
 
 IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
+SWAGGER_ENABLED = os.getenv(
+    "SWAGGER_ENABLED", "false" if IS_PRODUCTION else "true"
+).lower() == "true"
+SWAGGER_LOCAL_ONLY = os.getenv("SWAGGER_LOCAL_ONLY", "true").lower() == "true"
 
 app = FastAPI(
     title="Olea – Gestion de Caisse & BFC",
-    docs_url=None if IS_PRODUCTION else "/docs",
-    redoc_url=None if IS_PRODUCTION else "/redoc",
-    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+    docs_url=None,
+    redoc_url=None,
+    openapi_url=None,
 )
+
+
+def _require_local_swagger_client(request: Request) -> None:
+    """Refuse la documentation aux clients non locaux sans révéler sa présence."""
+    if not SWAGGER_LOCAL_ONLY:
+        return
+
+    client_host = request.client.host if request.client else ""
+    try:
+        is_loopback = ip_address(client_host).is_loopback
+    except ValueError:
+        is_loopback = False
+
+    if not is_loopback:
+        raise HTTPException(status_code=404, detail="Not Found")
+
+
+if SWAGGER_ENABLED:
+    @app.get("/openapi.json", include_in_schema=False)
+    def protected_openapi(request: Request):
+        _require_local_swagger_client(request)
+        return app.openapi()
+
+
+    @app.get("/docs", include_in_schema=False)
+    def protected_swagger(request: Request):
+        _require_local_swagger_client(request)
+        return get_swagger_ui_html(
+            openapi_url="/openapi.json",
+            title=f"{app.title} - Swagger UI",
+        )
+
+
+    @app.get("/redoc", include_in_schema=False)
+    def protected_redoc(request: Request):
+        _require_local_swagger_client(request)
+        return get_redoc_html(
+            openapi_url="/openapi.json",
+            title=f"{app.title} - ReDoc",
+        )
 
 # Configuration CORS (Accepte toutes les origines dynamiquement pour supporter n'importe quelle adresse IP de VM)
 app.add_middleware(
