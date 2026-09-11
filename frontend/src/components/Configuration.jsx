@@ -1,8 +1,26 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import ApiService from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
+
+const CONFIG_TAB_PERMISSIONS = {
+    comptes: 'configuration.accounts.read',
+    tiers: 'configuration.third_parties.read',
+    mapping: 'configuration.mapping.read',
+};
 
 function Configuration({ initialTab = 'comptes' }) {
-    const [activeTab, setActiveTab] = useState(initialTab);
+    const { has } = useAuth();
+    const firstAllowedTab = Object.keys(CONFIG_TAB_PERMISSIONS)
+        .find((tab) => has(CONFIG_TAB_PERMISSIONS[tab]));
+    const [activeTab, setActiveTab] = useState(
+        has(CONFIG_TAB_PERMISSIONS[initialTab]) ? initialTab : firstAllowedTab
+    );
+    const canManageAccounts = has('configuration.accounts.manage');
+    const canDeleteAccounts = has('configuration.accounts.delete');
+    const canManageThirdParties = has('configuration.third_parties.manage');
+    const canDeleteThirdParties = has('configuration.third_parties.delete');
+    const canManageMapping = has('configuration.mapping.manage');
+    const canDeleteMapping = has('configuration.mapping.delete');
     
     // Comptes
     const [form, setForm] = useState({ code_compte: '', libelle_compte: '' });
@@ -84,8 +102,10 @@ function Configuration({ initialTab = 'comptes' }) {
     }, [search, page, pageSize]);
 
     useEffect(() => {
-        loadComptes();
-    }, [loadComptes]);
+        if (activeTab === 'comptes' && has(CONFIG_TAB_PERMISSIONS.comptes)) {
+            loadComptes();
+        }
+    }, [activeTab, has, loadComptes]);
 
     const loadTiers = useCallback(async () => {
         setTiersLoading(true);
@@ -104,10 +124,10 @@ function Configuration({ initialTab = 'comptes' }) {
     }, [tiersSearch, tiersPage, tiersPageSize]);
 
     useEffect(() => {
-        if (activeTab === 'tiers') {
+        if (activeTab === 'tiers' && has(CONFIG_TAB_PERMISSIONS.tiers)) {
             loadTiers();
         }
-    }, [activeTab, loadTiers]);
+    }, [activeTab, has, loadTiers]);
 
     const loadMappingData = useCallback(async () => {
         setMappingLoading(true);
@@ -132,10 +152,10 @@ function Configuration({ initialTab = 'comptes' }) {
     }, [mappingSearch, mappingPage, mappingPageSize]);
 
     useEffect(() => {
-        if (activeTab === 'mapping') {
+        if (activeTab === 'mapping' && has(CONFIG_TAB_PERMISSIONS.mapping)) {
             loadMappingData();
         }
-    }, [activeTab, loadMappingData]);
+    }, [activeTab, has, loadMappingData]);
 
     useEffect(() => {
         if (message) {
@@ -509,7 +529,7 @@ function Configuration({ initialTab = 'comptes' }) {
                         Configuration
                     </h2>
                     <div className="config-tabs" role="tablist" aria-label="Configuration tabs">
-                        <button
+                        {has(CONFIG_TAB_PERMISSIONS.comptes) && <button
                             type="button"
                             className={`config-tab ${activeTab === 'comptes' ? 'active' : ''}`}
                             onClick={() => setActiveTab('comptes')}
@@ -517,8 +537,8 @@ function Configuration({ initialTab = 'comptes' }) {
                             aria-selected={activeTab === 'comptes'}
                         >
                             Comptes
-                        </button>
-                        <button
+                        </button>}
+                        {has(CONFIG_TAB_PERMISSIONS.tiers) && <button
                             type="button"
                             className={`config-tab ${activeTab === 'tiers' ? 'active' : ''}`}
                             onClick={() => setActiveTab('tiers')}
@@ -526,8 +546,8 @@ function Configuration({ initialTab = 'comptes' }) {
                             aria-selected={activeTab === 'tiers'}
                         >
                             Plan Tiers
-                        </button>
-                        <button
+                        </button>}
+                        {has(CONFIG_TAB_PERMISSIONS.mapping) && <button
                             type="button"
                             className={`config-tab ${activeTab === 'mapping' ? 'active' : ''}`}
                             onClick={() => setActiveTab('mapping')}
@@ -535,7 +555,7 @@ function Configuration({ initialTab = 'comptes' }) {
                             aria-selected={activeTab === 'mapping'}
                         >
                             Mapping SAGE → BFC
-                        </button>
+                        </button>}
                     </div>
                 </div>
             </div>
@@ -598,7 +618,7 @@ function Configuration({ initialTab = 'comptes' }) {
                             </div>
 
                             <div className="form-col form-col-btn">
-                                <button type="submit" className="btn btn-primary" disabled={saving}>
+                                <button type="submit" className="btn btn-primary" disabled={saving || !canManageAccounts}>
                                     {saving ? 'Enregistrement...' : 'Enregistrer'}
                                 </button>
                             </div>
@@ -667,7 +687,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                             <button
                                                                 className="btn btn-sm btn-success"
                                                                 onClick={() => handleSaveEdit(compte.code_compte)}
-                                                                disabled={saving}
+                                                                disabled={saving || !canManageAccounts}
                                                                 title="Enregistrer"
                                                             >
                                                                 ✓ 
@@ -692,6 +712,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                                 className="btn btn-sm btn-secondary"
                                                                 onClick={() => handleEdit(compte)}
                                                                 title="Modifier"
+                                                                disabled={!canManageAccounts}
                                                             >
                                                                 ✏️ 
                                                             </button>
@@ -699,7 +720,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                                 className="btn btn-sm btn-danger"
                                                                 onClick={() => handleDelete(compte.code_compte)}
                                                                 title="Supprimer"
-                                                                disabled={saving}
+                                                                disabled={saving || !canDeleteAccounts}
                                                             >
                                                                 🗑️ 
                                                             </button>
@@ -830,7 +851,7 @@ function Configuration({ initialTab = 'comptes' }) {
                             </div>
 
                             <div className="form-col form-col-btn">
-                                <button type="submit" className="btn btn-primary" disabled={tiersSaving}>
+                                <button type="submit" className="btn btn-primary" disabled={tiersSaving || !canManageThirdParties}>
                                     {tiersSaving ? 'Enregistrement...' : 'Enregistrer'}
                                 </button>
                             </div>
@@ -899,7 +920,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                             <button
                                                                 className="btn btn-sm btn-success"
                                                                 onClick={() => handleTiersSaveEdit(t.code)}
-                                                                disabled={tiersSaving}
+                                                                disabled={tiersSaving || !canManageThirdParties}
                                                                 title="Enregistrer"
                                                             >
                                                                 ✓ 
@@ -924,6 +945,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                                 className="btn btn-sm btn-secondary"
                                                                 onClick={() => handleTiersEdit(t)}
                                                                 title="Modifier"
+                                                                disabled={!canManageThirdParties}
                                                             >
                                                                 ✏️ 
                                                             </button>
@@ -931,7 +953,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                                 className="btn btn-sm btn-danger"
                                                                 onClick={() => handleTiersDelete(t.code)}
                                                                 title="Supprimer"
-                                                                disabled={tiersSaving}
+                                                                disabled={tiersSaving || !canDeleteThirdParties}
                                                             >
                                                                 🗑️ 
                                                             </button>
@@ -1179,7 +1201,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                 </div>
                             </div>
                             <div className="form-col form-col-btn">
-                                <button type="submit" className="btn btn-primary" disabled={mappingSaving}>
+                                <button type="submit" className="btn btn-primary" disabled={mappingSaving || !canManageMapping}>
                                     {mappingSaving ? 'Enregistrement...' : 'Ajouter'}
                                 </button>
                             </div>
@@ -1310,7 +1332,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                                 <button
                                                                     className="btn btn-sm btn-success"
                                                                     onClick={() => handleMappingSaveEdit(entry.code_compte)}
-                                                                    disabled={mappingSaving}
+                                                                    disabled={mappingSaving || !canManageMapping}
                                                                     title="Enregistrer"
                                                                 >
                                                                     ✓ 
@@ -1340,6 +1362,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                                     className="btn btn-sm btn-secondary"
                                                                     onClick={() => handleMappingEdit(entry)}
                                                                     title="Modifier"
+                                                                    disabled={!canManageMapping}
                                                                 >
                                                                     ✏️ 
                                                                 </button>
@@ -1347,7 +1370,7 @@ function Configuration({ initialTab = 'comptes' }) {
                                                                     className="btn btn-sm btn-danger"
                                                                     onClick={() => handleMappingDelete(entry.code_compte, entry.mapping_section)}
                                                                     title="Supprimer"
-                                                                    disabled={mappingSaving}
+                                                                    disabled={mappingSaving || !canDeleteMapping}
                                                                 >
                                                                     🗑️ 
                                                                 </button>

@@ -7,13 +7,13 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Request
 
 from database import db
-from modules.auth.dependencies import get_current_user, restrict_superadmin
+from modules.auth.dependencies import require_permission_code
 from modules.audit.service import log_audit_action
 
 router = APIRouter(
     tags=["Export CSV"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("export_csv"))],
+    dependencies=[],
 )
 
 
@@ -26,7 +26,7 @@ def export_csv(
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
     request: Request = None,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("export_csv.caisse")),
 ):
     """Exporter les écritures Sage au format CSV compatible Sage"""
     with db.get_cursor() as cursor:
@@ -104,7 +104,7 @@ def export_brouillard_caisse(
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
     request: Request = None,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("export_csv.brouillard")),
 ):
     """Exporter le brouillard de caisse au format CSV avec solde calculé"""
     with db.get_cursor() as cursor:

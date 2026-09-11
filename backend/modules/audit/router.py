@@ -6,15 +6,14 @@ import json
 from fastapi import APIRouter, Depends, Query, HTTPException, status
 
 from database import db
-from modules.auth.dependencies import get_current_user, require_role
-from modules.auth.models import RoleEnum
+from modules.auth.dependencies import require_permission_code
 from .models import AuditLogPage, AuditLogDeleteRequest, AuditLogDeleteResponse
 
 
 router = APIRouter(
     tags=["Audit"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(get_current_user), Depends(require_role(RoleEnum.superadmin))],
+    dependencies=[Depends(require_permission_code("admin.audit.read"))],
 )
 
 
@@ -120,7 +119,7 @@ def list_audit_logs(
 @router.delete("/audit/logs", response_model=AuditLogDeleteResponse)
 def delete_audit_logs(
     payload: AuditLogDeleteRequest,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.audit.delete")),
 ):
     ids = [int(i) for i in payload.ids if i]
     unique_ids = sorted(set(ids))

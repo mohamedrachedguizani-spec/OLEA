@@ -456,6 +456,42 @@ class ApiService {
         return response.json();
     }
 
+    static async getAccessPermissions() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/access/permissions`);
+        if (!response.ok) throw new Error('Erreur lors du chargement des permissions');
+        return response.json();
+    }
+
+    static async getAccessRoles() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/access/roles`);
+        if (!response.ok) throw new Error('Erreur lors du chargement des profils');
+        return response.json();
+    }
+
+    static async updateAccessRolePermissions(roleId, permissionCodes) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/access/roles/${roleId}/permissions`, {
+            method: 'PUT',
+            body: JSON.stringify({ permission_codes: permissionCodes }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur' }));
+            throw new Error(err.detail || 'Erreur lors de la mise à jour du profil');
+        }
+        return response.json();
+    }
+
+    static async assignAccessRole(userId, roleId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/access/users/${userId}/role`, {
+            method: 'PUT',
+            body: JSON.stringify({ role_id: roleId }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur' }));
+            throw new Error(err.detail || "Erreur lors de l'attribution du profil");
+        }
+        return response.json();
+    }
+
     static async exportReconciliationPdf(payload) {
         const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/export-pdf`, {
             method: 'POST',
@@ -777,15 +813,6 @@ class ApiService {
     // Supprimer un mois
     static async deleteSageBfcMonth(periode) {
         const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/monthly/${periode}`, {
-            method: 'DELETE'
-        });
-        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
-        return response.json();
-    }
-
-    // Supprimer tous les mois
-    static async deleteSageBfcAllMonths() {
-        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/monthly`, {
             method: 'DELETE'
         });
         if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);

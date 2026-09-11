@@ -11,7 +11,7 @@ import pdfplumber
 from dateutil import parser as date_parser
 
 from database import db
-from modules.auth.dependencies import get_current_user, restrict_superadmin
+from modules.auth.dependencies import get_current_user, require_permission_code
 from modules.audit.service import log_audit_action
 from .models import (
     BankReconciliationBatch,
@@ -31,7 +31,7 @@ from .models import (
 router = APIRouter(
     tags=["Saisie Bancaire"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("saisie_bancaire"))],
+    dependencies=[],
 )
 
 
@@ -43,7 +43,7 @@ from .service import (
 )
 
 
-@router.post("/saisie-bancaire/upload", response_model=BankReconciliationUploadResponse)
+@router.post("/saisie-bancaire/upload", response_model=BankReconciliationUploadResponse, dependencies=[Depends(require_permission_code("saisie_bancaire.import"))])
 def upload_bank_reconciliation(
     request: Request,
     file: UploadFile = File(...),
@@ -172,7 +172,7 @@ def upload_bank_reconciliation(
     }
 
 
-@router.get("/saisie-bancaire/batches/{batch_id}/movements", response_model=List[BankReconciliationMovement])
+@router.get("/saisie-bancaire/batches/{batch_id}/movements", response_model=List[BankReconciliationMovement], dependencies=[Depends(require_permission_code("saisie_bancaire.sessions.read"))])
 def get_bank_reconciliation_movements(batch_id: int):
     with db.get_cursor() as cursor:
         cursor.execute(
@@ -182,7 +182,7 @@ def get_bank_reconciliation_movements(batch_id: int):
         return cursor.fetchall()
 
 
-@router.get("/saisie-bancaire/batches/{batch_id}", response_model=BankReconciliationBatch)
+@router.get("/saisie-bancaire/batches/{batch_id}", response_model=BankReconciliationBatch, dependencies=[Depends(require_permission_code("saisie_bancaire.sessions.read"))])
 def get_bank_reconciliation_batch(batch_id: int):
     with db.get_cursor() as cursor:
         cursor.execute(
@@ -198,6 +198,7 @@ def get_bank_reconciliation_batch(batch_id: int):
 @router.post(
     "/saisie-bancaire/batches/{batch_id}/sage-lines",
     response_model=BankReconciliationSageLinesResponse,
+    dependencies=[Depends(require_permission_code("saisie_bancaire.sage.generate"))],
 )
 def generate_sage_lines(
     batch_id: int,
@@ -335,7 +336,7 @@ def _build_sage_csv(lines: List[BankReconciliationSageLine]) -> str:
     return output.getvalue()
 
 
-@router.post("/saisie-bancaire/batches/{batch_id}/sage-lines/export-csv")
+@router.post("/saisie-bancaire/batches/{batch_id}/sage-lines/export-csv", dependencies=[Depends(require_permission_code("saisie_bancaire.sage.export"))])
 def export_bank_reconciliation_sage_csv(
     batch_id: int,
     payload: BankReconciliationSageGenerationRequest,
@@ -367,6 +368,7 @@ def export_bank_reconciliation_sage_csv(
 @router.post(
     "/saisie-bancaire/batches/{batch_id}/sage-lines/save",
     response_model=BankReconciliationSageSaveResponse,
+    dependencies=[Depends(require_permission_code("saisie_bancaire.entries.manage"))],
 )
 def save_sage_lines(
     batch_id: int,
@@ -424,7 +426,7 @@ def save_sage_lines(
 # ===================== Session de saisie =====================
 
 
-@router.get("/saisie-bancaire/pending-sessions", response_model=List[PendingSession])
+@router.get("/saisie-bancaire/pending-sessions", response_model=List[PendingSession], dependencies=[Depends(require_permission_code("saisie_bancaire.sessions.read"))])
 def get_pending_sessions(user: dict = Depends(get_current_user)):
     with db.get_cursor() as cursor:
         cursor.execute(
@@ -443,6 +445,7 @@ def get_pending_sessions(user: dict = Depends(get_current_user)):
 @router.post(
     "/saisie-bancaire/batches/{batch_id}/save-session",
     response_model=SaveSessionResponse,
+    dependencies=[Depends(require_permission_code("saisie_bancaire.entries.manage"))],
 )
 def save_session_entries(
     batch_id: int,
@@ -490,6 +493,7 @@ def save_session_entries(
 @router.get(
     "/saisie-bancaire/batches/{batch_id}/session-entries",
     response_model=List[SessionEntry],
+    dependencies=[Depends(require_permission_code("saisie_bancaire.sessions.read"))],
 )
 def get_session_entries(batch_id: int):
     with db.get_cursor() as cursor:

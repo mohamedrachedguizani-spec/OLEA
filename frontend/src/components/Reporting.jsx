@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import { FiBarChart2, FiDownload, FiFileText, FiPrinter, FiX } from 'react-icons/fi';
 import ApiService from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import '../styles/Reporting.css';
 
 const CYCLE_OPTIONS = ['INITIAL', 'M03', 'M06', 'M08'];
 
 function Reporting({ refreshTrigger = 0 }) {
+    const { has } = useAuth();
     const now = new Date();
     const [targetYear, setTargetYear] = useState(null);
     const [budgetCycleCode, setBudgetCycleCode] = useState('INITIAL');
@@ -275,9 +277,9 @@ function Reporting({ refreshTrigger = 0 }) {
                 </div>
 
                 <div className="reporting-actions">
-                    <button className="btn-reporting" onClick={() => openPreview('print')} disabled={previewLoading || printLoading || pdfLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'print' ? 'Chargement...' : printLoading ? 'Impression...' : <><FiPrinter /> Imprimer</>}</button>
-                    <button className="btn-reporting pdf" onClick={() => openPreview('pdf')} disabled={previewLoading || pdfLoading || printLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'pdf' ? 'Chargement...' : pdfLoading ? 'Export PDF...' : <><FiFileText /> Export PDF</>}</button>
-                    <button className="btn-reporting primary" onClick={() => openPreview('excel')} disabled={previewLoading || exportLoading || pdfLoading || printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'excel' ? 'Chargement...' : exportLoading ? 'Export...' : <><FiDownload /> Export Excel</>}</button>
+                    <button className="btn-reporting" onClick={() => openPreview('print')} disabled={!has('reporting.print') || previewLoading || printLoading || pdfLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'print' ? 'Chargement...' : printLoading ? 'Impression...' : <><FiPrinter /> Imprimer</>}</button>
+                    <button className="btn-reporting pdf" onClick={() => openPreview('pdf')} disabled={!has('reporting.export_pdf') || previewLoading || pdfLoading || printLoading || exportLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'pdf' ? 'Chargement...' : pdfLoading ? 'Export PDF...' : <><FiFileText /> Export PDF</>}</button>
+                    <button className="btn-reporting primary" onClick={() => openPreview('excel')} disabled={!has('reporting.export_excel') || previewLoading || exportLoading || pdfLoading || printLoading || !hasAnySection || !hasValidMonthlyDetailSelection || !hasValidPnlSelection}>{previewLoading && previewAction === 'excel' ? 'Chargement...' : exportLoading ? 'Export...' : <><FiDownload /> Export Excel</>}</button>
                 </div>
             </div>
 

@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
-from modules.auth.dependencies import restrict_superadmin, require_permission
+from modules.auth.dependencies import require_permission_code
 from modules.audit.service import log_audit_action
 from modules.rapprochement_bancaire.models import (
     ReconciliationOptions,
@@ -14,7 +14,7 @@ from modules.rapprochement_bancaire.service import parse_sage_file, parse_bank_f
 router = APIRouter(
     tags=["Rapprochement Bancaire"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("rapprochement_bancaire"))],
+    dependencies=[],
 )
 
 @router.post("/rapprochement/compare", response_model=ReconciliationResult)
@@ -22,7 +22,7 @@ def compare_files(
     request: Request,
     sage_file: UploadFile = File(...),
     bank_file: UploadFile = File(...),
-    user: dict = Depends(require_permission("rapprochement_bancaire", "read")),
+    user: dict = Depends(require_permission_code("rapprochement_bancaire.run")),
 ):
     """
     Téléverse et compare les écritures du Grand Livre Sage et les mouvements du relevé bancaire.
@@ -86,7 +86,7 @@ def compare_files(
 def export_reconciliation_pdf(
     payload: ReconciliationPdfRequest,
     request: Request,
-    user: dict = Depends(require_permission("rapprochement_bancaire", "read")),
+    user: dict = Depends(require_permission_code("rapprochement_bancaire.export_pdf")),
 ):
     """Génère un rapport PDF complet à partir des résultats affichés."""
     pdf_buffer = build_reconciliation_pdf(payload)

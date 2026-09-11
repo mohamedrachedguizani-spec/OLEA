@@ -3,7 +3,7 @@ from typing import List
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user, require_permission, restrict_superadmin
+from modules.auth.dependencies import require_permission_code
 from modules.audit.service import log_audit_action
 from .models import (
     CompteConfiguration, CompteConfigurationCreate, CompteConfigurationUpdate, CompteConfigurationPage,
@@ -14,7 +14,7 @@ from .models import (
 router = APIRouter(
     tags=["Configuration"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("configuration"))],
+    dependencies=[],
 )
 
 
@@ -23,7 +23,7 @@ def get_configuration_comptes(
     search: str = "",
     page: int = 1,
     page_size: int = 20,
-    user: dict = Depends(require_permission("configuration", "read")),
+    user: dict = Depends(require_permission_code("configuration.accounts.read")),
 ):
     """Lister les comptes configurés (code + libellé)."""
     safe_page = max(1, int(page))
@@ -83,7 +83,7 @@ def get_configuration_comptes(
 def create_or_update_compte(
     payload: CompteConfigurationCreate,
     request: Request,
-    user: dict = Depends(require_permission("configuration", "write")),
+    user: dict = Depends(require_permission_code("configuration.accounts.manage")),
 ):
     """Créer un nouveau compte ou mettre à jour son libellé s'il existe."""
     code_compte = (payload.code_compte or "").strip()
@@ -166,7 +166,7 @@ def update_compte(
     code_compte: str,
     payload: CompteConfigurationUpdate,
     request: Request,
-    user: dict = Depends(require_permission("configuration", "write")),
+    user: dict = Depends(require_permission_code("configuration.accounts.manage")),
 ):
     """Modifier le libellé ET le code d'un compte existant."""
     code = (code_compte or "").strip()
@@ -251,7 +251,7 @@ def update_compte(
 def delete_compte(
     code_compte: str,
     request: Request,
-    user: dict = Depends(require_permission("configuration", "delete")),
+    user: dict = Depends(require_permission_code("configuration.accounts.delete")),
 ):
     """Supprimer un compte (toutes les lignes avec ce code)."""
     code = (code_compte or "").strip()
@@ -299,7 +299,7 @@ def get_configuration_tiers(
     search: str = "",
     page: int = 1,
     page_size: int = 20,
-    user: dict = Depends(require_permission("configuration", "read")),
+    user: dict = Depends(require_permission_code("configuration.third_parties.read")),
 ):
     """Lister les tiers configurés (code + libellé)."""
     safe_page = max(1, int(page))
@@ -346,7 +346,7 @@ def get_configuration_tiers(
 def create_or_update_tiers(
     payload: TiersConfigurationCreate,
     request: Request,
-    user: dict = Depends(require_permission("configuration", "write")),
+    user: dict = Depends(require_permission_code("configuration.third_parties.manage")),
 ):
     """Créer un nouveau tiers ou mettre à jour son libellé s'il existe."""
     code = (payload.code or "").strip()
@@ -425,7 +425,7 @@ def update_configuration_tiers(
     code: str,
     payload: TiersConfigurationUpdate,
     request: Request,
-    user: dict = Depends(require_permission("configuration", "write")),
+    user: dict = Depends(require_permission_code("configuration.third_parties.manage")),
 ):
     """Modifier le libellé ET le code d'un tiers existant."""
     old_code = (code or "").strip()
@@ -509,7 +509,7 @@ def update_configuration_tiers(
 def delete_configuration_tiers(
     code: str,
     request: Request,
-    user: dict = Depends(require_permission("configuration", "delete")),
+    user: dict = Depends(require_permission_code("configuration.third_parties.delete")),
 ):
     """Supprimer un tiers par son code."""
     code_strip = (code or "").strip()

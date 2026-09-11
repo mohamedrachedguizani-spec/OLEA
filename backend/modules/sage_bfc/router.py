@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user, restrict_superadmin
+from modules.auth.dependencies import get_current_user, require_permission_code
 from modules.audit.service import log_audit_action
 from modules.notifications.service import notify_module_users
 from .config import get_mapping_config, save_mapping_config
@@ -34,7 +34,7 @@ router = APIRouter(
     prefix="/sage-bfc",
     tags=["SAGE → BFC Parser"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("sage_bfc"))],
+    dependencies=[],
 )
 
 # Stockage temporaire des tableaux générés (en production, utiliser Redis/DB)
@@ -233,11 +233,11 @@ def get_parser(mapper: SageBFCMapper = Depends(get_mapper)):
     """Dependency pour obtenir le parser"""
     return SageBalanceParser(mapper)
 
-@router.get("/mapping/sections")
+@router.get("/mapping/sections", dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
 async def get_mapping_sections():
     return {"sections": _MAPPING_SECTIONS}
 
-@router.get("/mapping/meta")
+@router.get("/mapping/meta", dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
 async def get_mapping_meta():
     config = get_mapping_config()
     categories = set()
@@ -260,7 +260,7 @@ async def get_mapping_meta():
         "agregats": sorted(agregats),
     }
 
-@router.get("/mapping/config", response_model=MappingConfigResponse)
+@router.get("/mapping/config", response_model=MappingConfigResponse, dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
 async def get_mapping_config_full():
     config = get_mapping_config()
     mapping = {section: config.get(section, {}) for section in _MAPPING_SECTIONS}
@@ -275,7 +275,7 @@ async def get_mapping_config_full():
         mapping=mapping,
     )
 
-@router.put("/mapping/config")
+@router.put("/mapping/config", dependencies=[Depends(require_permission_code("configuration.mapping.manage"))])
 async def put_mapping_config_full(
     payload: Dict[str, Any],
     request: Request,
@@ -296,7 +296,7 @@ async def put_mapping_config_full(
     )
     return {"status": "ok"}
 
-@router.get("/mapping/entries")
+@router.get("/mapping/entries", dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
 async def list_mapping_entries(
     search: str = "",
     page: int = 1,
@@ -350,7 +350,7 @@ async def list_mapping_entries(
         "pages": pages,
     }
 
-@router.post("/mapping/entries", response_model=MappingEntryResponse)
+@router.post("/mapping/entries", response_model=MappingEntryResponse, dependencies=[Depends(require_permission_code("configuration.mapping.manage"))])
 async def create_mapping_entry(
     payload: MappingEntryBase,
     request: Request,
@@ -383,7 +383,7 @@ async def create_mapping_entry(
     )
     return _entry_to_response(payload.mapping_section, payload.code_compte, entry_data)
 
-@router.put("/mapping/entries/{code_compte}", response_model=MappingEntryResponse)
+@router.put("/mapping/entries/{code_compte}", response_model=MappingEntryResponse, dependencies=[Depends(require_permission_code("configuration.mapping.manage"))])
 async def update_mapping_entry(
     code_compte: str,
     payload: MappingEntryBase,
@@ -434,7 +434,7 @@ async def update_mapping_entry(
     )
     return _entry_to_response(target_section, new_code, entry_data)
 
-@router.delete("/mapping/entries/{code_compte}")
+@router.delete("/mapping/entries/{code_compte}", dependencies=[Depends(require_permission_code("configuration.mapping.delete"))])
 async def delete_mapping_entry(
     code_compte: str,
     mapping_section: Optional[str] = Query(None),
@@ -471,12 +471,12 @@ async def delete_mapping_entry(
     )
     return {"status": "deleted", "code_compte": code_compte}
 
-@router.get("/mapping/regles-agregation")
+@router.get("/mapping/regles-agregation", dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
 async def get_regles_agregation():
     config = get_mapping_config()
     return config.get("regles_agregation", {})
 
-@router.put("/mapping/regles-agregation")
+@router.put("/mapping/regles-agregation", dependencies=[Depends(require_permission_code("configuration.mapping.manage"))])
 async def put_regles_agregation(
     payload: Dict[str, Any],
     request: Request,
@@ -499,12 +499,12 @@ async def put_regles_agregation(
     )
     return {"status": "ok"}
 
-@router.get("/mapping/validations-interco")
+@router.get("/mapping/validations-interco", dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
 async def get_validations_interco():
     config = get_mapping_config()
     return config.get("validations_interco", {})
 
-@router.put("/mapping/validations-interco")
+@router.put("/mapping/validations-interco", dependencies=[Depends(require_permission_code("configuration.mapping.manage"))])
 async def put_validations_interco(
     payload: Dict[str, Any],
     request: Request,
@@ -527,12 +527,12 @@ async def put_validations_interco(
     )
     return {"status": "ok"}
 
-@router.get("/mapping/correspondances-bpc-bfc")
+@router.get("/mapping/correspondances-bpc-bfc", dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
 async def get_correspondances_bpc_bfc():
     config = get_mapping_config()
     return config.get("correspondances_bpc_bfc", {})
 
-@router.put("/mapping/correspondances-bpc-bfc")
+@router.put("/mapping/correspondances-bpc-bfc", dependencies=[Depends(require_permission_code("configuration.mapping.manage"))])
 async def put_correspondances_bpc_bfc(
     payload: Dict[str, Any],
     request: Request,
@@ -555,7 +555,7 @@ async def put_correspondances_bpc_bfc(
     )
     return {"status": "ok"}
 
-@router.get("/mapping/stats", response_model=MappingStats)
+@router.get("/mapping/stats", response_model=MappingStats, dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def get_mapping_stats(mapper: SageBFCMapper = Depends(get_mapper)):
     """
     Récupère les statistiques du mapping SAGE → BFC
@@ -563,7 +563,7 @@ async def get_mapping_stats(mapper: SageBFCMapper = Depends(get_mapper)):
     stats = mapper.get_stats()
     return MappingStats(**stats)
 
-@router.post("/parse", response_model=TableauBFCResponse)
+@router.post("/parse", response_model=TableauBFCResponse, dependencies=[Depends(require_permission_code("sage_bfc.import"))])
 async def parse_balance(
     file: UploadFile = File(..., description="Fichier balance SAGE (Excel ou CSV)"),
     periode: str = Query(..., description="Période comptable (YYYY-MM ou YYYY-MM-DD)"),
@@ -743,7 +743,7 @@ async def parse_balance(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur de traitement: {str(e)}")
 
-@router.get("/tableau/{tableau_id}", response_model=TableauBFCResponse)
+@router.get("/tableau/{tableau_id}", response_model=TableauBFCResponse, dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def get_tableau(tableau_id: str):
     """
     Récupère un tableau BFC précédemment généré (stocké en cache)
@@ -753,7 +753,7 @@ async def get_tableau(tableau_id: str):
     
     return _tableaux_cache[tableau_id]
 
-@router.get("/tableau/{tableau_id}/export/excel")
+@router.get("/tableau/{tableau_id}/export/excel", dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def export_excel(tableau_id: str):
     """
     Exporte un tableau BFC au format Excel
@@ -1055,7 +1055,7 @@ def _convert_cumulative_to_real(resultat_cumule: TableauBFCResponse, parser: Sag
 
 # ===================== CRUD: Données mensuelles =====================
 
-@router.get("/monthly", response_model=list[MonthlyDataSummary])
+@router.get("/monthly", response_model=list[MonthlyDataSummary], dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def get_all_monthly():
     """
     Récupère la liste de tous les mois stockés (sans lignes détaillées)
@@ -1083,7 +1083,7 @@ async def get_all_monthly():
     return result
 
 
-@router.get("/monthly/{periode}", response_model=MonthlyDataFull)
+@router.get("/monthly/{periode}", response_model=MonthlyDataFull, dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def get_monthly_detail(periode: str):
     """
     Récupère les données complètes d'un mois (avec lignes, validations, etc.)
@@ -1121,7 +1121,7 @@ async def get_monthly_detail(periode: str):
     )
 
 
-@router.delete("/monthly/{periode}")
+@router.delete("/monthly/{periode}", dependencies=[Depends(require_permission_code("sage_bfc.month.delete"))])
 async def delete_monthly(
     periode: str,
     request: Request,
@@ -1172,47 +1172,7 @@ async def delete_monthly(
     }
 
 
-@router.delete("/monthly")
-async def delete_all_monthly(
-    request: Request,
-    user: dict = Depends(get_current_user),
-):
-    """
-    Supprime toutes les données mensuelles
-    """
-    with db.get_cursor() as cursor:
-        cursor.execute("SELECT COUNT(*) as cnt FROM sage_bfc_monthly")
-        count = cursor.fetchone()['cnt']
-        cursor.execute("DELETE FROM sage_bfc_monthly")
-        cursor.execute("DELETE FROM sage_bfc_monthly_cumule")
-
-    # Synchroniser le module forecast: suppression globale des réels/écarts
-    from modules.forecast.engine import clear_all_actuals, purge_all_adjustment_cycles
-    clear_all_actuals()
-    purge_payload = purge_all_adjustment_cycles()
-
-    ws_manager.broadcast("sage_bfc", "delete_all", {"count": count})
-    ws_manager.broadcast("forecast", "actuals_cleared_all", {"count": count})
-    ws_manager.broadcast("forecast", "cycles_purged", purge_payload)
-
-    log_audit_action(
-        user=user,
-        action="delete_all",
-        module="sage_bfc",
-        entity_type="monthly",
-        entity_id=None,
-        detail={"count": count},
-        request=request,
-    )
-
-    return {
-        "status": "supprimé",
-        "count": count,
-        "forecast_cycle_purge": purge_payload,
-    }
-
-
-@router.post("/close-year")
+@router.post("/close-year", dependencies=[Depends(require_permission_code("sage_bfc.year.close"))])
 async def close_year(
     year: int = Query(..., ge=2000, le=2100, description="Année à clôturer"),
     force: bool = Query(False, description="Autorise la clôture sans 12 mois"),
@@ -1340,7 +1300,7 @@ async def close_year(
     }
 
 
-@router.get("/closed-years")
+@router.get("/closed-years", dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def get_closed_years():
     """
     Retourne la liste des années déjà clôturées.
@@ -1362,7 +1322,7 @@ async def get_closed_years():
     }
 
 
-@router.get("/available-years")
+@router.get("/available-years", dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def get_available_years():
     """
     Retourne toutes les années disponibles pour Forecast / Reporting :
@@ -1393,7 +1353,7 @@ async def get_available_years():
     }
 
 
-@router.get("/audit/cumulative-delta")
+@router.get("/audit/cumulative-delta", dependencies=[Depends(require_permission_code("sage_bfc.read"))])
 async def get_audit_cumulative_delta(
     year: int = Query(..., ge=2000, le=2100, description="Année fiscale"),
     agregat: str = Query(..., description="Agrégat (ex: ca_brut, frais_personnel, resultat_net)"),
@@ -1449,7 +1409,7 @@ async def get_audit_cumulative_delta(
     }
 
 
-@router.post("/monthly/recompute-real")
+@router.post("/monthly/recompute-real", dependencies=[Depends(require_permission_code("sage_bfc.import"))])
 async def recompute_monthly_real_values(
     mapper: SageBFCMapper = Depends(get_mapper),
     request: Request = None,

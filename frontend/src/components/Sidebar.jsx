@@ -17,7 +17,7 @@ function Sidebar({
     sidebarCollapsed,
     setSidebarCollapsed,
 }) {
-    const { user, logout, isSuperAdmin, hasPermission } = useAuth();
+    const { user, logout, has, hasPermission } = useAuth();
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showSettingsMenu, setShowSettingsMenu] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -43,7 +43,7 @@ function Sidebar({
 
     // Menu items filtrés selon les permissions de l'utilisateur
     const allMenuItems = [
-        { id: 'dashboard', label: 'Tableau de Bord', icon: 'dashboard', alwaysVisible: true },
+        { id: 'dashboard', label: 'Tableau de Bord', icon: 'dashboard', module: 'dashboard' },
         { id: 'saisie', label: 'Saisie Caisse', icon: 'edit', module: 'saisie_caisse' },
         { id: 'export', label: 'Export CSV', icon: 'download', module: 'export_csv' },
         { id: 'rapprochement', label: 'Saisie Bancaire', icon: 'bank', module: 'saisie_bancaire' },
@@ -56,9 +56,6 @@ function Sidebar({
 
     // Filtrer : superadmin ne voit que le tableau de bord, les autres selon permissions
     const menuItems = allMenuItems.filter(item => {
-        if (item.alwaysVisible) return true;
-        if (item.superadminOnly) return isSuperAdmin;
-        if (isSuperAdmin) return false;
         return hasPermission(item.module, 'read');
     });
 
@@ -235,11 +232,11 @@ function Sidebar({
                     </div>
 
                     {/* Section Administration — superadmin uniquement */}
-                    {isSuperAdmin && (
+                    {(has('admin.users.read') || has('admin.roles.read') || has('admin.audit.read')) && (
                         <div className="menu-section">
                             <span className="menu-title">Administration</span>
                             <ul className="menu-list">
-                                <li>
+                                {has('admin.users.read') && <li>
                                     <button
                                         className={`menu-item ${activeTab === 'users' ? 'active' : ''}`}
                                         onClick={() => { setActiveTab('users'); setSidebarOpen(false); }}
@@ -248,8 +245,18 @@ function Sidebar({
                                         <span className="menu-label">Utilisateurs</span>
                                         {activeTab === 'users' && <span className="menu-active-dot"></span>}
                                     </button>
-                                </li>
-                                <li>
+                                </li>}
+                                {has('admin.roles.read') && <li>
+                                    <button
+                                        className={`menu-item ${activeTab === 'roles' ? 'active' : ''}`}
+                                        onClick={() => { setActiveTab('roles'); setSidebarOpen(false); }}
+                                    >
+                                        <span className="menu-icon">◇</span>
+                                        <span className="menu-label">Profils & droits</span>
+                                        {activeTab === 'roles' && <span className="menu-active-dot"></span>}
+                                    </button>
+                                </li>}
+                                {has('admin.audit.read') && <li>
                                     <button
                                         className={`menu-item ${activeTab === 'audit' ? 'active' : ''}`}
                                         onClick={() => { setActiveTab('audit'); setSidebarOpen(false); }}
@@ -258,7 +265,7 @@ function Sidebar({
                                         <span className="menu-label">Audit</span>
                                         {activeTab === 'audit' && <span className="menu-active-dot"></span>}
                                     </button>
-                                </li>
+                                </li>}
                             </ul>
                         </div>
                     )}

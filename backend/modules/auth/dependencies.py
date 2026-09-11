@@ -184,3 +184,57 @@ def require_permission(module_name: str, action: str = "read"):
         return user
 
     return checker
+
+
+def require_permission_code(*required_codes: str):
+    """Exige toutes les permissions fonctionnelles indiquées."""
+    required = set(required_codes)
+
+    def checker(request: Request) -> dict:
+        user = get_current_user(request)
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                "SELECT p.code FROM user_access_roles ur "
+                "JOIN access_roles r ON r.id = ur.role_id AND r.is_active = TRUE "
+                "JOIN access_role_permissions rp ON rp.role_id = r.id "
+                "JOIN access_permissions p ON p.id = rp.permission_id "
+                "WHERE ur.user_id = %s",
+                (user["id"],),
+            )
+            available = {row["code"] for row in cursor.fetchall()}
+        if not required.issubset(available):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission insuffisante",
+            )
+        user["permission_codes"] = sorted(available)
+        return user
+
+    return checker
+
+
+def require_any_permission_code(*accepted_codes: str):
+    """Exige au moins une des permissions fonctionnelles indiquées."""
+    accepted = set(accepted_codes)
+
+    def checker(request: Request) -> dict:
+        user = get_current_user(request)
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                "SELECT p.code FROM user_access_roles ur "
+                "JOIN access_roles r ON r.id = ur.role_id AND r.is_active = TRUE "
+                "JOIN access_role_permissions rp ON rp.role_id = r.id "
+                "JOIN access_permissions p ON p.id = rp.permission_id "
+                "WHERE ur.user_id = %s",
+                (user["id"],),
+            )
+            available = {row["code"] for row in cursor.fetchall()}
+        if not accepted.intersection(available):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Permission insuffisante",
+            )
+        user["permission_codes"] = sorted(available)
+        return user
+
+    return checker

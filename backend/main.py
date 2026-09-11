@@ -21,9 +21,17 @@ from modules.audit import router as audit_router, init_audit_tables
 from modules.saisie_bancaire import router as saisie_bancaire_router, init_saisie_bancaire_tables
 from modules.rapprochement_bancaire import router as rapprochement_bancaire_router
 from modules.notifications import router as notifications_router, init_notifications_tables
+from modules.access import router as access_router, init_access_tables
 
 
-app = FastAPI(title="Olea – Gestion de Caisse & BFC")
+IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
+
+app = FastAPI(
+    title="Olea – Gestion de Caisse & BFC",
+    docs_url=None if IS_PRODUCTION else "/docs",
+    redoc_url=None if IS_PRODUCTION else "/redoc",
+    openapi_url=None if IS_PRODUCTION else "/openapi.json",
+)
 
 # Configuration CORS (Accepte toutes les origines dynamiquement pour supporter n'importe quelle adresse IP de VM)
 app.add_middleware(
@@ -36,6 +44,7 @@ app.add_middleware(
 
 # Initialiser les tables
 init_auth_tables()
+init_access_tables()
 init_saisie_caisse_tables()
 init_sage_bfc_tables()
 init_forecast_tables()
@@ -46,6 +55,7 @@ init_notifications_tables()
 
 # ─── Enregistrement des routers ───
 app.include_router(auth_router)
+app.include_router(access_router)
 app.include_router(saisie_caisse_router)
 app.include_router(migration_sage_router)
 app.include_router(export_csv_router)

@@ -24,7 +24,7 @@ import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
 
 function SaisieBancaire() {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, has } = useAuth();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
@@ -103,8 +103,10 @@ function SaisieBancaire() {
                 // silencieux
             }
         };
-        checkPending();
-    }, []);
+        if (has('saisie_bancaire.sessions.read')) {
+            checkPending();
+        }
+    }, [has]);
 
     useEffect(() => {
         if (message) {
@@ -573,7 +575,7 @@ function SaisieBancaire() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2.5rem', fontSize: '1rem' }} disabled={loading}>
+                <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2.5rem', fontSize: '1rem' }} disabled={loading || !has('saisie_bancaire.import')}>
                     {loading ? (
                         <>
                             <span className="spinner" style={{ marginRight: '0.5rem' }} />
@@ -630,7 +632,7 @@ function SaisieBancaire() {
                                 type="button"
                                 className="btn btn-primary"
                                 onClick={handleSaveSageLines}
-                                disabled={loading || !stats.isBalanced}
+                                disabled={loading || !stats.isBalanced || !has('saisie_bancaire.sage.generate')}
                                 title={!stats.isBalanced ? "Le fichier est déséquilibré et ne peut pas être importé dans Sage." : "Sauvegarder les lignes dans la base de données."}
                             >
                                 {loading ? 'Sauvegarde…' : <><FiSave /> Sauvegarder Sage</>}
@@ -998,7 +1000,7 @@ function SaisieBancaire() {
                         <button
                             className="btn btn-primary"
                             onClick={handleExportSageCsv}
-                            disabled={exportLoading}
+                            disabled={exportLoading || !has('saisie_bancaire.sage.export')}
                         >
                             {exportLoading ? 'Export…' : <><FiDownload /> Exporter CSV</>}
                         </button>

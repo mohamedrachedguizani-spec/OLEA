@@ -11,6 +11,7 @@ import {
     FiZap,
 } from 'react-icons/fi';
 import ApiService from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
 
 function KpiCard({ icon, label, color, value, unit, sub }) {
@@ -34,6 +35,7 @@ function KpiCard({ icon, label, color, value, unit, sub }) {
 }
 
 function RapprochementBancaire() {
+    const { has } = useAuth();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [exportingPdf, setExportingPdf] = useState(false);
@@ -392,7 +394,7 @@ function RapprochementBancaire() {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
-                <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2.5rem', fontSize: '1rem' }} disabled={loading}>
+                <button type="submit" className="btn btn-primary" style={{ padding: '0.75rem 2.5rem', fontSize: '1rem' }} disabled={loading || !has('rapprochement_bancaire.run')}>
                     {loading ? (
                         <>
                             <span className="spinner" style={{ marginRight: '0.5rem' }} />
@@ -631,7 +633,7 @@ function RapprochementBancaire() {
                 <button className="btn btn-secondary" onClick={handleReset}>
                     Retour à l’import
                 </button>
-                <button className="btn btn-primary" onClick={handleExportPdf} disabled={exportingPdf}>
+                <button className="btn btn-primary" onClick={handleExportPdf} disabled={exportingPdf || !has('rapprochement_bancaire.export_pdf')}>
                     {exportingPdf ? (
                         <>
                             <span className="spinner" style={{ marginRight: '0.5rem' }} />

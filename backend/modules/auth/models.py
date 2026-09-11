@@ -1,5 +1,5 @@
 # modules/auth/models.py
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
@@ -102,6 +102,10 @@ class UserResponse(BaseModel):
     is_active: bool
     created_at: datetime
     permissions: Optional[List["PermissionResponse"]] = None
+    permission_codes: List[str] = Field(default_factory=list)
+    access_role_id: Optional[int] = None
+    access_role_code: Optional[str] = None
+    access_role_name: Optional[str] = None
     active_sessions: Optional[int] = None
 
 

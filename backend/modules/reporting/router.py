@@ -9,14 +9,14 @@ from fastapi.responses import StreamingResponse
 from xlsxwriter.utility import xl_col_to_name
 
 from database import db
-from modules.auth.dependencies import get_current_user, require_permission, restrict_superadmin
+from modules.auth.dependencies import require_permission_code
 from modules.forecast.engine import get_annual_comparison, get_comparison, get_cycle_status, get_subagregats
 
 router = APIRouter(
     prefix="/reporting",
     tags=["Reporting"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("reporting"))],
+    dependencies=[Depends(require_permission_code("reporting.read"))],
 )
 
 
@@ -884,7 +884,7 @@ def get_reporting_preview(
     target_year: int = Query(..., ge=2000, le=2100),
     cycle_code: str = Query("INITIAL"),
     month: int | None = Query(None, ge=1, le=12),
-    _user: dict = Depends(require_permission("reporting", "read")),
+    _user: dict = Depends(require_permission_code("reporting.read")),
 ):
     try:
         selected_month = _normalize_month_param(target_year, month)
@@ -938,7 +938,7 @@ def export_reporting_excel(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
-    _user: dict = Depends(require_permission("reporting", "read")),
+    _user: dict = Depends(require_permission_code("reporting.export_excel")),
 ):
     try:
         if not any([

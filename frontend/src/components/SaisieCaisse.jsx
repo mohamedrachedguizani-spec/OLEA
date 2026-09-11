@@ -2,9 +2,11 @@
 import ApiService from '../services/api';
 import LibelleAutocomplete from './LibelleAutocomplete';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useAuth } from '../contexts/AuthContext';
 
 
 function SaisieCaisse({ refreshTrigger }) {
+    const { has } = useAuth();
     const [formData, setFormData] = useState({
         date_ecriture: new Date().toISOString().split('T')[0],
         libelle_ecriture: '',
@@ -565,7 +567,7 @@ function SaisieCaisse({ refreshTrigger }) {
                     </div>
 
                     <div className="form-col form-col-btn">
-                        <button type="submit" className="btn btn-primary" disabled={loading}>
+                        <button type="submit" className="btn btn-primary" disabled={loading || !has('saisie_caisse.crud_ecriture_caisse_manage')}>
                             {loading ? 'Ajout...' : 'Ajouter'}
                         </button>
                     </div>
@@ -751,21 +753,21 @@ function SaisieCaisse({ refreshTrigger }) {
                                         <td className="text-right">{ecriture.solde.toFixed(3)}</td>
                                         <td className="text-center">
                                             <div className="btn-group">
-                                                <button
+                                                {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
                                                     className="btn btn-sm btn-success"
                                                     onClick={() => handleSaveEdit(ecriture.id)}
                                                     disabled={loading}
                                                     style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
                                                     ✓
-                                                </button>
-                                                <button
+                                                </button>}
+                                                {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
                                                     className="btn btn-sm btn-secondary"
                                                     onClick={handleCancelEdit}
                                                     style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
                                                     ✕
-                                                </button>
+                                                </button>}
                                             </div>
                                         </td>
                                     </>
@@ -799,7 +801,7 @@ function SaisieCaisse({ refreshTrigger }) {
                                         <td className="text-right font-bold">{ecriture.solde.toFixed(3)}</td>
                                         <td className="text-center">
                                             <div className="btn-group">
-                                                <button
+                                                {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
                                                     className="btn btn-sm btn-primary"
                                                     onClick={() => handleMigrateDirect(ecriture)}
                                                     title="Migrer vers Sage"
@@ -807,23 +809,23 @@ function SaisieCaisse({ refreshTrigger }) {
                                                     style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1, marginRight: '0.2rem' }}
                                                 >
                                                     ✓
-                                                </button>
-                                                <button
+                                                </button>}
+                                                {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
                                                     className="btn btn-sm btn-secondary"
                                                     onClick={() => handleEdit(ecriture)}
                                                     title="Modifier"
                                                     style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
                                                     ✏️
-                                                </button>
-                                                <button
+                                                </button>}
+                                                {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
                                                     className="btn btn-sm btn-danger"
                                                     onClick={() => handleDelete(ecriture.id)}
                                                     title="Supprimer"
                                                     style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1, marginLeft: '0.2rem' }}
                                                 >
                                                     🗑️
-                                                </button>
+                                                </button>}
                                             </div>
                                         </td>
                                     </>

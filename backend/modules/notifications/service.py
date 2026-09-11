@@ -6,7 +6,7 @@ Modules couverts :
   - forecast : depassement_budget, cycle_declenchable
 
 Filtrage par permissions : chaque utilisateur ne reçoit que les notifications
-des modules auxquels il a accès (table user_permissions).
+des modules auxquels son profil fonctionnel donne accès.
 """
 
 import json
@@ -14,9 +14,6 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any
 
 from database import db
-
-
-SUPERADMIN_ALLOWED_MODULES = {"dashboard", "users", "audit", "admin"}
 
 
 def init_notifications_tables():
@@ -53,16 +50,17 @@ def purge_old_notifications(days: int = 30):
 
 def _get_users_for_module(module_name: str) -> List[int]:
     """
-    Retourne les user_ids ayant can_read=TRUE sur un module donné.
-    Exclut les superadmins (ils ont leur propre canal admin).
+    Retourne les utilisateurs ayant au moins une permission du module.
     """
     with db.get_cursor() as cursor:
         cursor.execute(
-            "SELECT up.user_id FROM user_permissions up "
-            "JOIN users u ON u.id = up.user_id "
-            "WHERE up.module_name = %s AND up.can_read = TRUE "
-            "AND u.is_active = TRUE AND u.role != 'superadmin'",
-            (module_name,),
+            "SELECT DISTINCT ur.user_id FROM user_access_roles ur "
+            "JOIN access_roles r ON r.id = ur.role_id AND r.is_active = TRUE "
+            "JOIN access_role_permissions rp ON rp.role_id = r.id "
+            "JOIN access_permissions p ON p.id = rp.permission_id "
+            "JOIN users u ON u.id = ur.user_id AND u.is_active = TRUE "
+            "WHERE p.code LIKE %s",
+            (f"{module_name}.%",),
         )
         return [row["user_id"] for row in cursor.fetchall()]
 
@@ -74,6 +72,19 @@ def _get_superadmin_ids() -> List[int]:
             "SELECT id FROM users WHERE role = 'superadmin' AND is_active = TRUE"
         )
         return [row["id"] for row in cursor.fetchall()]
+
+
+def _get_allowed_modules(cursor, user_id: int) -> List[str]:
+    cursor.execute(
+        "SELECT DISTINCT p.module, p.code FROM user_access_roles ur "
+        "JOIN access_roles r ON r.id = ur.role_id AND r.is_active = TRUE "
+        "JOIN access_role_permissions rp ON rp.role_id = r.id "
+        "JOIN access_permissions p ON p.id = rp.permission_id "
+        "WHERE ur.user_id = %s",
+        (user_id,),
+    )
+    modules = {row["code"].split(".", 1)[0] for row in cursor.fetchall()}
+    return sorted(modules)
 
 
 def create_notification(
@@ -190,16 +201,7 @@ def get_user_notifications(
     Récupère les notifications d'un utilisateur filtrées par ses permissions module.
     """
     with db.get_cursor() as cursor:
-        # Déterminer les modules autorisés
-        if user_role == "superadmin":
-            allowed_modules = list(SUPERADMIN_ALLOWED_MODULES)
-        else:
-            cursor.execute(
-                "SELECT module_name FROM user_permissions "
-                "WHERE user_id = %s AND can_read = TRUE",
-                (user_id,),
-            )
-            allowed_modules = [row["module_name"] for row in cursor.fetchall()]
+        allowed_modules = _get_allowed_modules(cursor, user_id)
 
         if not allowed_modules:
             return {"items": [], "total": 0, "unread": 0}
@@ -262,15 +264,7 @@ def get_user_notifications(
 def get_unread_count(user_id: int, user_role: str) -> int:
     """Compteur de notifications non lues pour un utilisateur."""
     with db.get_cursor() as cursor:
-        if user_role == "superadmin":
-            allowed_modules = list(SUPERADMIN_ALLOWED_MODULES)
-        else:
-            cursor.execute(
-                "SELECT module_name FROM user_permissions "
-                "WHERE user_id = %s AND can_read = TRUE",
-                (user_id,),
-            )
-            allowed_modules = [row["module_name"] for row in cursor.fetchall()]
+        allowed_modules = _get_allowed_modules(cursor, user_id)
 
         if not allowed_modules:
             return 0
@@ -304,15 +298,7 @@ def mark_all_read(user_id: int, user_role: str) -> int:
     """Marquer toutes les notifications comme lues."""
     count = 0
     with db.get_cursor() as cursor:
-        if user_role == "superadmin":
-            allowed_modules = list(SUPERADMIN_ALLOWED_MODULES)
-        else:
-            cursor.execute(
-                "SELECT module_name FROM user_permissions "
-                "WHERE user_id = %s AND can_read = TRUE",
-                (user_id,),
-            )
-            allowed_modules = [row["module_name"] for row in cursor.fetchall()]
+        allowed_modules = _get_allowed_modules(cursor, user_id)
 
         if not allowed_modules:
             return 0

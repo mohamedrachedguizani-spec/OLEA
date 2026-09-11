@@ -10,13 +10,12 @@ from typing import Optional
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user, require_role
-from modules.auth.models import RoleEnum
+from modules.auth.dependencies import require_permission_code
 
 router = APIRouter(
     tags=["Dashboard Global"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(get_current_user)],
+    dependencies=[],
 )
 
 
@@ -134,6 +133,7 @@ def _get_audit_stats(cursor, date_debut: Optional[date], date_fin: Optional[date
 def get_global_dashboard(
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
+    _user: dict = Depends(require_permission_code("dashboard.read")),
 ):
     """
     Endpoint principal du tableau de bord global.
@@ -156,7 +156,7 @@ def get_global_dashboard(
 
 @router.get("/admin-dashboard/")
 def get_admin_dashboard(
-    _admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    _admin: dict = Depends(require_permission_code("admin.dashboard.read")),
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
 ):

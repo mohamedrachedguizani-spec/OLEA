@@ -15,7 +15,7 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import LongTable, PageBreak, Paragraph, SimpleDocTemplate, Spacer, TableStyle
 
-from modules.auth.dependencies import get_current_user, require_permission
+from modules.auth.dependencies import require_permission_code
 from modules.forecast.engine import get_annual_comparison, get_comparison, get_cycle_status, get_subagregats
 from .router import (
     _build_annual_forecast_export_rows,
@@ -34,7 +34,7 @@ from .router import (
 router = APIRouter(
     prefix="/reporting",
     tags=["Reporting"],
-    dependencies=[Depends(get_current_user)],
+    dependencies=[Depends(require_permission_code("reporting.read"))],
 )
 
 PDF_BLUE = colors.HexColor("#1E3A8A")
@@ -386,7 +386,7 @@ def print_reporting_html(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
-    _user: dict = Depends(require_permission("reporting", "read")),
+    _user: dict = Depends(require_permission_code("reporting.read")),
 ):
     try:
         if not any([
@@ -615,7 +615,7 @@ def preview_reporting_sections(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
-    _user: dict = Depends(require_permission("reporting", "read")),
+    _user: dict = Depends(require_permission_code("reporting.export_pdf")),
 ):
     try:
         if not any([
@@ -838,7 +838,7 @@ def export_reporting_pdf(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
-    _user: dict = Depends(require_permission("reporting", "read")),
+    _user: dict = Depends(require_permission_code("reporting.print")),
 ):
     try:
         preview = preview_reporting_sections(

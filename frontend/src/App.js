@@ -10,6 +10,7 @@ import SageBfcParser from './components/SageBfcParser';
 import Sidebar from './components/Sidebar';
 import Dashboard from './components/Dashboard';
 import UserManagement from './components/UserManagement';
+import RoleManagement from './components/RoleManagement';
 import AuditLogs from './components/AuditLogs';
 import Reporting from './components/Reporting';
 import Configuration from './components/Configuration';
@@ -19,7 +20,7 @@ import NotificationBell from './components/NotificationBell';
 import oleaLogo from './assets/olea-logo.svg';
 
 function App() {
-    const { user, loading, hasPermission } = useAuth();
+    const { user, loading, has, hasPermission } = useAuth();
     const [activeTab, setActiveTab] = useState('dashboard');
     const [darkMode, setDarkMode] = useState(() => {
         if (typeof window === 'undefined') return false;
@@ -39,6 +40,30 @@ function App() {
         setConfigurationInitialTab('mapping');
         setActiveTab('configuration');
     }, []);
+
+    const canAccessTab = useCallback((tab) => ({
+        dashboard: has('dashboard.read') || has('admin.dashboard.read'),
+        reporting: hasPermission('reporting'),
+        saisie: hasPermission('saisie_caisse'),
+        export: hasPermission('export_csv'),
+        'sage-bfc': hasPermission('sage_bfc'),
+        configuration: hasPermission('configuration'),
+        rapprochement: hasPermission('saisie_bancaire'),
+        rapprochement_bancaire: hasPermission('rapprochement_bancaire'),
+        users: has('admin.users.read'),
+        roles: has('admin.roles.read'),
+        audit: has('admin.audit.read'),
+    }[tab] || false), [has, hasPermission]);
+
+    useEffect(() => {
+        if (!user || canAccessTab(activeTab)) return;
+        const firstAllowed = [
+            'dashboard', 'saisie', 'export', 'rapprochement',
+            'rapprochement_bancaire', 'sage-bfc', 'reporting',
+            'configuration', 'users', 'roles', 'audit',
+        ].find(canAccessTab);
+        if (firstAllowed) setActiveTab(firstAllowed);
+    }, [activeTab, canAccessTab, user]);
 
     useEffect(() => {
         if (typeof window !== 'undefined') {
@@ -166,11 +191,11 @@ function App() {
                 </header>
 
                 <div className="content-wrapper">
-                    {activeTab === 'dashboard' && <Dashboard refreshTrigger={refreshTrigger} />}
+                    {activeTab === 'dashboard' && canAccessTab('dashboard') && <Dashboard refreshTrigger={refreshTrigger} />}
                     {activeTab === 'reporting' && hasPermission('reporting', 'read') && <Reporting refreshTrigger={reportingRefresh} />}
-                    {activeTab === 'saisie' && <SaisieCaisse refreshTrigger={refreshTrigger} />}
-                    {activeTab === 'export' && <ExportCSV />}
-                    {activeTab === 'sage-bfc' && <SageBfcParser
+                    {activeTab === 'saisie' && hasPermission('saisie_caisse') && <SaisieCaisse refreshTrigger={refreshTrigger} />}
+                    {activeTab === 'export' && hasPermission('export_csv') && <ExportCSV />}
+                    {activeTab === 'sage-bfc' && hasPermission('sage_bfc') && <SageBfcParser
                         refreshTrigger={sageBfcRefresh}
                         forecastRefresh={forecastRefresh}
                         onOpenMappingConfiguration={hasPermission('configuration', 'read') ? openMappingConfiguration : null}
@@ -178,8 +203,9 @@ function App() {
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration initialTab={configurationInitialTab} />}
                     {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire />}
                     {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire />}
-                    {activeTab === 'users' && <UserManagement />}
-                    {activeTab === 'audit' && <AuditLogs />}
+                    {activeTab === 'users' && has('admin.users.read') && <UserManagement />}
+                    {activeTab === 'roles' && has('admin.roles.read') && <RoleManagement />}
+                    {activeTab === 'audit' && has('admin.audit.read') && <AuditLogs />}
                 </div>
 
                 <footer className="main-footer">

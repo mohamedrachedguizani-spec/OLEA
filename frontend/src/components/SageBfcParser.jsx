@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import ReactDOM from 'react-dom';
 import ApiService from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import SageBfcUpload from './sage-bfc/SageBfcUpload';
 import SageBfcPnl from './sage-bfc/SageBfcPnl';
 import SageBfcLignes from './sage-bfc/SageBfcLignes';
@@ -76,6 +77,7 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
 }
 
 function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfiguration }) {
+    const { has } = useAuth();
     const currentYear = new Date().getFullYear();
     const [activeStep, setActiveStep] = useState('upload'); // upload | results
     const [activeTab, setActiveTab] = useState('dashboard'); // dashboard | pnl | lignes | forecast
@@ -410,21 +412,6 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
         }
     }, [selectedMonth, sortedMonths]);
 
-    const handleClearAll = useCallback(async () => {
-        if (window.confirm('Supprimer toutes les données mensuelles ?')) {
-            try {
-                await ApiService.deleteSageBfcAllMonths();
-                setMonthlyData({});
-                setSelectedMonth(null);
-                setActiveStep('upload');
-            } catch (err) {
-                setError('Erreur lors de la suppression: ' + err.message);
-            }
-        }
-    }, []);
-
-
-
     const formatMonthLabel = (periode) => {
         try {
             const d = new Date(periode);
@@ -566,7 +553,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
                         Analyse
                         {sortedMonths.length > 0 && <span className="nav-badge">{sortedMonths.length}</span>}
                     </button>
-                    {!!latestClosableYear && (
+                    {!!latestClosableYear && has('sage_bfc.year.close') && (
                         <button
                             className="sage-nav-btn"
                             onClick={() => handleCloseYear(latestClosableYear)}
@@ -622,7 +609,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
                 </div>
             )}
 
-            {!!latestClosableYear && (
+            {!!latestClosableYear && has('sage_bfc.year.close') && (
                 <div className="sage-close-ready-notice" role="status" aria-live="polite">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M20 6L9 17l-5-5"/>
@@ -643,11 +630,15 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
                             onOpenConfiguration={onOpenMappingConfiguration}
                         />
                     )}
-                    <SageBfcUpload
-                        onFileParse={handleFileParse}
-                        loading={loading}
-                        mappingStats={mappingStats}
-                    />
+                    {has('sage_bfc.import') ? (
+                        <SageBfcUpload
+                            onFileParse={handleFileParse}
+                            loading={loading}
+                            mappingStats={mappingStats}
+                        />
+                    ) : (
+                        <div className="sage-bfc-error"><div><strong>Consultation uniquement</strong><p>Vous n'avez pas l'autorisation d'importer une balance.</p></div></div>
+                    )}
                 </div>
             )}
 
@@ -763,7 +754,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
                                 )}
                             </div>
                             <div className="actions-right">
-                                {!!selectedMonth && selectedMonth !== ALL_PERIODS_KEY && (
+                                {!!selectedMonth && selectedMonth !== ALL_PERIODS_KEY && has('sage_bfc.month.delete') && (
                                     <button
                                         className="btn-delete-month danger-soft"
                                         onClick={() => handleDeleteMonth(selectedMonth)}

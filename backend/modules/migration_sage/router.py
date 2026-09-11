@@ -6,7 +6,7 @@ import math
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user, restrict_superadmin
+from modules.auth.dependencies import require_permission_code
 from modules.audit.service import log_audit_action
 from .models import (
     EcritureSage,
@@ -19,7 +19,7 @@ from .models import (
 router = APIRouter(
     tags=["Migration Sage"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("saisie_caisse"))],
+    dependencies=[Depends(require_permission_code("saisie_caisse.read"))],
 )
 
 
@@ -69,7 +69,7 @@ def get_ecritures_a_migrer(
 def migrer_ecriture(
     migration: MigrationRequest,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("saisie_caisse.crud_ecriture_caisse_manage")),
 ):
     """Migrer une écriture de caisse vers le format Sage (2 lignes)"""
     with db.get_cursor() as cursor:
@@ -189,7 +189,7 @@ def migrer_ecriture(
 def migrer_tout(
     migrations: List[MigrationRequest],
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("saisie_caisse.crud_ecriture_caisse_manage")),
 ):
     """Migrer plusieurs écritures de caisse vers le format Sage"""
     resultats = []

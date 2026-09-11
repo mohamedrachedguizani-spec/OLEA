@@ -6,7 +6,7 @@ import math
 
 from database import db
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user, restrict_superadmin
+from modules.auth.dependencies import require_permission_code
 from modules.audit.service import log_audit_action
 from .models import (
     EcritureCaisse,
@@ -30,7 +30,7 @@ SELECT_FIELDS_WITH_ADJUSTED_SOLDE = """
 router = APIRouter(
     tags=["Saisie Caisse"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("saisie_caisse"))],
+    dependencies=[Depends(require_permission_code("saisie_caisse.read"))],
 )
 
 
@@ -128,7 +128,7 @@ def update_libelle_frequent(
 def create_ecriture_caisse(
     ecriture: EcritureCaisseCreate,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("saisie_caisse.crud_ecriture_caisse_manage")),
 ):
     """Ajouter une nouvelle écriture de caisse"""
     with db.get_cursor() as cursor:
@@ -238,7 +238,7 @@ def update_ecriture_caisse(
     ecriture_id: int,
     ecriture: EcritureCaisseCreate,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("saisie_caisse.crud_ecriture_caisse_manage")),
 ):
     """Modifier une écriture de caisse"""
     with db.get_cursor() as cursor:
@@ -313,7 +313,7 @@ def update_ecriture_caisse(
 def delete_ecriture_caisse(
     ecriture_id: int,
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("saisie_caisse.crud_ecriture_caisse_manage")),
 ):
     """Supprimer une écriture de caisse"""
     with db.get_cursor() as cursor:
@@ -409,7 +409,7 @@ def get_tiers(search: str = ""):
 @router.post("/nettoyer-historique-migre/")
 def nettoyer_historique_migre(
     request: Request,
-    user: dict = Depends(get_current_user),
+    user: dict = Depends(require_permission_code("saisie_caisse.cleanup")),
 ):
     """
     Supprimer automatiquement les écritures migrées situées avant la plus ancienne écriture non migrée

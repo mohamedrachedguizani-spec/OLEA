@@ -968,21 +968,6 @@ def clear_actuals_for_month(target_year: int, month: int):
         )
 
 
-def clear_all_actuals():
-    """Efface toutes les valeurs réelles/écarts (après suppression globale)."""
-    with db.get_cursor() as cursor:
-        cursor.execute(
-            """
-            UPDATE bfc_forecast_values
-            SET actual_value = NULL,
-                ecart_value = NULL,
-                ecart_pct = NULL,
-                alert_level = NULL,
-                updated_at = CURRENT_TIMESTAMP
-            """
-        )
-
-
 def get_comparison(target_year: int, cycle_code: str, month: int):
     with db.get_cursor() as cursor:
         cursor.execute(
@@ -1830,38 +1815,4 @@ def invalidate_adjustment_cycles_for_year(target_year: int) -> Dict[str, object]
         "target_year": target_year,
         "uploaded_months": uploaded_months,
         "invalidated_cycles": invalidated_cycles,
-    }
-
-
-def purge_all_adjustment_cycles() -> Dict[str, int]:
-    """
-    Supprime globalement toutes les prévisions de cycles d'ajustement (hors INITIAL).
-    Utilisé lors de la suppression globale des mois réels.
-    """
-    with db.get_cursor() as cursor:
-        cursor.execute(
-            """
-            SELECT COUNT(*) AS cnt
-            FROM bfc_forecast_values
-            WHERE cycle_code <> 'INITIAL'
-            """
-        )
-        values_count = int(cursor.fetchone()["cnt"])
-
-        cursor.execute(
-            """
-            SELECT COUNT(*) AS cnt
-            FROM bfc_forecast_runs
-            WHERE cycle_code <> 'INITIAL'
-            """
-        )
-        runs_count = int(cursor.fetchone()["cnt"])
-
-        cursor.execute("DELETE FROM bfc_forecast_values WHERE cycle_code <> 'INITIAL'")
-        cursor.execute("DELETE FROM bfc_forecast_runs WHERE cycle_code <> 'INITIAL'")
-        cursor.execute("DELETE FROM bfc_forecast_manual_subvalues WHERE cycle_code <> 'INITIAL'")
-
-    return {
-        "deleted_values": values_count,
-        "deleted_runs": runs_count,
     }

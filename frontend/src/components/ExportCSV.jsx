@@ -3,8 +3,10 @@ import React, { useState } from 'react';
 import ReactDOM from 'react-dom';
 import { FiBarChart2, FiBookOpen, FiCalendar, FiDownload, FiEye, FiFileText, FiInfo, FiX } from 'react-icons/fi';
 import ApiService from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 
 function ExportCSV() {
+    const { has } = useAuth();
     // État pour Export Sage
     const [dateDebut, setDateDebut] = useState('');
     const [dateFin, setDateFin] = useState('');
@@ -334,7 +336,7 @@ function ExportCSV() {
                         <button
                             className="btn btn-primary btn-lg"
                             onClick={handlePreview}
-                            disabled={loading}
+                            disabled={loading || !has('export_csv.caisse')}
                         >
                             {loading ? (
                                 <>
@@ -406,7 +408,7 @@ function ExportCSV() {
                             <button
                                 className="btn btn-secondary btn-lg"
                                 onClick={handleBrouillardPreview}
-                                disabled={brouillardLoading}
+                                disabled={brouillardLoading || !has('export_csv.brouillard')}
                             >
                                 {brouillardLoading ? (
                                     <>

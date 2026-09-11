@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Query, Depends, Request
 
 from ws_manager import manager as ws_manager
-from modules.auth.dependencies import get_current_user, restrict_superadmin
+from modules.auth.dependencies import get_current_user, require_permission_code
 from modules.audit.service import log_audit_action
 from modules.notifications.service import notify_module_users
 from .engine import (
@@ -44,11 +44,11 @@ router = APIRouter(
     prefix="/forecast",
     tags=["Forecast Budget BFC"],
     responses={404: {"description": "Non trouvé"}},
-    dependencies=[Depends(restrict_superadmin("forecast"))],
+    dependencies=[Depends(require_permission_code("forecast.read"))],
 )
 
 
-@router.post("/historical/import", response_model=HistoricalImportResponse)
+@router.post("/historical/import", response_model=HistoricalImportResponse, dependencies=[Depends(require_permission_code("forecast.history.import"))])
 def import_historical_data(
     request: Request,
     user: dict = Depends(get_current_user),
@@ -79,7 +79,7 @@ def import_historical_data(
         raise HTTPException(status_code=500, detail=f"Erreur import historique: {str(e)}")
 
 
-@router.post("/historical/sync-closed")
+@router.post("/historical/sync-closed", dependencies=[Depends(require_permission_code("forecast.history.sync"))])
 def sync_closed_historical(
     before_year: int = Query(..., ge=2000, le=2100),
     request: Request = None,
@@ -130,7 +130,7 @@ def get_historical_years():
     }
 
 
-@router.post("/generate", response_model=ForecastRunResponse)
+@router.post("/generate", response_model=ForecastRunResponse, dependencies=[Depends(require_permission_code("forecast.generate"))])
 def generate_budget_forecast(
     target_year: int = Query(..., ge=2000, le=2100),
     cycle_code: str = Query("INITIAL", description="INITIAL, M03, M06, M08 ou custom"),
@@ -245,7 +245,7 @@ def get_forecast_subagregats(
     )
 
 
-@router.put("/manual/aggregate", response_model=ForecastManualAggregateUpdateResponse)
+@router.put("/manual/aggregate", response_model=ForecastManualAggregateUpdateResponse, dependencies=[Depends(require_permission_code("forecast.manual.update"))])
 def update_manual_aggregate_forecast(
     payload: ForecastManualAggregateUpdateRequest,
     request: Request,
@@ -321,7 +321,7 @@ def update_manual_aggregate_forecast(
         raise HTTPException(status_code=500, detail=f"Erreur mise à jour manuelle: {str(e)}")
 
 
-@router.put("/manual/aggregate-annual", response_model=ForecastManualAnnualAggregateUpdateResponse)
+@router.put("/manual/aggregate-annual", response_model=ForecastManualAnnualAggregateUpdateResponse, dependencies=[Depends(require_permission_code("forecast.manual.update"))])
 def update_manual_aggregate_forecast_annual(
     payload: ForecastManualAnnualAggregateUpdateRequest,
     request: Request,
@@ -424,7 +424,7 @@ def get_adjustment_cycles_status(
         raise HTTPException(status_code=500, detail=f"Erreur statut cycles: {str(e)}")
 
 
-@router.post("/cycles/run", response_model=ForecastCycleRunResponse)
+@router.post("/cycles/run", response_model=ForecastCycleRunResponse, dependencies=[Depends(require_permission_code("forecast.cycle.run"))])
 def run_adjustment_cycle(
     target_year: int = Query(..., ge=2000, le=2100),
     cycle_code: str = Query(..., description="M03, M06 ou M08"),

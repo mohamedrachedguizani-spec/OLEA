@@ -10,21 +10,11 @@ const ROLES = [
     { value: 'superadmin', label: 'Super Admin', color: '#863421' },
 ];
 
-const MODULES = [
-    { name: 'saisie_caisse', label: 'Saisie Caisse', icon: '✏️' },
-    { name: 'export_csv', label: 'Export CSV', icon: '📁' },
-    { name: 'saisie_bancaire', label: 'Saisie Bancaire', icon: '🏦' },
-    { name: 'sage_bfc', label: 'SAGE → BFC', icon: '🔄' },
-    { name: 'reporting', label: 'Reporting', icon: '📊' },
-    { name: 'configuration', label: 'Configuration', icon: '⚙️' },
-    { name: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: '⚖️' },
-];
-
 const PASSWORD_POLICY_HINT = '8+ caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial, sans espaces';
 const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}$/;
 
 function UserManagement() {
-    const { user: currentUser } = useAuth();
+    const { user: currentUser, has } = useAuth();
     const [users, setUsers] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -53,7 +43,8 @@ function UserManagement() {
     });
 
     // Permissions form
-    const [permissionsForm, setPermissionsForm] = useState([]);
+    const [accessRoles, setAccessRoles] = useState([]);
+    const [selectedAccessRoleId, setSelectedAccessRoleId] = useState('');
 
     // Reset password
     const [newPassword, setNewPassword] = useState('');
@@ -62,13 +53,16 @@ function UserManagement() {
 
     const canGoPrev = page > 1;
     const canGoNext = page < totalPages;
-    const allChecked = permissionsForm.length > 0 && permissionsForm.every(p => p.can_read && p.can_write && p.can_delete);
 
     const loadUsers = useCallback(async () => {
         try {
             setLoading(true);
-            const data = await ApiService.getUsers({ page, page_size: pageSize });
+            const [data, roles] = await Promise.all([
+                ApiService.getUsers({ page, page_size: pageSize }),
+                has('admin.roles.read') ? ApiService.getAccessRoles() : Promise.resolve([]),
+            ]);
             setUsers(Array.isArray(data?.items) ? data.items : []);
+            setAccessRoles(Array.isArray(roles) ? roles : []);
             setTotalUsers(Number(data?.total ?? 0));
             setTotalPages(Number(data?.pages ?? 1));
         } catch (err) {
@@ -76,7 +70,7 @@ function UserManagement() {
         } finally {
             setLoading(false);
         }
-    }, [page, pageSize]);
+    }, [page, pageSize, has]);
 
     useEffect(() => { loadUsers(); }, [loadUsers]);
 
@@ -135,43 +129,15 @@ function UserManagement() {
     // ─── Permissions ───
     const openPermissionsModal = (user) => {
         setSelectedUser(user);
-        const perms = MODULES.map(mod => {
-            const existing = user.permissions?.find(p => p.module_name === mod.name);
-            return {
-                module_name: mod.name,
-                can_read: existing?.can_read || false,
-                can_write: existing?.can_write || false,
-                can_delete: existing?.can_delete || false,
-            };
-        });
-        setPermissionsForm(perms);
+        setSelectedAccessRoleId(String(user.access_role_id || ''));
         setShowPermissionsModal(true);
-    };
-
-    const togglePermission = (moduleIndex, action) => {
-        setPermissionsForm(prev => {
-            const updated = [...prev];
-            updated[moduleIndex] = { ...updated[moduleIndex], [action]: !updated[moduleIndex][action] };
-            return updated;
-        });
-    };
-
-    const handleCheckAll = (check = true) => {
-        setPermissionsForm(prev => {
-            return prev.map(p => ({
-                ...p,
-                can_read: check,
-                can_write: check,
-                can_delete: check
-            }));
-        });
     };
 
     const handleSavePermissions = async () => {
         clearMessages();
         try {
-            await ApiService.setUserPermissions(selectedUser.id, permissionsForm);
-            setSuccess(`Permissions de ${selectedUser.full_name} mises à jour`);
+            await ApiService.assignAccessRole(selectedUser.id, Number(selectedAccessRoleId));
+            setSuccess(`Profil de ${selectedUser.full_name} mis à jour`);
             setShowPermissionsModal(false);
             loadUsers();
         } catch (err) {
@@ -286,12 +252,12 @@ function UserManagement() {
                     </h2>
                     <p className="um-subtitle">{totalUsers} utilisateur{totalUsers > 1 ? 's' : ''} enregistré{totalUsers > 1 ? 's' : ''}</p>
                 </div>
-                <button className="um-btn um-btn-primary" onClick={() => { clearMessages(); setShowCreateModal(true); }}>
+                {has('admin.users.manage') && <button className="um-btn um-btn-primary" onClick={() => { clearMessages(); setShowCreateModal(true); }}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
                         <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
                     </svg>
                     Nouvel Utilisateur
-                </button>
+                </button>}
             </div>
 
             {/* Messages */}
@@ -344,49 +310,37 @@ function UserManagement() {
                                     )}
                                 </td>
                                 <td>
-                                    {u.role === 'superadmin' ? (
-                                        <span className="um-text-muted">Toutes</span>
-                                    ) : (
-                                        <div className="um-perm-pills">
-                                            {u.permissions?.filter(p => p.can_read || p.can_write || p.can_delete).length > 0 ? (
-                                                u.permissions.filter(p => p.can_read || p.can_write || p.can_delete).map(p => (
-                                                    <span key={p.module_name} className="um-perm-pill" title={`R:${p.can_read ? '✓' : '✗'} W:${p.can_write ? '✓' : '✗'} D:${p.can_delete ? '✓' : '✗'}`}>
-                                                        {MODULES.find(m => m.name === p.module_name)?.icon} {MODULES.find(m => m.name === p.module_name)?.label?.split(' ')[0]}
-                                                    </span>
-                                                ))
-                                            ) : (
-                                                <span className="um-text-muted">Aucune</span>
-                                            )}
-                                        </div>
-                                    )}
+                                    <span className="um-perm-pill">
+                                        {u.access_role_name || 'Aucun profil'}
+                                    </span>
                                 </td>
                                 <td>
                                     <div className="um-actions">
-                                        {u.role !== 'superadmin' && (
+                                        {u.role !== 'superadmin' && has('admin.users.manage') && has('admin.roles.read') && (
                                             <button className="um-action-btn um-action-perms" onClick={() => openPermissionsModal(u)} title="Permissions">
                                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                                                     <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                                                 </svg>
                                             </button>
                                         )}
-                                        <button className="um-action-btn um-action-edit" onClick={() => openEditModal(u)} title="Modifier">
+                                        {has('admin.users.manage') && <button className="um-action-btn um-action-edit" onClick={() => openEditModal(u)} title="Modifier">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                                                 <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
                                             </svg>
-                                        </button>
-                                        <button className="um-action-btn um-action-password" onClick={() => openResetPasswordModal(u)} title="Reset mot de passe">
+                                        </button>}
+                                        {has('admin.users.reset_password') && <button className="um-action-btn um-action-password" onClick={() => openResetPasswordModal(u)} title="Reset mot de passe">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                                                 <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                                             </svg>
-                                        </button>
+                                        </button>}
                                         {u.id !== currentUser?.id && (
                                             <>
-                                                <button className="um-action-btn um-action-revoke" onClick={() => handleRevoke(u)} title="Révoquer sessions">
+                                                {has('admin.users.revoke_sessions') && <button className="um-action-btn um-action-revoke" onClick={() => handleRevoke(u)} title="Révoquer sessions">
                                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                                                         <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
                                                     </svg>
-                                                </button>
-                                                <button
+                                                </button>}
+                                                {has('admin.users.activate') && <button
                                                     className={`um-action-btn ${u.is_active ? 'um-action-delete' : 'um-action-activate'}`}
                                                     onClick={() => handleToggleActive(u)}
                                                     title={u.is_active ? 'Désactiver' : 'Activer'}
@@ -400,12 +354,12 @@ function UserManagement() {
                                                             <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>
                                                         </svg>
                                                     )}
-                                                </button>
-                                                <button className="um-action-btn um-action-permanent-delete" onClick={() => handlePermanentDelete(u)} title="Supprimer définitivement">
+                                                </button>}
+                                                {has('admin.users.delete') && <button className="um-action-btn um-action-permanent-delete" onClick={() => handlePermanentDelete(u)} title="Supprimer définitivement">
                                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
                                                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
                                                     </svg>
-                                                </button>
+                                                </button>}
                                             </>
                                         )}
                                     </div>
@@ -571,7 +525,7 @@ function UserManagement() {
                                             <option value="comptable">Comptable</option>
                                             <option value="financier">Financier</option>
                                             <option value="dirigeant">Dirigeant</option>
-                                            <option value="superadmin">Super Admin</option>
+                                            {currentUser?.role === 'superadmin' && <option value="superadmin">Super Admin</option>}
                                         </select>
                                     </div>
                                     <div className="um-form-group">
@@ -601,60 +555,20 @@ function UserManagement() {
                             <button className="um-modal-close" onClick={() => setShowPermissionsModal(false)}>×</button>
                         </div>
                         <div className="um-modal-body">
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                                <p className="um-perm-hint" style={{ margin: 0 }}>Cochez les droits d'accès pour chaque module de l'application.</p>
-                                <button
-                                    type="button"
-                                    className="um-btn um-btn-secondary"
-                                    onClick={() => handleCheckAll(!allChecked)}
-                                    style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', whiteSpace: 'nowrap' }}
-                                >
-                                    {allChecked ? 'Tout décocher' : 'Tout cocher'}
-                                </button>
-                            </div>
-                            <table className="um-perm-table">
-                                <thead>
-                                    <tr>
-                                        <th>Module</th>
-                                        <th>Lecture</th>
-                                        <th>Écriture</th>
-                                        <th>Suppression</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {MODULES.map((mod, idx) => (
-                                        <tr key={mod.name}>
-                                            <td>
-                                                <span className="um-perm-module">
-                                                    {mod.icon} {mod.label}
-                                                </span>
-                                            </td>
-                                            <td>
-                                                <label className="um-checkbox">
-                                                    <input type="checkbox" checked={permissionsForm[idx]?.can_read || false} onChange={() => togglePermission(idx, 'can_read')} />
-                                                    <span className="um-checkmark"></span>
-                                                </label>
-                                            </td>
-                                            <td>
-                                                <label className="um-checkbox">
-                                                    <input type="checkbox" checked={permissionsForm[idx]?.can_write || false} onChange={() => togglePermission(idx, 'can_write')} />
-                                                    <span className="um-checkmark"></span>
-                                                </label>
-                                            </td>
-                                            <td>
-                                                <label className="um-checkbox">
-                                                    <input type="checkbox" checked={permissionsForm[idx]?.can_delete || false} onChange={() => togglePermission(idx, 'can_delete')} />
-                                                    <span className="um-checkmark"></span>
-                                                </label>
-                                            </td>
-                                        </tr>
+                            <p className="um-perm-hint">Attribuez un profil fonctionnel. Ses droits sont configurables dans « Profils & droits ».</p>
+                            <div className="um-form-group">
+                                <label>Profil d'accès</label>
+                                <select value={selectedAccessRoleId} onChange={(event) => setSelectedAccessRoleId(event.target.value)}>
+                                    <option value="">Sélectionner un profil</option>
+                                    {accessRoles.filter((role) => role.code !== 'SUPER_ADMIN').map((role) => (
+                                        <option key={role.id} value={role.id}>{role.name} — {role.permission_codes.length} permission(s)</option>
                                     ))}
-                                </tbody>
-                            </table>
+                                </select>
+                            </div>
                         </div>
                         <div className="um-modal-footer">
                             <button className="um-btn um-btn-secondary" onClick={() => setShowPermissionsModal(false)}>Annuler</button>
-                            <button className="um-btn um-btn-primary" onClick={handleSavePermissions}>Enregistrer les permissions</button>
+                            <button className="um-btn um-btn-primary" onClick={handleSavePermissions} disabled={!selectedAccessRoleId}>Attribuer le profil</button>
                         </div>
                     </div>
                 </div>

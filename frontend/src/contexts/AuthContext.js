@@ -4,7 +4,18 @@ import ApiService from '../services/api';
 
 const AuthContext = createContext(null);
 
-const SUPERADMIN_ALLOWED_MODULES = new Set(['dashboard', 'users', 'audit']);
+const MODULE_PERMISSION_PREFIXES = {
+    dashboard: ['dashboard.', 'admin.dashboard.'],
+    saisie_caisse: ['saisie_caisse.'],
+    export_csv: ['export_csv.'],
+    saisie_bancaire: ['saisie_bancaire.'],
+    rapprochement_bancaire: ['rapprochement_bancaire.'],
+    sage_bfc: ['sage_bfc.', 'forecast.'],
+    reporting: ['reporting.'],
+    configuration: ['configuration.'],
+    users: ['admin.users.'],
+    audit: ['admin.audit.'],
+};
 
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
@@ -35,8 +46,8 @@ export function AuthProvider({ children }) {
         return () => window.removeEventListener('auth:session-expired', handleSessionExpired);
     }, []);
 
-    // Heartbeat : vérifier la session toutes les 15 secondes
-    // Détecte en temps réel les révocations, désactivations et suppressions
+    // Ce heartbeat ne recharge pas les droits. Il sert uniquement au suivi
+    // des sessions actives et à la détection des révocations.
     useEffect(() => {
         if (!user) return;
         const heartbeat = setInterval(async () => {
@@ -44,7 +55,7 @@ export function AuthProvider({ children }) {
             if (!valid) {
                 setUser(null);
             }
-        }, 10 * 1000); // 15 secondes
+        }, 15 * 1000);
         return () => clearInterval(heartbeat);
     }, [user]);
 
@@ -82,17 +93,19 @@ export function AuthProvider({ children }) {
     // Helpers de rôle
     const isSuperAdmin = user?.role === 'superadmin';
 
-    // Vérifier si l'utilisateur a la permission sur un module
-    const hasPermission = (moduleName, action = 'read') => {
+    const has = useCallback(
+        (permissionCode) => Boolean(user?.permission_codes?.includes(permissionCode)),
+        [user],
+    );
+    const hasAny = useCallback((...permissionCodes) => permissionCodes.some(has), [has]);
+
+    // Compatibilité avec les composants encore filtrés par nom de module.
+    const hasPermission = useCallback((moduleName, action = 'read') => {
         if (!user) return false;
-        if (user.role === 'superadmin') return SUPERADMIN_ALLOWED_MODULES.has(moduleName);
-        const perm = user.permissions?.find(p => p.module_name === moduleName);
-        if (!perm) return false;
-        if (action === 'read') return perm.can_read;
-        if (action === 'write') return perm.can_write;
-        if (action === 'delete') return perm.can_delete;
-        return false;
-    };
+        const prefixes = MODULE_PERMISSION_PREFIXES[moduleName] || [`${moduleName}.`];
+        const codes = user.permission_codes || [];
+        return codes.some((code) => prefixes.some((prefix) => code.startsWith(prefix)));
+    }, [user]);
 
     const value = {
         user,
@@ -101,6 +114,8 @@ export function AuthProvider({ children }) {
         logout,
         updateUser,
         isSuperAdmin,
+        has,
+        hasAny,
         hasPermission,
         checkSession,
     };

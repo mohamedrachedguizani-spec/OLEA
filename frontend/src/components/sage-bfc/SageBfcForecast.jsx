@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom';
 import ApiService from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import {
     ResponsiveContainer,
     LineChart,
@@ -27,6 +28,7 @@ const DERIVED_KEYS = new Set([
 ]);
 
 function SageBfcForecast({ selectedMonth, refreshTrigger }) {
+    const { has } = useAuth();
     const now = new Date();
     const isYearStart = now.getMonth() === 0;
     const inferredYear = useMemo(() => {
@@ -531,7 +533,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                 </div>
 
                 <div className="forecast-toolbar-actions forecast-filter-actions">
-                    {isYearStart && (
+                    {isYearStart && has('forecast.generate') && (
                         <button
                             className="btn-forecast primary"
                             onClick={() => runAction('initial', () => ApiService.generateForecast(targetYear, 'INITIAL'), 'Budget initial généré')}
@@ -764,7 +766,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                                 e.stopPropagation();
                                                                                 saveManualAnnualForAgregat(row.agregat_key);
                                                                             }}
-                                                                            disabled={manualSaveLoading === saveKey}
+                                                                            disabled={!has('forecast.manual.update') || manualSaveLoading === saveKey}
                                                                         >
                                                                             {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer annuel'}
                                                                         </button>
@@ -974,7 +976,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
                                                                                 e.stopPropagation();
                                                                                 saveManualForAgregat(row.agregat_key);
                                                                             }}
-                                                                            disabled={manualSaveLoading === saveKey}
+                                                                            disabled={!has('forecast.manual.update') || manualSaveLoading === saveKey}
                                                                         >
                                                                             {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer'}
                                                                         </button>

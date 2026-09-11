@@ -7588,3 +7588,41 @@ body {
     }
 }
 
+.access-page { width: 100%; }
+.access-layout { display: grid; grid-template-columns: 280px minmax(0, 1fr); gap: 1rem; align-items: start; }
+.access-role-list, .access-permission-panel { border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-card); overflow: hidden; }
+.access-panel-title { padding: 1rem; border-bottom: 1px solid var(--border-light); color: var(--text-muted); font-size: .75rem; font-weight: 700; text-transform: uppercase; }
+.access-role-item { display: flex; width: 100%; gap: .75rem; align-items: center; padding: .9rem 1rem; border: 0; border-bottom: 1px solid var(--border-light); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; }
+.access-role-item.active { background: rgba(183,72,43,.1); color: var(--primary-600); }
+.access-role-item > span:last-child { display: flex; min-width: 0; flex-direction: column; }
+.access-role-item small { color: var(--text-muted); font-size: .72rem; }
+.access-role-shield { font-size: 1.4rem; }
+.access-profile-heading { display: flex; justify-content: space-between; gap: 1rem; padding: 1.25rem; border-bottom: 1px solid var(--border-light); }
+.access-profile-heading h3 { margin: .15rem 0; color: var(--text-primary); }
+.access-profile-heading p { margin: 0; color: var(--text-secondary); font-size: .84rem; }
+.access-eyebrow { color: var(--primary-600); font-size: .72rem; font-weight: 700; text-transform: uppercase; }
+.access-locked { align-self: start; padding: .35rem .65rem; border-radius: 999px; background: var(--bg-secondary); color: var(--text-muted); font-size: .75rem; font-weight: 600; }
+.access-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; padding: 1.25rem; }
+.access-group { overflow: hidden; border: 1px solid var(--border-light); border-radius: var(--radius-md); }
+.access-group h4 { margin: 0; padding: .75rem .9rem; background: var(--bg-secondary); color: var(--text-secondary); font-size: .78rem; text-transform: uppercase; }
+.access-permission-row { display: flex; align-items: center; gap: .7rem; padding: .75rem .9rem; border-top: 1px solid var(--border-light); cursor: pointer; }
+.access-permission-row input { position: absolute; opacity: 0; }
+.access-permission-row.active { background: rgba(31,157,85,.055); }
+.access-check { display: grid; place-items: center; width: 20px; height: 20px; flex: 0 0 20px; border: 1px solid var(--border-medium); border-radius: 5px; color: white; font-size: .75rem; }
+.access-permission-row.active .access-check { border-color: #168047; background: #168047; }
+.access-permission-row > span:last-child { display: flex; min-width: 0; flex-direction: column; }
+.access-permission-row strong { color: var(--text-primary); font-size: .8rem; }
+.access-permission-row code { color: var(--text-muted); font-size: .68rem; }
+
+@media (max-width: 900px) {
+    .access-layout { grid-template-columns: 1fr; }
+    .access-role-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .access-panel-title { grid-column: 1 / -1; }
+    .access-groups { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+    .access-role-list { grid-template-columns: 1fr; }
+    .access-profile-heading { flex-direction: column; }
+}
+@media (max-width: 900px) { .access-layout { grid-template-columns: 1fr; } .access-groups { grid-template-columns: 1fr; } }

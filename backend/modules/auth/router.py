@@ -31,7 +31,6 @@ from .models import (
     ResetPasswordRequest,
     PermissionResponse,
     UserPermissionsUpdate,
-    RoleEnum,
 )
 from .security import (
     hash_password,
@@ -43,7 +42,7 @@ from .security import (
     REFRESH_TOKEN_EXPIRE_DAYS,
     IS_PRODUCTION,
 )
-from .dependencies import get_current_user, require_role
+from .dependencies import get_current_user, require_permission_code
 from modules.audit.service import log_audit_action
 from ws_manager import manager as ws_manager
 
@@ -168,8 +167,31 @@ def _fetch_user_permissions(cursor, user_id: int) -> List[PermissionResponse]:
     return [PermissionResponse(**row) for row in cursor.fetchall()]
 
 
-def _build_user_response(user: dict, permissions: list = None, active_sessions: int = None) -> UserResponse:
+def _build_user_response(user: dict, permissions: list = None, active_sessions: int = None, cursor=None) -> UserResponse:
     """Construit un UserResponse à partir d'un row dict."""
+    access_role = None
+    permission_codes = []
+    def load_access(access_cursor):
+        nonlocal access_role, permission_codes
+        access_cursor.execute(
+            "SELECT r.id, r.code, r.name FROM user_access_roles ur "
+            "JOIN access_roles r ON r.id = ur.role_id WHERE ur.user_id = %s",
+            (user["id"],),
+        )
+        access_role = access_cursor.fetchone()
+        if access_role:
+            access_cursor.execute(
+                "SELECT p.code FROM access_role_permissions rp "
+                "JOIN access_permissions p ON p.id = rp.permission_id "
+                "WHERE rp.role_id = %s ORDER BY p.code",
+                (access_role["id"],),
+            )
+            permission_codes = [row["code"] for row in access_cursor.fetchall()]
+    if cursor is not None:
+        load_access(cursor)
+    else:
+        with db.get_cursor() as access_cursor:
+            load_access(access_cursor)
     return UserResponse(
         id=user["id"],
         username=user["username"],
@@ -179,6 +201,10 @@ def _build_user_response(user: dict, permissions: list = None, active_sessions: 
         is_active=bool(user["is_active"]),
         created_at=user["created_at"],
         permissions=permissions,
+        permission_codes=permission_codes,
+        access_role_id=access_role["id"] if access_role else None,
+        access_role_code=access_role["code"] if access_role else None,
+        access_role_name=access_role["name"] if access_role else None,
         active_sessions=active_sessions,
     )
 
@@ -470,7 +496,7 @@ def list_users(
     page: int = 1,
     page_size: int = 20,
     request: Request = None,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.read")),
 ):
     """Liste tous les utilisateurs (superadmin uniquement, paginé)."""
     safe_page = max(1, page)
@@ -494,7 +520,7 @@ def list_users(
             for u in users:
                 permissions = _fetch_user_permissions(cursor, u["id"])
                 active_sessions = _count_active_sessions(cursor, u["id"])
-                items.append(_build_user_response(u, permissions, active_sessions))
+                items.append(_build_user_response(u, permissions, active_sessions, cursor=cursor))
 
     pages = max(1, math.ceil(total / safe_page_size))
     return {
@@ -510,9 +536,14 @@ def list_users(
 def create_user(
     body: UserCreate,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.manage")),
 ):
     """Crée un nouvel utilisateur (superadmin uniquement)."""
+    if body.role.value == "superadmin" and admin.get("role") != "superadmin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Seul un superadmin peut créer un autre superadmin",
+        )
     with db.get_connection() as conn:
         with db.get_cursor(conn) as cursor:
             # Vérifier l'unicité username / email
@@ -534,6 +565,17 @@ def create_user(
             )
             conn.commit()
             user_id = cursor.lastrowid
+
+            profile_code = {
+                "superadmin": "SUPER_ADMIN", "financier": "FINANCIER",
+                "dirigeant": "DIRIGEANT", "comptable": "COMPTABLE",
+            }[body.role.value]
+            cursor.execute(
+                "INSERT INTO user_access_roles (user_id, role_id) "
+                "SELECT %s, id FROM access_roles WHERE code = %s",
+                (user_id, profile_code),
+            )
+            conn.commit()
 
             cursor.execute(
                 "SELECT id, username, email, full_name, role, is_active, created_at "
@@ -561,7 +603,7 @@ def create_user(
 def get_user(
     user_id: int,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.read")),
 ):
     """Détails d'un utilisateur (superadmin uniquement)."""
     with db.get_connection() as conn:
@@ -585,7 +627,7 @@ def update_user(
     user_id: int,
     body: UserUpdate,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.manage")),
 ):
     """Met à jour un utilisateur (superadmin uniquement)."""
     with db.get_connection() as conn:
@@ -597,6 +639,14 @@ def update_user(
             existing = cursor.fetchone()
             if not existing:
                 raise HTTPException(status_code=404, detail="Utilisateur non trouvé")
+            if (
+                existing["role"] == "superadmin" or
+                (body.role is not None and body.role.value == "superadmin")
+            ) and admin.get("role") != "superadmin":
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Seul un superadmin peut modifier un compte superadmin",
+                )
 
             # Construire la requête de mise à jour dynamiquement
             updates = []
@@ -629,6 +679,17 @@ def update_user(
                 f"UPDATE users SET {', '.join(updates)} WHERE id = %s",
                 tuple(params),
             )
+            if body.role is not None and body.role.value != existing["role"]:
+                profile_code = {
+                    "superadmin": "SUPER_ADMIN", "financier": "FINANCIER",
+                    "dirigeant": "DIRIGEANT", "comptable": "COMPTABLE",
+                }[body.role.value]
+                cursor.execute(
+                    "INSERT INTO user_access_roles (user_id, role_id) "
+                    "SELECT %s, id FROM access_roles WHERE code = %s "
+                    "ON DUPLICATE KEY UPDATE role_id = VALUES(role_id)",
+                    (user_id, profile_code),
+                )
             conn.commit()
 
             cursor.execute(
@@ -671,7 +732,7 @@ def update_user(
 def delete_user(
     user_id: int,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.activate")),
 ):
     """
     Désactive un utilisateur (soft delete) et révoque ses sessions.
@@ -715,7 +776,7 @@ def delete_user(
 def activate_user(
     user_id: int,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.activate")),
 ):
     """
     Réactive un utilisateur précédemment désactivé.
@@ -759,7 +820,7 @@ def activate_user(
 def permanent_delete_user(
     user_id: int,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.delete")),
 ):
     """
     Supprime définitivement un utilisateur et toutes ses données associées.
@@ -811,7 +872,7 @@ def permanent_delete_user(
 def revoke_user_sessions(
     user_id: int,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.revoke_sessions")),
 ):
     """
     Révoque toutes les sessions d'un utilisateur en incrémentant son token_version.
@@ -848,7 +909,7 @@ def reset_user_password(
     user_id: int,
     body: ResetPasswordRequest,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.users.reset_password")),
 ):
     """
     Réinitialise le mot de passe d'un utilisateur (superadmin uniquement).
@@ -888,7 +949,7 @@ def reset_user_password(
 def get_user_permissions(
     user_id: int,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.roles.read")),
 ):
     """Récupère les permissions d'un utilisateur."""
     with db.get_cursor() as cursor:
@@ -904,7 +965,7 @@ def set_user_permissions(
     user_id: int,
     body: UserPermissionsUpdate,
     request: Request,
-    admin: dict = Depends(require_role(RoleEnum.superadmin)),
+    admin: dict = Depends(require_permission_code("admin.roles.manage")),
 ):
     """
     Définit les permissions d'un utilisateur sur les modules de l'application.
