@@ -456,6 +456,15 @@ class ApiService {
         return response.json();
     }
 
+    static async getReconciliationResult(resultId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/results/${resultId}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Rapprochement introuvable' }));
+            throw new Error(err.detail || 'Erreur lors du chargement du rapprochement');
+        }
+        return response.json();
+    }
+
     static async getAccessPermissions() {
         const response = await ApiService._fetch(`${API_BASE_URL}/access/permissions`);
         if (!response.ok) throw new Error('Erreur lors du chargement des permissions');
@@ -796,9 +805,19 @@ class ApiService {
 
     // ===================== CRUD Données mensuelles =====================
 
-    // Récupérer la liste de tous les mois (résumés sans lignes)
-    static async getSageBfcMonthlyList() {
-        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/monthly`);
+    // Récupérer les mois filtrés côté serveur (résumés sans lignes)
+    static async getSageBfcMonthlyList({ year = null, periode = null } = {}) {
+        const params = new URLSearchParams();
+        if (year != null && year !== '') params.set('year', String(year));
+        if (periode) params.set('periode', String(periode));
+        const query = params.toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/monthly${query ? `?${query}` : ''}`);
+        if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
+        return response.json();
+    }
+
+    static async getSageBfcMonthlyYears() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/sage-bfc/monthly-years`);
         if (!response.ok) throw new Error(`Erreur ${response.status}: ${await response.text()}`);
         return response.json();
     }
@@ -1250,9 +1269,8 @@ class ApiService {
 
     // ===================== NOTIFICATIONS =====================
 
-    static async getNotifications(limit = 50, offset = 0, unreadOnly = false) {
-        const params = new URLSearchParams({ limit, offset, unread_only: unreadOnly });
-        const response = await this._fetch(`${API_BASE_URL}/notifications?${params}`);
+    static async getNotifications() {
+        const response = await this._fetch(`${API_BASE_URL}/notifications`);
         if (!response.ok) throw new Error('Erreur chargement notifications');
         return response.json();
     }

@@ -294,6 +294,7 @@ async def put_mapping_config_full(
         detail={"scope": "full"},
         request=request,
     )
+
     return {"status": "ok"}
 
 @router.get("/mapping/entries", dependencies=[Depends(require_permission_code("configuration.mapping.read"))])
@@ -652,6 +653,9 @@ async def parse_balance(
             title=f"Nouvelles données — {m_label} {resultat_reel.periode.year}",
             message=f"Les données Sage BFC de {m_label} {resultat_reel.periode.year} ont été importées par {user.get('username', '')}.",
             metadata={"periode": str(resultat_reel.periode), "file": file.filename},
+            entity_type="sage_bfc_period",
+            entity_id=str(resultat_reel.periode),
+            route=f"/sage-bfc?periode={resultat_reel.periode}&section=dashboard",
         )
 
         # Vérifier les alertes globales (validations)
@@ -674,6 +678,9 @@ async def parse_balance(
                             title=f"Alertes de validation — {m_label} {resultat_reel.periode.year}",
                             message=f"{len(_alertes)} alerte(s) de validation détectée(s) pour {m_label} {resultat_reel.periode.year}.",
                             metadata={"periode": str(resultat_reel.periode), "alertes_count": len(_alertes)},
+                            entity_type="sage_bfc_period",
+                            entity_id=str(resultat_reel.periode),
+                            route=f"/sage-bfc?periode={resultat_reel.periode}&section=dashboard",
                         )
         except Exception:
             pass  # Ne pas bloquer l'upload si la vérification échoue
@@ -699,6 +706,9 @@ async def parse_balance(
                         title=f"Mois manquants — {resultat_reel.periode.year}",
                         message=f"Attention : les mois suivants sont absents pour {resultat_reel.periode.year} : {', '.join(_missing_labels)}.",
                         metadata={"year": resultat_reel.periode.year, "missing_months": _missing},
+                        entity_type="sage_bfc_year",
+                        entity_id=str(resultat_reel.periode.year),
+                        route=f"/sage-bfc?year={resultat_reel.periode.year}&section=upload",
                     )
         except Exception:
             pass
@@ -1056,16 +1066,43 @@ def _convert_cumulative_to_real(resultat_cumule: TableauBFCResponse, parser: Sag
 # ===================== CRUD: Données mensuelles =====================
 
 @router.get("/monthly", response_model=list[MonthlyDataSummary], dependencies=[Depends(require_permission_code("sage_bfc.read"))])
-async def get_all_monthly():
+async def get_all_monthly(
+    year: Optional[int] = Query(None, ge=2000, le=2100),
+    periode: Optional[str] = Query(None),
+):
     """
-    Récupère la liste de tous les mois stockés (sans lignes détaillées)
+    Récupère les résumés mensuels filtrés côté serveur.
+    `year` limite la réponse à un exercice et `periode` à un mois précis.
     """
+    periode_date = None
+    if periode:
+        try:
+            periode_date = date.fromisoformat(periode + "-01" if len(periode) == 7 else periode)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Format de période invalide: {periode}")
+        if year is not None and periode_date.year != year:
+            raise HTTPException(
+                status_code=400,
+                detail="La période demandée n'appartient pas à l'année indiquée",
+            )
+
+    conditions = []
+    params = []
+    if year is not None:
+        conditions.append("periode >= %s AND periode < %s")
+        params.extend((date(year, 1, 1), date(year + 1, 1, 1)))
+    if periode_date is not None:
+        conditions.append("periode = %s")
+        params.append(periode_date)
+    where_clause = f" WHERE {' AND '.join(conditions)}" if conditions else ""
+
     with db.get_cursor() as cursor:
-        cursor.execute("""
+        cursor.execute(f"""
             SELECT periode, file_name, lignes_count, resume, created_at, updated_at
             FROM sage_bfc_monthly
+            {where_clause}
             ORDER BY periode ASC
-        """)
+        """, tuple(params))
         rows = cursor.fetchall()
     
     result = []
@@ -1081,6 +1118,26 @@ async def get_all_monthly():
         ))
     
     return result
+
+
+@router.get("/monthly-years", dependencies=[Depends(require_permission_code("sage_bfc.read"))])
+async def get_monthly_years():
+    """Retourne uniquement les années qui possèdent au moins une balance importée."""
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT YEAR(periode) AS year, COUNT(DISTINCT MONTH(periode)) AS months_count "
+            "FROM sage_bfc_monthly GROUP BY YEAR(periode) ORDER BY year DESC"
+        )
+        rows = cursor.fetchall() or []
+    years = [int(row["year"]) for row in rows if row.get("year") is not None]
+    return {
+        "years": years,
+        "latest": years[0] if years else None,
+        "items": [
+            {"year": int(row["year"]), "months_count": int(row["months_count"] or 0)}
+            for row in rows if row.get("year") is not None
+        ],
+    }
 
 
 @router.get("/monthly/{periode}", response_model=MonthlyDataFull, dependencies=[Depends(require_permission_code("sage_bfc.read"))])
@@ -1165,6 +1222,18 @@ async def delete_monthly(
         request=request,
     )
 
+    notify_module_users(
+        module_name="sage_bfc",
+        notif_type="sage_bfc.periode_supprimee",
+        severity="warning",
+        title=f"Période supprimée — {periode.strftime('%m/%Y')}",
+        message=f"La période {periode.strftime('%m/%Y')} a été supprimée par {user.get('username', '')}.",
+        metadata={"periode": str(periode), "year": periode.year, "month": periode.month},
+        entity_type="sage_bfc_period",
+        entity_id=str(periode),
+        route=f"/sage-bfc?year={periode.year}&section=upload",
+    )
+
     return {
         "status": "supprimé",
         "periode": str(periode),
@@ -1186,6 +1255,19 @@ async def close_year(
     3) Synchronise l'année clôturée vers bfc_budget_history
     4) Génère le budget initial de l'année suivante
     """
+    def notify_failure(reason: str):
+        notify_module_users(
+            module_name="sage_bfc",
+            notif_type="sage_bfc.cloture_echec",
+            severity="critical",
+            title=f"Échec de la clôture annuelle — {year}",
+            message=reason,
+            metadata={"year": year, "reason": reason},
+            entity_type="sage_bfc_year",
+            entity_id=str(year),
+            route=f"/sage-bfc?year={year}&section=upload",
+        )
+
     with db.get_cursor() as cursor:
         cursor.execute(
             """
@@ -1210,10 +1292,12 @@ async def close_year(
         cumulative_rows = cursor.fetchall() or []
 
     if not monthly_rows:
+        notify_failure(f"Aucune donnée mensuelle trouvée pour {year}.")
         raise HTTPException(status_code=404, detail=f"Aucune donnée mensuelle trouvée pour {year}")
 
     months_count = len({int(r["periode"].month) for r in monthly_rows if r.get("periode") is not None})
     if months_count < 12 and not force:
+        notify_failure(f"Clôture refusée : seulement {months_count}/12 mois disponibles pour {year}.")
         raise HTTPException(
             status_code=400,
             detail=f"Clôture refusée: {months_count}/12 mois disponibles pour {year}",
@@ -1246,8 +1330,12 @@ async def close_year(
 
     next_year = year + 1
     from modules.forecast.engine import sync_closed_years_into_history, generate_forecast
-    sync_payload = sync_closed_years_into_history(before_year=next_year)
-    run_id, rows_written = generate_forecast(target_year=next_year, cycle_code="INITIAL", cycle_month=None)
+    try:
+        sync_payload = sync_closed_years_into_history(before_year=next_year)
+        run_id, rows_written = generate_forecast(target_year=next_year, cycle_code="INITIAL", cycle_month=None)
+    except Exception as exc:
+        notify_failure(f"La préparation du Forecast {next_year} a échoué : {exc}")
+        raise
     forecast_payload = {
         "target_year": next_year,
         "cycle_code": "INITIAL",
@@ -1255,26 +1343,30 @@ async def close_year(
         "rows_written": rows_written,
     }
 
-    with db.get_cursor() as cursor:
-        cursor.execute(
-            """
-            INSERT INTO sage_bfc_year_closure (closed_year, monthly_count, archive_payload, sync_payload, forecast_payload)
-            VALUES (%s, %s, %s, %s, %s)
-            ON DUPLICATE KEY UPDATE
-                monthly_count = VALUES(monthly_count),
-                archive_payload = VALUES(archive_payload),
-                sync_payload = VALUES(sync_payload),
-                forecast_payload = VALUES(forecast_payload),
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (
-                year,
-                months_count,
-                json.dumps(archive_payload, ensure_ascii=False, default=str),
-                json.dumps(sync_payload, ensure_ascii=False, default=str),
-                json.dumps(forecast_payload, ensure_ascii=False, default=str),
-            ),
-        )
+    try:
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO sage_bfc_year_closure (closed_year, monthly_count, archive_payload, sync_payload, forecast_payload)
+                VALUES (%s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    monthly_count = VALUES(monthly_count),
+                    archive_payload = VALUES(archive_payload),
+                    sync_payload = VALUES(sync_payload),
+                    forecast_payload = VALUES(forecast_payload),
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    year,
+                    months_count,
+                    json.dumps(archive_payload, ensure_ascii=False, default=str),
+                    json.dumps(sync_payload, ensure_ascii=False, default=str),
+                    json.dumps(forecast_payload, ensure_ascii=False, default=str),
+                ),
+            )
+    except Exception as exc:
+        notify_failure(f"L'enregistrement de la clôture {year} a échoué : {exc}")
+        raise
 
     ws_manager.broadcast("sage_bfc", "year_closed", {"year": year, "next_year": next_year})
     ws_manager.broadcast("forecast", "generated", forecast_payload)
@@ -1287,6 +1379,18 @@ async def close_year(
         entity_id=str(year),
         detail={"months_count": months_count, "force": force, "next_year": next_year},
         request=request,
+    )
+
+    notify_module_users(
+        module_name="sage_bfc",
+        notif_type="sage_bfc.cloture_reussie",
+        severity="success",
+        title=f"Clôture annuelle réussie — {year}",
+        message=f"L'année {year} est clôturée et le budget initial {next_year} a été généré.",
+        metadata={"closed_year": year, "next_year": next_year, "months_count": months_count},
+        entity_type="sage_bfc_year",
+        entity_id=str(year),
+        route=f"/sage-bfc?view=forecast&year={next_year}&cycle=INITIAL",
     )
 
     return {

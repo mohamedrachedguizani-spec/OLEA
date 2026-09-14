@@ -1,5 +1,5 @@
 // src/components/SageBfcParser.js
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,6 +13,32 @@ import SageBfcSuccessModal from './sage-bfc/SageBfcSuccessModal';
 import './sage-bfc/SageBfcParser.css';
 
 const ALL_PERIODS_KEY = '__all_periods__';
+
+export const getPeriodYear = (periode) => {
+    const match = String(periode || '').match(/^(\d{4})/);
+    return match ? match[1] : '';
+};
+
+export const getPeriodMonth = (periode) => {
+    const match = String(periode || '').match(/^\d{4}-(\d{2})/);
+    return match ? match[1] : '';
+};
+
+export const getPeriodsForYear = (periods, year) => (
+    periods.filter((periode) => getPeriodYear(periode) === String(year))
+);
+
+export const choosePeriodForYear = (periods, year, preferredPeriod = null) => {
+    const yearPeriods = getPeriodsForYear(periods, year);
+    if (!yearPeriods.length) return null;
+    if (preferredPeriod === ALL_PERIODS_KEY) return ALL_PERIODS_KEY;
+    const preferredMonth = getPeriodMonth(preferredPeriod);
+    if (preferredMonth) {
+        const sameMonth = yearPeriods.find((periode) => getPeriodMonth(periode) === preferredMonth);
+        if (sameMonth) return sameMonth;
+    }
+    return yearPeriods[yearPeriods.length - 1];
+};
 
 const RESUME_SUM_KEYS = [
     'ca_brut',
@@ -76,7 +102,13 @@ function buildAllPeriodsResult(sortedMonths, monthlyData) {
     };
 }
 
-function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfiguration }) {
+function SageBfcParser({
+    refreshTrigger,
+    forecastRefresh = 0,
+    onOpenMappingConfiguration,
+    navigationTarget,
+    onNavigationConsumed,
+}) {
     const { has } = useAuth();
     const currentYear = new Date().getFullYear();
     const [activeStep, setActiveStep] = useState('upload'); // upload | results
@@ -94,48 +126,127 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
 
     // Données mensuelles chargées depuis le backend
     const [monthlyData, setMonthlyData] = useState({});
+    const [availableYears, setAvailableYears] = useState([]);
+    const [yearMonthCounts, setYearMonthCounts] = useState({});
+    const [yearsLoaded, setYearsLoaded] = useState(false);
     const [selectedMonth, setSelectedMonth] = useState(null);
     const [selectedYearFilter, setSelectedYearFilter] = useState('');
+    const handledNavigationRef = useRef(null);
+    const monthlyRequestRef = useRef(0);
+    const initialNavigationTargetRef = useRef(navigationTarget);
 
     // Mois triés chronologiquement
     const sortedMonths = useMemo(() => {
         return Object.keys(monthlyData).sort();
     }, [monthlyData]);
 
-    const availableYears = useMemo(() => {
-        const years = Array.from(
-            new Set(
-                sortedMonths
-                    .map((m) => {
-                        const d = new Date(m);
-                        return Number.isNaN(d.getTime()) ? null : d.getFullYear();
-                    })
-                    .filter((y) => Number.isFinite(y))
-            )
-        ).sort((a, b) => b - a);
-        return years;
-    }, [sortedMonths]);
-
     const filteredMonths = useMemo(() => {
-        if (!selectedYearFilter || selectedYearFilter === 'all') return sortedMonths;
-        const yearNum = Number(selectedYearFilter);
-        if (!Number.isFinite(yearNum)) return sortedMonths;
-        return sortedMonths.filter((m) => {
-            const d = new Date(m);
-            return !Number.isNaN(d.getTime()) && d.getFullYear() === yearNum;
-        });
+        if (!selectedYearFilter) return [];
+        return getPeriodsForYear(sortedMonths, selectedYearFilter);
     }, [sortedMonths, selectedYearFilter]);
 
-    // Sélectionner toutes les périodes par défaut
+    const loadMonthlyYears = useCallback(async () => {
+        try {
+            const response = await ApiService.getSageBfcMonthlyYears();
+            const years = Array.isArray(response?.years)
+                ? response.years.map(Number).filter(Number.isFinite)
+                : [];
+            setAvailableYears(years);
+            setYearMonthCounts(Object.fromEntries(
+                (response?.items || []).map((item) => [Number(item.year), Number(item.months_count || 0)])
+            ));
+            return years;
+        } finally {
+            setYearsLoaded(true);
+        }
+    }, []);
+
+    const loadMonthlyData = useCallback(async (
+        { year = null, periode = null } = {},
+        { commit = true } = {},
+    ) => {
+        const requestId = commit ? ++monthlyRequestRef.current : null;
+        try {
+            if (commit) setLoadingData(true);
+            const months = await ApiService.getSageBfcMonthlyList({ year, periode });
+            const data = {};
+            for (const month of months) {
+                data[month.periode] = {
+                    result: {
+                        periode: month.periode,
+                        resume: month.resume,
+                        lignes: [],
+                        validations: [],
+                        alertes_globales: []
+                    },
+                    fileName: month.file_name,
+                    lignesCount: month.lignes_count,
+                    uploadDate: month.created_at
+                };
+            }
+            if (commit && requestId === monthlyRequestRef.current) setMonthlyData(data);
+            return data;
+        } catch (err) {
+            if (commit && requestId === monthlyRequestRef.current) {
+                setError(err.message || 'Erreur lors du chargement des balances');
+            }
+            return {};
+        } finally {
+            if (commit && requestId === monthlyRequestRef.current) setLoadingData(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!navigationTarget || handledNavigationRef.current === navigationTarget.key) return;
+        const { periode, year, section, view } = navigationTarget.params || {};
+        if ((periode || year) && !yearsLoaded) return;
+
+        let cancelled = false;
+        const applyTarget = async () => {
+            const targetYear = getPeriodYear(periode) || String(year || '');
+            let targetData = {};
+            if (targetYear && availableYears.includes(Number(targetYear))) {
+                if (periode) {
+                    const exactMatch = await loadMonthlyData({ periode }, { commit: false });
+                    if (!Object.prototype.hasOwnProperty.call(exactMatch, periode)) {
+                        setError(`La période ${periode} n'est plus disponible.`);
+                        handledNavigationRef.current = navigationTarget.key;
+                        onNavigationConsumed?.(navigationTarget.key);
+                        return;
+                    }
+                }
+                targetData = await loadMonthlyData({ year: targetYear });
+                if (cancelled) return;
+                setSelectedYearFilter(targetYear);
+            }
+            if (periode && Object.prototype.hasOwnProperty.call(targetData, periode)) {
+                setSelectedMonth(periode);
+            }
+            if (section === 'upload') {
+                setActiveStep('upload');
+            } else {
+                setActiveStep('results');
+                setActiveTab(view === 'forecast' ? 'forecast' : (section || 'dashboard'));
+            }
+            handledNavigationRef.current = navigationTarget.key;
+            onNavigationConsumed?.(navigationTarget.key);
+        };
+        applyTarget();
+        return () => { cancelled = true; };
+    }, [navigationTarget, yearsLoaded, availableYears, loadMonthlyData, onNavigationConsumed]);
+
+    // Garantir que l'année sélectionnée existe encore dans les données.
     useEffect(() => {
         if (!availableYears.length) {
+            if (selectedYearFilter) setSelectedYearFilter('');
+            if (selectedMonth) setSelectedMonth(null);
             return;
         }
 
-        if (!selectedYearFilter || (selectedYearFilter !== 'all' && !availableYears.includes(Number(selectedYearFilter)))) {
+        if (!selectedYearFilter || !availableYears.includes(Number(selectedYearFilter))) {
             setSelectedYearFilter(String(availableYears[0]));
         }
-    }, [availableYears, selectedYearFilter]);
+    }, [availableYears, selectedYearFilter, selectedMonth]);
 
     useEffect(() => {
         if (!filteredMonths.length) {
@@ -146,6 +257,14 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
             setSelectedMonth(filteredMonths[filteredMonths.length - 1]);
         }
     }, [filteredMonths, selectedMonth]);
+
+    const handleYearFilterChange = useCallback(async (nextYear) => {
+        const preferredPeriod = selectedMonth;
+        setSelectedYearFilter(nextYear);
+        const data = await loadMonthlyData({ year: nextYear });
+        const periods = Object.keys(data).sort();
+        setSelectedMonth(choosePeriodForYear(periods, nextYear, preferredPeriod));
+    }, [loadMonthlyData, selectedMonth]);
 
     // Résultat du mois sélectionné
     const currentResult = useMemo(() => {
@@ -171,35 +290,6 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
             (monthlyData[periode]?.result?.lignes || []).map((l) => ({ ...l, mois: periode }))
         );
     }, [filteredMonths, monthlyData]);
-
-    // Charger les données mensuelles depuis le backend au montage
-    const loadMonthlyData = useCallback(async () => {
-        try {
-            setLoadingData(true);
-            const months = await ApiService.getSageBfcMonthlyList();
-            const data = {};
-            for (const month of months) {
-                data[month.periode] = {
-                    result: {
-                        periode: month.periode,
-                        resume: month.resume,
-                        lignes: [],
-                        validations: [],
-                        alertes_globales: []
-                    },
-                    fileName: month.file_name,
-                    lignesCount: month.lignes_count,
-                    uploadDate: month.created_at
-                };
-            }
-            setMonthlyData(data);
-
-        } catch (err) {
-            // Pas de log console
-        } finally {
-            setLoadingData(false);
-        }
-    }, []);
 
     const loadClosedYears = useCallback(async () => {
         try {
@@ -296,7 +386,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
         }
     }, [selectedMonth, sortedMonths.length, loadAllMonthDetails]);
 
-    // Charger les stats du mapping et les données mensuelles au montage
+    // Charger les stats, les années et uniquement la dernière année au montage.
     useEffect(() => {
         const loadStats = async () => {
             try {
@@ -307,17 +397,51 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
             }
         };
         loadStats();
-        loadMonthlyData();
         loadClosedYears();
-    }, [loadMonthlyData, loadClosedYears]);
+        const initializeMonthlyData = async () => {
+            try {
+                const years = await loadMonthlyYears();
+                const initialTarget = initialNavigationTargetRef.current;
+                const requestedYear = getPeriodYear(initialTarget?.params?.periode)
+                    || String(initialTarget?.params?.year || '');
+                const initialYear = years.includes(Number(requestedYear))
+                    ? Number(requestedYear)
+                    : years[0];
+                if (initialYear) {
+                    setSelectedYearFilter(String(initialYear));
+                    await loadMonthlyData({ year: initialYear });
+                } else {
+                    setMonthlyData({});
+                    setLoadingData(false);
+                }
+            } catch (err) {
+                setError(err.message || 'Erreur lors du chargement des années disponibles');
+                setLoadingData(false);
+            }
+        };
+        initializeMonthlyData();
+    }, [loadMonthlyData, loadMonthlyYears, loadClosedYears]);
 
     // Rechargement temps réel déclenché par WebSocket
+    const handledRefreshRef = useRef(0);
     useEffect(() => {
-        if (refreshTrigger > 0) {
-            loadMonthlyData();
-            loadClosedYears();
-        }
-    }, [refreshTrigger, loadMonthlyData, loadClosedYears]);
+        if (refreshTrigger <= 0 || handledRefreshRef.current === refreshTrigger) return;
+        handledRefreshRef.current = refreshTrigger;
+        const refresh = async () => {
+            const years = await loadMonthlyYears();
+            const activeYear = years.includes(Number(selectedYearFilter))
+                ? selectedYearFilter
+                : String(years[0] || '');
+            if (activeYear) {
+                setSelectedYearFilter(activeYear);
+                await loadMonthlyData({ year: activeYear });
+            } else {
+                setMonthlyData({});
+            }
+            await loadClosedYears();
+        };
+        refresh().catch((err) => setError(err.message || 'Erreur lors de l\'actualisation des balances'));
+    }, [refreshTrigger, selectedYearFilter, loadMonthlyData, loadMonthlyYears, loadClosedYears]);
 
     const handleFileParse = useCallback(async (file, periode) => {
         setLoading(true);
@@ -330,19 +454,24 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
         try {
             const data = await ApiService.parseSageBfcFile(file, periode);
             const monthKey = data.periode;
+            const importedYear = getPeriodYear(monthKey);
 
-            // Mettre à jour les données locales avec le résultat complet
-            setMonthlyData(prev => ({
-                ...prev,
+            // Recharger uniquement l'exercice importé, puis conserver le résultat complet reçu.
+            const yearData = await loadMonthlyData({ year: importedYear });
+
+            setMonthlyData({
+                ...yearData,
                 [monthKey]: {
                     result: data,
                     fileName: file.name,
                     lignesCount: data.lignes?.length || 0,
                     uploadDate: new Date().toISOString()
                 }
-            }));
+            });
 
+            if (importedYear) setSelectedYearFilter(importedYear);
             setSelectedMonth(monthKey);
+            await loadMonthlyYears();
             setActiveStep('results');
             setActiveTab('dashboard');
             const lignes = Array.isArray(data.lignes) ? data.lignes : [];
@@ -370,47 +499,68 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
         setImportSuccess(null);
         setSuccessMessage(null);
         setFileName('');
-    }, []);
+    }, [loadMonthlyData, loadMonthlyYears]);
 
     const dismissImportSuccess = useCallback(() => {
         setImportSuccess(null);
     }, []);
 
     const handleSuccessViewResults = useCallback(() => {
+        const importedPeriod = importSuccess?.periode;
+        const importedYear = getPeriodYear(importedPeriod);
+        if (importedYear) setSelectedYearFilter(importedYear);
+        if (importedPeriod) setSelectedMonth(importedPeriod);
         setImportSuccess(null);
         setActiveStep('results');
         setActiveTab('dashboard');
-    }, []);
+    }, [importSuccess]);
 
     const handleSuccessNewUpload = useCallback(() => {
         setImportSuccess(null);
         handleNewUpload();
     }, [handleNewUpload]);
 
-    const handleViewResults = useCallback(() => {
+    const handleViewResults = useCallback(async () => {
+        if (selectedYearFilter && sortedMonths.length === 0) {
+            await loadMonthlyData({ year: selectedYearFilter });
+        }
         setActiveStep('results');
         setActiveTab('dashboard');
-    }, []);
+    }, [selectedYearFilter, sortedMonths.length, loadMonthlyData]);
 
     const handleDeleteMonth = useCallback(async (monthKey) => {
         try {
             await ApiService.deleteSageBfcMonth(monthKey);
-            setMonthlyData(prev => {
-                const newData = { ...prev };
-                delete newData[monthKey];
-                return newData;
+            const remaining = sortedMonths.filter(m => m !== monthKey);
+            setMonthlyData((prev) => {
+                const nextData = { ...prev };
+                delete nextData[monthKey];
+                return nextData;
             });
+            const years = await loadMonthlyYears();
             if (selectedMonth === monthKey) {
-                const remaining = sortedMonths.filter(m => m !== monthKey);
-                setSelectedMonth(remaining.length > 0 ? remaining[remaining.length - 1] : null);
-                if (remaining.length === 0) {
+                const sameYearPeriods = getPeriodsForYear(remaining, selectedYearFilter);
+                if (sameYearPeriods.length > 0) {
+                    setSelectedMonth(sameYearPeriods[sameYearPeriods.length - 1]);
+                } else if (years.length > 0) {
+                    const nextYear = String(years[0]);
+                    const nextData = await loadMonthlyData({ year: nextYear });
+                    const nextPeriods = Object.keys(nextData).sort();
+                    setSelectedYearFilter(nextYear);
+                    setSelectedMonth(choosePeriodForYear(nextPeriods, nextYear));
+                } else {
+                    setSelectedYearFilter('');
+                    setSelectedMonth(null);
+                    setMonthlyData({});
+                }
+                if (years.length === 0) {
                     setActiveStep('upload');
                 }
             }
         } catch (err) {
             setError('Erreur lors de la suppression: ' + err.message);
         }
-    }, [selectedMonth, sortedMonths]);
+    }, [selectedMonth, selectedYearFilter, sortedMonths, loadMonthlyData, loadMonthlyYears]);
 
     const formatMonthLabel = (periode) => {
         try {
@@ -435,10 +585,9 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
     const monthsByYear = useMemo(() => {
         const acc = {};
         sortedMonths.forEach((m) => {
-            const d = new Date(m);
-            if (Number.isNaN(d.getTime())) return;
-            const y = d.getFullYear();
-            const mo = d.getMonth() + 1;
+            const y = Number(getPeriodYear(m));
+            const mo = Number(getPeriodMonth(m));
+            if (!Number.isFinite(y) || !Number.isFinite(mo)) return;
             if (!acc[y]) acc[y] = new Set();
             acc[y].add(mo);
         });
@@ -447,23 +596,22 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
 
     const closableYear = useMemo(() => {
         if (!selectedMonth || selectedMonth === ALL_PERIODS_KEY) return null;
-        const d = new Date(selectedMonth);
-        if (Number.isNaN(d.getTime())) return null;
-        const year = d.getFullYear();
-        const month = d.getMonth() + 1;
+        const year = Number(getPeriodYear(selectedMonth));
+        const month = Number(getPeriodMonth(selectedMonth));
+        if (!Number.isFinite(year) || !Number.isFinite(month)) return null;
         if (month !== 12) return null;
         const count = monthsByYear[year] ? monthsByYear[year].size : 0;
         return count === 12 ? year : null;
     }, [selectedMonth, monthsByYear]);
 
     const latestClosableYear = useMemo(() => {
-        const years = Object.keys(monthsByYear)
-            .map((y) => Number(y))
-            .filter((y) => Number.isFinite(y) && (monthsByYear[y]?.size || 0) === 12)
+        const years = Object.keys(yearMonthCounts)
+            .map(Number)
+            .filter((y) => Number.isFinite(y) && yearMonthCounts[y] === 12)
             .filter((y) => !closedYears.includes(y))
             .sort((a, b) => b - a);
         return years.length ? years[0] : null;
-    }, [monthsByYear, closedYears]);
+    }, [yearMonthCounts, closedYears]);
 
     const handleCloseYear = useCallback(async (yearToClose = null) => {
         const targetYear = yearToClose ?? closableYear;
@@ -487,7 +635,16 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
             setActiveTab('dashboard');
             setActiveStep('upload');
 
-            await loadMonthlyData();
+            const years = await loadMonthlyYears();
+            const nextYear = years.includes(Number(res?.next_year))
+                ? String(res.next_year)
+                : String(years[0] || '');
+            if (nextYear) {
+                setSelectedYearFilter(nextYear);
+                await loadMonthlyData({ year: nextYear });
+            } else {
+                setMonthlyData({});
+            }
             await loadClosedYears();
             setSuccessMessage(`Année ${res.closed_year} clôturée avec succès. Le module a été réinitialisé pour ${res.next_year}.`);
         } catch (err) {
@@ -495,7 +652,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
         } finally {
             setClosingYear(false);
         }
-    }, [closableYear, loadMonthlyData, loadClosedYears]);
+    }, [closableYear, loadMonthlyData, loadMonthlyYears, loadClosedYears]);
 
     return (
         <div className="sage-bfc-container fade-in">
@@ -714,9 +871,8 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
                                         <select
                                             className="month-selector-select"
                                             value={selectedYearFilter}
-                                            onChange={(e) => setSelectedYearFilter(e.target.value)}
+                                            onChange={(e) => handleYearFilterChange(e.target.value)}
                                         >
-                                            <option value="all">Toutes les années</option>
                                             {availableYears.map((y) => (
                                                 <option key={y} value={String(y)}>{y}</option>
                                             ))}
@@ -809,6 +965,7 @@ function SageBfcParser({ refreshTrigger, forecastRefresh = 0, onOpenMappingConfi
                             <SageBfcForecast
                                 selectedMonth={selectedMonth}
                                 refreshTrigger={forecastRefresh + refreshTrigger}
+                                navigationTarget={navigationTarget?.params?.view === 'forecast' ? navigationTarget : null}
                             />
                         )}
                     </div>

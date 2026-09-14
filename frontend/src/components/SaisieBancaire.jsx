@@ -23,7 +23,7 @@ import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
 
-function SaisieBancaire() {
+function SaisieBancaire({ navigationTarget }) {
     const { user: currentUser, has } = useAuth();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -178,6 +178,13 @@ function SaisieBancaire() {
             setLoading(false);
         }
     }, []);
+
+    useEffect(() => {
+        const sessionId = Number(navigationTarget?.params?.session);
+        if (Number.isFinite(sessionId) && sessionId > 0) {
+            handleResumeSession({ id: sessionId });
+        }
+    }, [navigationTarget, handleResumeSession]);
 
     const handleFormChange = (e) => {
         const { name, value, files } = e.target;

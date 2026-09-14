@@ -122,5 +122,20 @@ def init_saisie_bancaire_tables():
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bank_reconciliation_results (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                sage_file_name VARCHAR(255) NULL,
+                bank_file_name VARCHAR(255) NULL,
+                result_json LONGTEXT NOT NULL,
+                created_by_user_id INT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                INDEX idx_bank_reco_result_created (created_at),
+                INDEX idx_bank_reco_result_user (created_by_user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """
+        )
+
 
 __all__ = ["router", "init_saisie_bancaire_tables"]

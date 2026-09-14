@@ -1,8 +1,14 @@
+import os
+import json
+
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from modules.auth.dependencies import require_permission_code
 from modules.audit.service import log_audit_action
+from modules.notifications.service import notify_module_users
+from modules.notifications.rules import has_important_reconciliation_discrepancy
+from database import db
 from modules.rapprochement_bancaire.models import (
     ReconciliationOptions,
     ReconciliationPdfRequest,
@@ -60,13 +66,27 @@ def compare_files(
     # Exécuter le rapprochement
     result = reconcile(bank_movements, sage_movements, options)
 
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "INSERT INTO bank_reconciliation_results "
+            "(sage_file_name, bank_file_name, result_json, created_by_user_id) "
+            "VALUES (%s, %s, %s, %s)",
+            (
+                sage_file.filename,
+                bank_file.filename,
+                result.model_dump_json() if hasattr(result, "model_dump_json") else result.json(),
+                user["id"],
+            ),
+        )
+        reconciliation_id = int(cursor.lastrowid)
+
     # Enregistrer dans l'audit log
     log_audit_action(
         user=user,
         action="reconcile",
         module="rapprochement_bancaire",
         entity_type="reconciliation",
-        entity_id=f"rec_{int(request.created_at.timestamp())}" if hasattr(request, "created_at") else "rec_now",
+        entity_id=str(reconciliation_id),
         detail={
             "sage_file": sage_file.filename,
             "bank_file": bank_file.filename,
@@ -79,7 +99,53 @@ def compare_files(
         request=request,
     )
 
+    count_threshold = int(os.getenv("RECONCILIATION_ALERT_COUNT", "5"))
+    amount_threshold = float(os.getenv("RECONCILIATION_ALERT_AMOUNT", "1000"))
+    if has_important_reconciliation_discrepancy(
+        result.stats.discrepancies_count,
+        result.stats.total_discrepancy_amount,
+        count_threshold,
+        amount_threshold,
+    ):
+        notify_module_users(
+            module_name="rapprochement_bancaire",
+            notif_type="rapprochement_bancaire.ecarts_importants",
+            severity="critical",
+            title="Écarts importants détectés",
+            message=(
+                f"{result.stats.discrepancies_count} écart(s), pour un montant total de "
+                f"{result.stats.total_discrepancy_amount:.3f} TND."
+            ),
+            metadata={
+                "discrepancies_count": result.stats.discrepancies_count,
+                "total_discrepancy_amount": result.stats.total_discrepancy_amount,
+                "sage_file": sage_file.filename,
+                "bank_file": bank_file.filename,
+            },
+            entity_type="bank_reconciliation",
+            entity_id=str(reconciliation_id),
+            route=f"/rapprochement-bancaire?result={reconciliation_id}&view=discrepancies",
+        )
+
     return result
+
+
+@router.get("/rapprochement/results/{result_id}", response_model=ReconciliationResult)
+def get_reconciliation_result(
+    result_id: int,
+    _user: dict = Depends(require_permission_code("rapprochement_bancaire.run")),
+):
+    """Recharge un rapprochement ciblé depuis une notification."""
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT result_json FROM bank_reconciliation_results WHERE id = %s",
+            (result_id,),
+        )
+        row = cursor.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Résultat de rapprochement introuvable")
+    payload = row["result_json"]
+    return json.loads(payload) if isinstance(payload, str) else payload
 
 
 @router.post("/rapprochement/export-pdf")

@@ -27,7 +27,7 @@ const DERIVED_KEYS = new Set([
     'resultat_net_pct',
 ]);
 
-function SageBfcForecast({ selectedMonth, refreshTrigger }) {
+function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
     const { has } = useAuth();
     const now = new Date();
     const isYearStart = now.getMonth() === 0;
@@ -81,6 +81,14 @@ function SageBfcForecast({ selectedMonth, refreshTrigger }) {
     const [expandedMonthlyKey, setExpandedMonthlyKey] = useState(null);
     const [subAggData, setSubAggData] = useState({});
     const [manualSaveLoading, setManualSaveLoading] = useState('');
+
+    useEffect(() => {
+        if (!navigationTarget) return;
+        const year = Number(navigationTarget.params?.year);
+        const cycle = navigationTarget.params?.cycle;
+        if (Number.isFinite(year)) setTargetYear(year);
+        if (CYCLE_OPTIONS.includes(cycle)) setCompareCycle(cycle);
+    }, [navigationTarget]);
 
     useEffect(() => {
         ApiService.getAvailableYears()

@@ -441,12 +441,15 @@ def run_adjustment_cycle(
 
         # ─── Notification : cycle exécuté ───
         notify_module_users(
-            module_name="sage_bfc",
+            module_name="forecast",
             notif_type="forecast.cycle_declenchable",
             severity="success",
             title=f"Cycle {cycle_code} exécuté — {target_year}",
             message=f"Le cycle d'ajustement {cycle_code} pour {target_year} a été déclenché par {user.get('username', '')}.",
             metadata={"target_year": target_year, "cycle_code": cycle_code},
+            entity_type="forecast_cycle",
+            entity_id=f"{target_year}:{cycle_code}",
+            route=f"/sage-bfc?view=forecast&year={target_year}&cycle={cycle_code}",
         )
 
         # ─── Notifications : dépassements budget après exécution du cycle ───
@@ -516,7 +519,7 @@ def check_and_notify_forecast_overruns(target_year: int):
         if neg_alerts:
             labels = [r.get("agregat_label", r.get("agregat_key", "")) for r in neg_alerts]
             notify_module_users(
-                module_name="sage_bfc",
+                module_name="forecast",
                 notif_type="forecast.depassement_budget",
                 severity="critical",
                 title=f"Dépassement budget annuel défavorable — {active_cycle} {target_year}",
@@ -534,6 +537,9 @@ def check_and_notify_forecast_overruns(target_year: int):
                         for r in neg_alerts
                     ],
                 },
+                entity_type="forecast_cycle",
+                entity_id=f"{target_year}:{active_cycle}",
+                route=f"/sage-bfc?view=forecast&year={target_year}&cycle={active_cycle}",
             )
 
         # 2. Dépassements favorables (produits critiques seulement, cumul réel >= budget annuel)
@@ -544,7 +550,7 @@ def check_and_notify_forecast_overruns(target_year: int):
         if pos_alerts:
             labels = [r.get("agregat_label", r.get("agregat_key", "")) for r in pos_alerts]
             notify_module_users(
-                module_name="sage_bfc",
+                module_name="forecast",
                 notif_type="forecast.depassement_budget",
                 severity="success",
                 title=f"Objectif budget annuel atteint/dépassé — {active_cycle} {target_year}",
@@ -562,6 +568,9 @@ def check_and_notify_forecast_overruns(target_year: int):
                         for r in pos_alerts
                     ],
                 },
+                entity_type="forecast_cycle",
+                entity_id=f"{target_year}:{active_cycle}",
+                route=f"/sage-bfc?view=forecast&year={target_year}&cycle={active_cycle}",
             )
     except Exception as e:
         print(f"⚠️ Erreur lors de la vérification des dépassements budget : {e}")

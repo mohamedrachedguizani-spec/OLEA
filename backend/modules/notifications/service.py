@@ -4,6 +4,8 @@ Service de notifications temps réel pour OLEA.
 Modules couverts :
   - sage_bfc : mois_manquant, alertes_globales, nouveau_mois
   - forecast : depassement_budget, cycle_declenchable
+  - saisie_bancaire : session_non_finalisee
+  - rapprochement_bancaire : ecarts_importants
 
 Filtrage par permissions : chaque utilisateur ne reçoit que les notifications
 des modules auxquels son profil fonctionnel donne accès.
@@ -29,6 +31,10 @@ def init_notifications_tables():
                 title VARCHAR(512) NOT NULL,
                 message TEXT NOT NULL,
                 is_read BOOLEAN NOT NULL DEFAULT FALSE,
+                read_at DATETIME NULL,
+                entity_type VARCHAR(64) NULL,
+                entity_id VARCHAR(128) NULL,
+                route VARCHAR(512) NULL,
                 metadata JSON NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_notifications_user (user_id, is_read, created_at),
@@ -36,6 +42,19 @@ def init_notifications_tables():
                 INDEX idx_notifications_created (created_at)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
         """)
+        for column_name, column_definition in (
+            ("read_at", "DATETIME NULL"),
+            ("entity_type", "VARCHAR(64) NULL"),
+            ("entity_id", "VARCHAR(128) NULL"),
+            ("route", "VARCHAR(512) NULL"),
+        ):
+            cursor.execute(
+                "SELECT COUNT(*) AS cnt FROM information_schema.columns "
+                "WHERE table_schema = DATABASE() AND table_name = 'notifications' AND column_name = %s",
+                (column_name,),
+            )
+            if cursor.fetchone()["cnt"] == 0:
+                cursor.execute(f"ALTER TABLE notifications ADD COLUMN {column_name} {column_definition}")
 
 
 def purge_old_notifications(days: int = 30):
@@ -96,6 +115,9 @@ def create_notification(
     message: str,
     metadata: Optional[Dict[str, Any]] = None,
     dedup_minutes: int = 10,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    route: Optional[str] = None,
 ) -> List[int]:
     """
     Crée une notification pour chaque user_id et pousse via WebSocket.
@@ -119,9 +141,11 @@ def create_notification(
                 cursor.execute(
                     "SELECT id FROM notifications "
                     "WHERE user_id = %s AND type = %s AND module = %s "
+                    "AND COALESCE(entity_type, '') = COALESCE(%s, '') "
+                    "AND COALESCE(entity_id, '') = COALESCE(%s, '') "
                     "AND created_at >= NOW() - INTERVAL %s MINUTE "
                     "LIMIT 1",
-                    (uid, notif_type, module, dedup_minutes),
+                    (uid, notif_type, module, entity_type, entity_id, dedup_minutes),
                 )
                 if cursor.fetchone():
                     continue  # Notification identique récente, on skip
@@ -129,9 +153,11 @@ def create_notification(
             # 2. Nettoyage de l'ancienne notification non lue du même type/module pour cet utilisateur
             cursor.execute(
                 "SELECT id FROM notifications "
-                "WHERE user_id = %s AND type = %s AND module = %s AND is_read = FALSE "
+                "WHERE user_id = %s AND type = %s AND module = %s "
+                "AND COALESCE(entity_type, '') = COALESCE(%s, '') "
+                "AND COALESCE(entity_id, '') = COALESCE(%s, '') AND is_read = FALSE "
                 "LIMIT 1",
-                (uid, notif_type, module),
+                (uid, notif_type, module, entity_type, entity_id),
             )
             old_notif = cursor.fetchone()
             if old_notif:
@@ -142,9 +168,10 @@ def create_notification(
 
             # 3. Insertion de la nouvelle notification
             cursor.execute(
-                "INSERT INTO notifications (user_id, type, module, severity, title, message, metadata) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-                (uid, notif_type, module, severity, title, message, meta_json),
+                "INSERT INTO notifications "
+                "(user_id, type, module, severity, title, message, entity_type, entity_id, route, metadata) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                (uid, notif_type, module, severity, title, message, entity_type, entity_id, route, meta_json),
             )
             notif_id = cursor.lastrowid
             created_ids.append(notif_id)
@@ -157,8 +184,12 @@ def create_notification(
                 "severity": severity,
                 "title": title,
                 "message": message,
+                "entity_type": entity_type,
+                "entity_id": entity_id,
+                "route": route,
                 "metadata": metadata,
                 "is_read": False,
+                "read_at": None,
                 "created_at": datetime.now().isoformat(),
             })
 
@@ -172,10 +203,20 @@ def notify_module_users(
     title: str,
     message: str,
     metadata: Optional[Dict[str, Any]] = None,
+    entity_type: Optional[str] = None,
+    entity_id: Optional[str] = None,
+    route: Optional[str] = None,
 ) -> List[int]:
-    """Notifie tous les utilisateurs ayant accès à un module."""
-    user_ids = _get_users_for_module(module_name)
-    return create_notification(user_ids, notif_type, module_name, severity, title, message, metadata)
+    """Notifie les utilisateurs du module sans bloquer l'opération métier en cas d'incident."""
+    try:
+        user_ids = _get_users_for_module(module_name)
+        return create_notification(
+            user_ids, notif_type, module_name, severity, title, message, metadata,
+            entity_type=entity_type, entity_id=entity_id, route=route,
+        )
+    except Exception as exc:
+        print(f"⚠️ Notification {notif_type} non créée : {exc}")
+        return []
 
 
 def notify_admins(
@@ -193,9 +234,6 @@ def notify_admins(
 def get_user_notifications(
     user_id: int,
     user_role: str,
-    limit: int = 50,
-    offset: int = 0,
-    unread_only: bool = False,
 ) -> Dict[str, Any]:
     """
     Récupère les notifications d'un utilisateur filtrées par ses permissions module.
@@ -208,13 +246,10 @@ def get_user_notifications(
 
         placeholders = ", ".join(["%s"] * len(allowed_modules))
 
-        # Filtre unread
-        read_filter = " AND is_read = FALSE" if unread_only else ""
-
         # Total
         cursor.execute(
             f"SELECT COUNT(*) AS cnt FROM notifications "
-            f"WHERE user_id = %s AND module IN ({placeholders}){read_filter}",
+            f"WHERE user_id = %s AND module IN ({placeholders})",
             [user_id] + allowed_modules,
         )
         total = cursor.fetchone()["cnt"]
@@ -229,11 +264,12 @@ def get_user_notifications(
 
         # Items
         cursor.execute(
-            f"SELECT id, user_id, type, module, severity, title, message, is_read, metadata, created_at "
+            f"SELECT id, user_id, type, module, severity, title, message, is_read, read_at, "
+            f"entity_type, entity_id, route, metadata, created_at "
             f"FROM notifications "
-            f"WHERE user_id = %s AND module IN ({placeholders}){read_filter} "
-            f"ORDER BY created_at DESC LIMIT %s OFFSET %s",
-            [user_id] + allowed_modules + [limit, offset],
+            f"WHERE user_id = %s AND module IN ({placeholders}) "
+            f"ORDER BY created_at DESC, id DESC",
+            [user_id] + allowed_modules,
         )
         rows = cursor.fetchall()
 
@@ -254,6 +290,10 @@ def get_user_notifications(
                 "title": row["title"],
                 "message": row["message"],
                 "is_read": bool(row["is_read"]),
+                "read_at": row["read_at"].isoformat() if row.get("read_at") else None,
+                "entity_type": row.get("entity_type"),
+                "entity_id": row.get("entity_id"),
+                "route": row.get("route"),
                 "metadata": meta,
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             })
@@ -283,7 +323,8 @@ def mark_as_read(notification_id: int, user_id: int) -> bool:
     ok = False
     with db.get_cursor() as cursor:
         cursor.execute(
-            "UPDATE notifications SET is_read = TRUE WHERE id = %s AND user_id = %s",
+            "UPDATE notifications SET is_read = TRUE, read_at = COALESCE(read_at, NOW()) "
+            "WHERE id = %s AND user_id = %s",
             (notification_id, user_id),
         )
         ok = cursor.rowcount > 0
@@ -305,7 +346,7 @@ def mark_all_read(user_id: int, user_role: str) -> int:
 
         placeholders = ", ".join(["%s"] * len(allowed_modules))
         cursor.execute(
-            f"UPDATE notifications SET is_read = TRUE "
+            f"UPDATE notifications SET is_read = TRUE, read_at = COALESCE(read_at, NOW()) "
             f"WHERE user_id = %s AND module IN ({placeholders}) AND is_read = FALSE",
             [user_id] + allowed_modules,
         )

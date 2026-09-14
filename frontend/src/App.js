@@ -19,9 +19,20 @@ import RapprochementBancaire from './components/RapprochementBancaire';
 import NotificationBell from './components/NotificationBell';
 import oleaLogo from './assets/olea-logo.svg';
 
+const ACTIVE_TAB_STORAGE_KEY = 'olea-active-module';
+const APP_TABS = [
+    'dashboard', 'saisie', 'export', 'rapprochement',
+    'rapprochement_bancaire', 'sage-bfc', 'reporting',
+    'configuration', 'users', 'roles', 'audit',
+];
+
 function App() {
     const { user, loading, has, hasPermission } = useAuth();
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTab] = useState(() => {
+        if (typeof window === 'undefined') return 'dashboard';
+        const storedTab = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
+        return APP_TABS.includes(storedTab) ? storedTab : 'dashboard';
+    });
     const [darkMode, setDarkMode] = useState(() => {
         if (typeof window === 'undefined') return false;
         return window.localStorage.getItem('olea-theme') === 'dark';
@@ -35,6 +46,7 @@ function App() {
     const [reportingRefresh, setReportingRefresh] = useState(0);
     const [configurationRefresh, setConfigurationRefresh] = useState(0);
     const [configurationInitialTab, setConfigurationInitialTab] = useState('comptes');
+    const [notificationTarget, setNotificationTarget] = useState(null);
 
     const openMappingConfiguration = useCallback(() => {
         setConfigurationInitialTab('mapping');
@@ -55,14 +67,41 @@ function App() {
         audit: has('admin.audit.read'),
     }[tab] || false), [has, hasPermission]);
 
+    const openNotificationTarget = useCallback((notification) => {
+        if (!notification?.route) return;
+        const targetUrl = new URL(notification.route, window.location.origin);
+        const routeToTab = {
+            '/sage-bfc': 'sage-bfc',
+            '/saisie-bancaire': 'rapprochement',
+            '/rapprochement-bancaire': 'rapprochement_bancaire',
+            '/users': 'users',
+            '/audit': 'audit',
+        };
+        const targetTab = routeToTab[targetUrl.pathname];
+        if (!targetTab || !canAccessTab(targetTab)) return;
+        setNotificationTarget({
+            key: `${notification.id}-${Date.now()}`,
+            tab: targetTab,
+            params: Object.fromEntries(targetUrl.searchParams.entries()),
+            entityType: notification.entity_type,
+            entityId: notification.entity_id,
+        });
+        setActiveTab(targetTab);
+    }, [canAccessTab]);
+
+    const consumeNotificationTarget = useCallback((targetKey) => {
+        setNotificationTarget((current) => current?.key === targetKey ? null : current);
+    }, []);
+
     useEffect(() => {
         if (!user || canAccessTab(activeTab)) return;
-        const firstAllowed = [
-            'dashboard', 'saisie', 'export', 'rapprochement',
-            'rapprochement_bancaire', 'sage-bfc', 'reporting',
-            'configuration', 'users', 'roles', 'audit',
-        ].find(canAccessTab);
+        const firstAllowed = APP_TABS.find(canAccessTab);
         if (firstAllowed) setActiveTab(firstAllowed);
+    }, [activeTab, canAccessTab, user]);
+
+    useEffect(() => {
+        if (!user || !canAccessTab(activeTab) || typeof window === 'undefined') return;
+        window.localStorage.setItem(ACTIVE_TAB_STORAGE_KEY, activeTab);
     }, [activeTab, canAccessTab, user]);
 
     useEffect(() => {
@@ -178,6 +217,7 @@ function App() {
                             onMarkRead={notifMarkRead}
                             onMarkAllRead={notifMarkAllRead}
                             onDelete={notifDelete}
+                            onOpen={openNotificationTarget}
                         />
                         <span className="date-display">
                             {new Date().toLocaleDateString('fr-FR', { 
@@ -199,10 +239,12 @@ function App() {
                         refreshTrigger={sageBfcRefresh}
                         forecastRefresh={forecastRefresh}
                         onOpenMappingConfiguration={hasPermission('configuration', 'read') ? openMappingConfiguration : null}
+                        navigationTarget={notificationTarget?.tab === 'sage-bfc' ? notificationTarget : null}
+                        onNavigationConsumed={consumeNotificationTarget}
                     />}
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration initialTab={configurationInitialTab} />}
-                    {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire />}
-                    {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire />}
+                    {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire navigationTarget={notificationTarget?.tab === 'rapprochement' ? notificationTarget : null} />}
+                    {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire navigationTarget={notificationTarget?.tab === 'rapprochement_bancaire' ? notificationTarget : null} />}
                     {activeTab === 'users' && has('admin.users.read') && <UserManagement />}
                     {activeTab === 'roles' && has('admin.roles.read') && <RoleManagement />}
                     {activeTab === 'audit' && has('admin.audit.read') && <AuditLogs />}

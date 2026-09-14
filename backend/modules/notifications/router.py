@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from modules.auth.dependencies import get_current_user
 from .models import NotificationPage, UnreadCountResponse
@@ -14,18 +14,12 @@ router = APIRouter(
 
 @router.get("", response_model=NotificationPage)
 def list_notifications(
-    limit: int = Query(50, ge=1, le=200),
-    offset: int = Query(0, ge=0),
-    unread_only: bool = Query(False),
     user: dict = Depends(get_current_user),
 ):
     """Liste des notifications filtrées par permissions module."""
     data = service.get_user_notifications(
         user_id=user["id"],
         user_role=user["role"],
-        limit=limit,
-        offset=offset,
-        unread_only=unread_only,
     )
     return data
 

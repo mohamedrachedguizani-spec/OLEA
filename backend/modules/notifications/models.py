@@ -20,6 +20,10 @@ class NotificationItem(BaseModel):
     title: str
     message: str
     is_read: bool
+    read_at: Optional[datetime] = None
+    entity_type: Optional[str] = None
+    entity_id: Optional[str] = None
+    route: Optional[str] = None
     metadata: Optional[Dict[str, Any]] = None
     created_at: datetime
 

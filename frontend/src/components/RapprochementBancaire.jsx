@@ -34,7 +34,7 @@ function KpiCard({ icon, label, color, value, unit, sub }) {
     );
 }
 
-function RapprochementBancaire() {
+function RapprochementBancaire({ navigationTarget }) {
     const { has } = useAuth();
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
@@ -56,6 +56,37 @@ function RapprochementBancaire() {
     // Reconciliation results
     const [result, setResult] = useState(null);
     const [activeTab, setActiveTab] = useState('reconciled'); // 'reconciled' | 'discrepancies' | 'bank_only' | 'sage_only'
+
+    useEffect(() => {
+        const requestedView = navigationTarget?.params?.view;
+        const requestedResultId = Number(navigationTarget?.params?.result);
+
+        if (['reconciled', 'discrepancies', 'bank_only', 'sage_only'].includes(requestedView)) {
+            setActiveTab(requestedView);
+        }
+        if (!Number.isInteger(requestedResultId) || requestedResultId <= 0) return undefined;
+
+        let cancelled = false;
+        setLoading(true);
+        setError('');
+        ApiService.getReconciliationResult(requestedResultId)
+            .then((data) => {
+                if (cancelled) return;
+                setResult(data);
+                setStep(2);
+                setSuccess('Le rapprochement concerné a été chargé.');
+            })
+            .catch((err) => {
+                if (!cancelled) setError(err.message || 'Impossible de charger le rapprochement concerné.');
+            })
+            .finally(() => {
+                if (!cancelled) setLoading(false);
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [navigationTarget]);
     const [filterQuery, setFilterQuery] = useState('');
 
     // Disparaître les notifications après 2 secondes

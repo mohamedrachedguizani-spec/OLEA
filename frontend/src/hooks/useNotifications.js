@@ -24,7 +24,7 @@ export default function useNotifications(enabled = true) {
         if (!enabled) return;
         setLoading(true);
         try {
-            const notifData = await ApiService.getNotifications(50, 0);
+            const notifData = await ApiService.getNotifications();
             setNotifications(notifData.items || []);
         } catch {
             // silently fail
@@ -41,7 +41,7 @@ export default function useNotifications(enabled = true) {
                 if (payload.id && prev.some(n => n.id === payload.id)) {
                     return prev;
                 }
-                return [payload, ...prev].slice(0, 50);
+                return [payload, ...prev];
             });
         } else if (action === 'delete' && payload) {
             setNotifications(prev => prev.filter(n => n.id !== payload.id));
