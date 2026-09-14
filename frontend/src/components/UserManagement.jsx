@@ -7,6 +7,7 @@ const ROLES = [
     { value: 'comptable', label: 'Comptable', color: '#2f343a' },
     { value: 'financier', label: 'Financier', color: '#b7482b' },
     { value: 'dirigeant', label: 'Dirigeant', color: '#d4a528' },
+    { value: 'consultant', label: 'Consultant', color: '#4f6f8f' },
     { value: 'superadmin', label: 'Super Admin', color: '#863421' },
 ];
 
@@ -487,6 +488,7 @@ function UserManagement() {
                                             <option value="comptable">Comptable</option>
                                             <option value="financier">Financier</option>
                                             <option value="dirigeant">Dirigeant</option>
+                                            <option value="consultant">Consultant</option>
                                         </select>
                                     </div>
                                 </div>
@@ -525,6 +527,7 @@ function UserManagement() {
                                             <option value="comptable">Comptable</option>
                                             <option value="financier">Financier</option>
                                             <option value="dirigeant">Dirigeant</option>
+                                            <option value="consultant">Consultant</option>
                                             {currentUser?.role === 'superadmin' && <option value="superadmin">Super Admin</option>}
                                         </select>
                                     </div>

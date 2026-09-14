@@ -6,6 +6,7 @@ DEFAULT_PROFILE_BY_USER_ROLE = {
     "superadmin": "SUPER_ADMIN",
     "financier": "FINANCIER",
     "dirigeant": "DIRIGEANT",
+    "consultant": "CONSULTANT",
     "comptable": "COMPTABLE",
 }
 

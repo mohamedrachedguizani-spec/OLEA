@@ -89,6 +89,13 @@ PROFILES = {
             "reporting.export_excel", "reporting.export_pdf", "reporting.print",
         },
     ),
+    "CONSULTANT": (
+        "Consultant",
+        "Consultation en lecture seule des indicateurs, analyses et rapports.",
+        {
+            "dashboard.read", "sage_bfc.read", "forecast.read", "reporting.read",
+        },
+    ),
     "ADMIN_FONCTIONNEL": (
         "Administrateur fonctionnel",
         "Administration des référentiels et mappings métier.",

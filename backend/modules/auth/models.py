@@ -24,6 +24,7 @@ class RoleEnum(str, Enum):
     comptable = "comptable"
     financier = "financier"
     dirigeant = "dirigeant"
+    consultant = "consultant"
 
 
 class ModuleEnum(str, Enum):

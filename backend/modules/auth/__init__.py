@@ -3,7 +3,7 @@
 Module d'authentification et d'autorisation OLEA.
 
 Tables créées automatiquement :
-  - users : utilisateurs avec rôles (superadmin, comptable, financier, dirigeant)
+  - users : utilisateurs avec rôles (superadmin, comptable, financier, dirigeant, consultant)
   - user_permissions : droits d'accès par module et par action
 
 Sécurité :
@@ -38,13 +38,23 @@ def init_auth_tables():
                     email VARCHAR(100) NOT NULL UNIQUE,
                     full_name VARCHAR(100) NOT NULL,
                     hashed_password VARCHAR(255) NOT NULL,
-                    role ENUM('superadmin', 'comptable', 'financier', 'dirigeant') NOT NULL DEFAULT 'comptable',
+                    role ENUM('superadmin', 'comptable', 'financier', 'dirigeant', 'consultant') NOT NULL DEFAULT 'comptable',
                     is_active BOOLEAN DEFAULT TRUE,
                     token_version INT DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
+
+            # Étendre les installations existantes avec le rôle Consultant.
+            cursor.execute("SHOW COLUMNS FROM users LIKE 'role'")
+            role_column = cursor.fetchone()
+            if role_column and "consultant" not in str(role_column.get("Type", "")).lower():
+                cursor.execute(
+                    "ALTER TABLE users MODIFY role "
+                    "ENUM('superadmin', 'comptable', 'financier', 'dirigeant', 'consultant') "
+                    "NOT NULL DEFAULT 'comptable'"
+                )
 
             # ─── Table user_permissions ───
             cursor.execute("""

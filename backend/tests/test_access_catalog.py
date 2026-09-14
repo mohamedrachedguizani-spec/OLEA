@@ -1,6 +1,8 @@
 import unittest
 
 from modules.access.catalog import PERMISSIONS, PROFILES
+from modules.access.service import DEFAULT_PROFILE_BY_USER_ROLE
+from modules.auth.models import RoleEnum
 
 
 class TestAccessCatalog(unittest.TestCase):
@@ -13,6 +15,14 @@ class TestAccessCatalog(unittest.TestCase):
         super_admin_codes = PROFILES["SUPER_ADMIN"][2]
         self.assertTrue(super_admin_codes)
         self.assertTrue(all(code.startswith("admin.") for code in super_admin_codes))
+
+    def test_consultant_profile_is_read_only(self):
+        self.assertIn("CONSULTANT", PROFILES)
+        self.assertEqual(PROFILES["CONSULTANT"][2], {
+            "dashboard.read", "sage_bfc.read", "forecast.read", "reporting.read",
+        })
+        self.assertEqual(RoleEnum.consultant.value, "consultant")
+        self.assertEqual(DEFAULT_PROFILE_BY_USER_ROLE["consultant"], "CONSULTANT")
 
     def test_caisse_mutations_use_one_permission(self):
         manage_code = "saisie_caisse.crud_ecriture_caisse_manage"

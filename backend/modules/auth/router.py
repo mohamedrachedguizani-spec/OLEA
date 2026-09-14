@@ -568,7 +568,8 @@ def create_user(
 
             profile_code = {
                 "superadmin": "SUPER_ADMIN", "financier": "FINANCIER",
-                "dirigeant": "DIRIGEANT", "comptable": "COMPTABLE",
+                "dirigeant": "DIRIGEANT", "consultant": "CONSULTANT",
+                "comptable": "COMPTABLE",
             }[body.role.value]
             cursor.execute(
                 "INSERT INTO user_access_roles (user_id, role_id) "
@@ -682,7 +683,8 @@ def update_user(
             if body.role is not None and body.role.value != existing["role"]:
                 profile_code = {
                     "superadmin": "SUPER_ADMIN", "financier": "FINANCIER",
-                    "dirigeant": "DIRIGEANT", "comptable": "COMPTABLE",
+                    "dirigeant": "DIRIGEANT", "consultant": "CONSULTANT",
+                    "comptable": "COMPTABLE",
                 }[body.role.value]
                 cursor.execute(
                     "INSERT INTO user_access_roles (user_id, role_id) "

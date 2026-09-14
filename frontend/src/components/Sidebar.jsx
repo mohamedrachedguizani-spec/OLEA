@@ -31,6 +31,7 @@ function Sidebar({
         comptable: 'Comptable',
         financier: 'Financier',
         dirigeant: 'Dirigeant',
+        consultant: 'Consultant',
     }[user?.role] || user?.role || '';
 
     const userInitials = (user?.full_name || user?.username || 'OL')
