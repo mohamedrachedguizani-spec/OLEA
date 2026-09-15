@@ -145,7 +145,7 @@ def get_global_dashboard(
     with db.get_cursor() as cursor:
         caisse = _get_caisse_stats(cursor, date_debut, date_fin)
         migration = _get_migration_stats(cursor)
-        bfc = _get_bfc_stats(cursor)
+        bfc = _get_bfc_stats(cursor, date_debut, date_fin)
 
     return {
         "caisse": caisse,
@@ -400,56 +400,162 @@ def _get_migration_stats(cursor):
 # SECTION 3 — Statistiques BFC (Analyse Financière)
 # ═══════════════════════════════════════════════════════════
 
-def _get_bfc_stats(cursor):
-    # ── Nombre de périodes ──
-    cursor.execute("SELECT COUNT(*) AS nb FROM sage_bfc_monthly")
-    nb_periodes = cursor.fetchone()['nb']
+BFC_CUMUL_KEYS = (
+    "ca_brut", "retrocessions", "ca_net", "autres_produits", "total_produits",
+    "frais_personnel", "honoraires", "frais_commerciaux", "impots_taxes",
+    "fonctionnement", "autres_charges", "total_charges", "ebitda",
+    "produits_financiers", "charges_financieres", "resultat_financier",
+    "resultat_exceptionnel", "dotations", "resultat_avant_impot",
+    "impot_societes", "resultat_net",
+)
+
+
+def _month_start(value: Optional[date]):
+    return date(value.year, value.month, 1) if value else None
+
+
+def _previous_year(value: Optional[date]):
+    if not value:
+        return None
+    try:
+        return value.replace(year=value.year - 1)
+    except ValueError:  # 29 février
+        return value.replace(year=value.year - 1, day=28)
+
+
+def _bfc_where(date_debut: Optional[date], date_fin: Optional[date]):
+    clauses = []
+    params = []
+    if date_debut:
+        clauses.append("periode >= %s")
+        params.append(_month_start(date_debut))
+    if date_fin:
+        clauses.append("periode <= %s")
+        params.append(_month_start(date_fin))
+    return (" WHERE " + " AND ".join(clauses)) if clauses else "", params
+
+
+def _decode_resume(raw_resume):
+    return raw_resume if isinstance(raw_resume, dict) else json.loads(raw_resume)
+
+
+def _aggregate_bfc(rows):
+    totals = {key: 0.0 for key in BFC_CUMUL_KEYS}
+    for row in rows:
+        resume = _decode_resume(row["resume"])
+        for key in BFC_CUMUL_KEYS:
+            totals[key] += float(resume.get(key, 0) or 0)
+    totals["ebitda_pct"] = (totals["ebitda"] / totals["ca_net"] * 100) if totals["ca_net"] else 0.0
+    totals["resultat_net_pct"] = (totals["resultat_net"] / totals["ca_net"] * 100) if totals["ca_net"] else 0.0
+    return totals
+
+
+def _build_bfc_decision_data(current, previous, has_previous):
+    charge_labels = (
+        ("Personnel", "frais_personnel"),
+        ("Honoraires", "honoraires"),
+        ("Commercial", "frais_commerciaux"),
+        ("Impôts & taxes", "impots_taxes"),
+        ("Fonctionnement", "fonctionnement"),
+        ("Autres charges", "autres_charges"),
+    )
+    charge_structure = [
+        {"name": label, "value": abs(current[key])}
+        for label, key in charge_labels
+        if abs(current[key]) > 0
+    ]
+
+    comparison = []
+    for label, key in (
+        ("CA Net", "ca_net"),
+        ("EBITDA", "ebitda"),
+        ("Résultat financier", "resultat_financier"),
+        ("Résultat net", "resultat_net"),
+    ):
+        prior_value = previous[key] if has_previous else 0.0
+        evolution = ((current[key] - prior_value) / abs(prior_value) * 100) if prior_value else None
+        comparison.append({
+            "name": label,
+            "periode": current[key],
+            "n_1": prior_value,
+            "evolution_pct": evolution,
+        })
+
+    alerts = []
+    if current["resultat_financier"] < 0:
+        alerts.append({
+            "level": "danger",
+            "title": "Résultat financier déficitaire",
+            "message": f"Les charges financières dépassent les produits de {abs(current['resultat_financier']):,.3f} TND.",
+        })
+    if current["ebitda_pct"] < 0:
+        alerts.append({
+            "level": "danger",
+            "title": "Rentabilité opérationnelle négative",
+            "message": f"La marge EBITDA atteint {current['ebitda_pct']:.3f}% sur la période filtrée.",
+        })
+    if current["resultat_net_pct"] < 0:
+        alerts.append({
+            "level": "danger",
+            "title": "Marge nette négative",
+            "message": f"La marge nette atteint {current['resultat_net_pct']:.3f}% sur la période filtrée.",
+        })
+    if has_previous and previous["charges_financieres"]:
+        growth = (current["charges_financieres"] - previous["charges_financieres"]) / abs(previous["charges_financieres"]) * 100
+        if growth > 20:
+            alerts.append({
+                "level": "warning",
+                "title": "Hausse des charges financières",
+                "message": f"Elles progressent de {growth:.1f}% par rapport à la période N-1.",
+            })
+    total_analyzed_charges = sum(item["value"] for item in charge_structure)
+    if charge_structure and total_analyzed_charges:
+        largest = max(charge_structure, key=lambda item: item["value"])
+        share = largest["value"] / total_analyzed_charges * 100
+        if share >= 40:
+            alerts.append({
+                "level": "info",
+                "title": f"Poids élevé : {largest['name']}",
+                "message": f"Ce poste représente {share:.1f}% des charges analysées.",
+            })
+    if not alerts:
+        alerts.append({
+            "level": "success",
+            "title": "Aucun signal critique",
+            "message": "Les principaux indicateurs restent maîtrisés sur la période filtrée.",
+        })
+
+    return charge_structure, comparison, alerts
+
+
+def _get_bfc_stats(cursor, date_debut=None, date_fin=None):
+    where_clause, params = _bfc_where(date_debut, date_fin)
+    cursor.execute(
+        f"SELECT periode, resume FROM sage_bfc_monthly{where_clause} ORDER BY periode ASC",
+        params,
+    )
+    rows = cursor.fetchall()
+    nb_periodes = len(rows)
 
     if nb_periodes == 0:
         return {
             "nb_periodes": 0,
             "tendance": [],
+            "premiere_periode": None,
             "derniere_periode": None,
             "pnl_detail": None,
             "pnl_cumule": None,
+            "charge_structure": [],
+            "comparison_n1": {"available": False, "data": []},
+            "alerts": [],
         }
-
-    # ── Tendance mensuelle : CA Net, EBITDA, Résultat Net ──
-    cursor.execute("""
-        SELECT periode, resume
-        FROM sage_bfc_monthly
-        ORDER BY periode ASC
-    """)
-    rows = cursor.fetchall()
 
     tendance = []
     derniere_periode = None
     dernier_resume = None
-    resume_cumule = {
-        "ca_brut": 0.0,
-        "retrocessions": 0.0,
-        "ca_net": 0.0,
-        "autres_produits": 0.0,
-        "total_produits": 0.0,
-        "frais_personnel": 0.0,
-        "honoraires": 0.0,
-        "frais_commerciaux": 0.0,
-        "impots_taxes": 0.0,
-        "fonctionnement": 0.0,
-        "autres_charges": 0.0,
-        "total_charges": 0.0,
-        "ebitda": 0.0,
-        "produits_financiers": 0.0,
-        "charges_financieres": 0.0,
-        "resultat_financier": 0.0,
-        "dotations": 0.0,
-        "resultat_avant_impot": 0.0,
-        "impot_societes": 0.0,
-        "resultat_net": 0.0,
-    }
 
     for row in rows:
-        resume = row['resume'] if isinstance(row['resume'], dict) else json.loads(row['resume'])
+        resume = _decode_resume(row['resume'])
         periode_str = str(row['periode'])[:7]  # YYYY-MM
 
         tendance.append({
@@ -461,14 +567,15 @@ def _get_bfc_stats(cursor):
             "resultat_net_pct": float(resume.get('resultat_net_pct', 0)),
             "total_produits": float(resume.get('total_produits', 0)),
             "total_charges": float(resume.get('total_charges', 0)),
+            "produits_financiers": float(resume.get('produits_financiers', 0)),
+            "charges_financieres": float(resume.get('charges_financieres', 0)),
+            "resultat_financier": float(resume.get('resultat_financier', 0)),
         })
-
-        # Cumul réalisé sur toutes les périodes chargées
-        for key in resume_cumule.keys():
-            resume_cumule[key] += float(resume.get(key, 0) or 0)
 
         derniere_periode = periode_str
         dernier_resume = resume
+
+    resume_cumule = _aggregate_bfc(rows)
 
     # ── P&L détaillé du dernier mois ──
     pnl_detail = None
@@ -500,16 +607,38 @@ def _get_bfc_stats(cursor):
         }
 
     # ── P&L cumulé (cartes KPI dashboard) ──
-    pnl_cumule = {
-        **resume_cumule,
-        "ebitda_pct": ((resume_cumule["ebitda"] / resume_cumule["ca_net"]) * 100) if resume_cumule["ca_net"] else 0.0,
-        "resultat_net_pct": ((resume_cumule["resultat_net"] / resume_cumule["ca_net"]) * 100) if resume_cumule["ca_net"] else 0.0,
-    }
+    pnl_cumule = resume_cumule
+
+    # Comparaison avec la même plage de mois de l'année précédente.
+    if date_debut or date_fin:
+        previous_start = _previous_year(date_debut)
+        previous_end = _previous_year(date_fin)
+    else:
+        previous_start = previous_end = None
+    previous_rows = []
+    if previous_start or previous_end:
+        previous_where, previous_params = _bfc_where(previous_start, previous_end)
+        cursor.execute(
+            f"SELECT periode, resume FROM sage_bfc_monthly{previous_where} ORDER BY periode ASC",
+            previous_params,
+        )
+        previous_rows = cursor.fetchall()
+    previous_cumule = _aggregate_bfc(previous_rows)
+    charge_structure, comparison, alerts = _build_bfc_decision_data(
+        pnl_cumule, previous_cumule, bool(previous_rows)
+    )
 
     return {
         "nb_periodes": nb_periodes,
         "tendance": tendance,
+        "premiere_periode": str(rows[0]["periode"])[:7],
         "derniere_periode": derniere_periode,
         "pnl_detail": pnl_detail,
         "pnl_cumule": pnl_cumule,
+        "charge_structure": charge_structure,
+        "comparison_n1": {
+            "available": bool(previous_rows),
+            "data": comparison,
+        },
+        "alerts": alerts,
     }

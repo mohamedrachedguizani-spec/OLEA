@@ -137,6 +137,11 @@ function Dashboard({ refreshTrigger }) {
     const [filterType, setFilterType] = useState('month');
     const [dateDebut, setDateDebut] = useState('');
     const [dateFin, setDateFin] = useState('');
+    const today = new Date();
+    const [bfcFilterMode, setBfcFilterMode] = useState('period');
+    const [bfcYear, setBfcYear] = useState(String(today.getFullYear()));
+    const [bfcMonth, setBfcMonth] = useState('');
+    const [bfcYears, setBfcYears] = useState([]);
     const [lastUpdate, setLastUpdate] = useState(new Date());
     const [activeSection, setActiveSection] = useState('overview');
     const [wsConnected, setWsConnected] = useState(false);
@@ -149,6 +154,23 @@ function Dashboard({ refreshTrigger }) {
 
     // ── Période ──
     const getDateRange = useCallback(() => {
+        if (!isSuperAdmin && activeSection === 'bfc') {
+            if (bfcFilterMode === 'all') return { debut: null, fin: null };
+            if (bfcFilterMode === 'custom') {
+                return { debut: dateDebut || null, fin: dateFin || null };
+            }
+            const selectedYear = Number(bfcYear);
+            if (!selectedYear) return { debut: null, fin: null };
+            if (!bfcMonth) {
+                return { debut: `${selectedYear}-01-01`, fin: `${selectedYear}-12-31` };
+            }
+            const selectedMonth = Number(bfcMonth);
+            const lastDay = new Date(selectedYear, selectedMonth, 0).getDate();
+            return {
+                debut: `${selectedYear}-${bfcMonth}-01`,
+                fin: `${selectedYear}-${bfcMonth}-${String(lastDay).padStart(2, '0')}`,
+            };
+        }
         const today = new Date();
         let debut = null, fin = today.toISOString().split('T')[0];
         switch (filterType) {
@@ -169,7 +191,7 @@ function Dashboard({ refreshTrigger }) {
                 debut = null; fin = null;
         }
         return { debut, fin };
-    }, [filterType, dateDebut, dateFin]);
+    }, [filterType, dateDebut, dateFin, isSuperAdmin, activeSection, bfcFilterMode, bfcYear, bfcMonth]);
 
     const loadData = useCallback(async () => {
         setLoading(true);
@@ -253,6 +275,19 @@ function Dashboard({ refreshTrigger }) {
         if (filterType === 'custom' && dateDebut && dateFin) loadData();
     }, [dateDebut, dateFin, filterType, loadData]);
 
+    useEffect(() => {
+        if (isSuperAdmin) return;
+        ApiService.getSageBfcMonthlyYears()
+            .then(result => {
+                const years = result?.years || [];
+                setBfcYears(years);
+                if (years.length) {
+                    setBfcYear(current => years.includes(Number(current)) ? current : String(years[0]));
+                }
+            })
+            .catch(() => setBfcYears([]));
+    }, [isSuperAdmin, refreshTrigger]);
+
     // ── Derived data ──
     const caisse = data?.caisse;
     const migration = data?.migration;
@@ -299,6 +334,24 @@ function Dashboard({ refreshTrigger }) {
         today: "Aujourd'hui", week: 'Cette semaine', month: 'Ce mois',
         year: 'Cette année', custom: 'Personnalisé', all: 'Toutes périodes'
     };
+    const monthLabels = [
+        'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin',
+        'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre',
+    ];
+    const bfcPeriodLabel = bfcFilterMode === 'all'
+        ? 'Toutes périodes'
+        : bfcFilterMode === 'custom'
+            ? 'Personnalisé'
+            : `${bfcMonth ? monthLabels[Number(bfcMonth) - 1] : 'Toute l’année'} ${bfcYear}`;
+    const isBfcMonthlySelection = bfcFilterMode === 'period' && Boolean(bfcMonth);
+    const bfcSelectedMonthLabel = isBfcMonthlySelection
+        ? `${monthLabels[Number(bfcMonth) - 1]} ${bfcYear}`
+        : '';
+    const bfcPnlPeriodLabel = bfc?.premiere_periode && bfc?.derniere_periode
+        ? (bfc.premiere_periode === bfc.derniere_periode
+            ? bfc.derniere_periode
+            : `de ${bfc.premiere_periode} à ${bfc.derniere_periode}`)
+        : 'indisponible';
 
     const navSections = isSuperAdmin ? ADMIN_SECTIONS : SECTIONS;
 
@@ -329,7 +382,9 @@ function Dashboard({ refreshTrigger }) {
                         {isSuperAdmin ? 'Tableau de Bord ' : 'Tableau de Bord Global'}
                     </h2>
                     <div className="gd-header-meta">
-                        <span className="gd-period-badge">{periodLabels[filterType]}</span>
+                        <span className="gd-period-badge">
+                            {activeSection === 'bfc' && !isSuperAdmin ? bfcPeriodLabel : periodLabels[filterType]}
+                        </span>
                         <span className={`gd-ws-badge ${wsConnected ? 'connected' : 'disconnected'}`}>
                             <span className="gd-ws-dot" />
                             {wsConnected ? 'Temps réel' : 'Hors ligne'}
@@ -340,15 +395,41 @@ function Dashboard({ refreshTrigger }) {
                     </div>
                 </div>
                 <div className="gd-header-right">
-                    <div className="gd-filter-group">
-                        {['today', 'week', 'month', 'year', 'all', 'custom'].map(t => (
-                            <button key={t} className={`gd-filter-pill ${filterType === t ? 'active' : ''}`}
-                                onClick={() => setFilterType(t)}>
-                                {{ today: 'Jour', week: 'Semaine', month: 'Mois', year: 'Année', all: 'Tout', custom: 'Custom' }[t]}
-                            </button>
-                        ))}
-                    </div>
-                    {filterType === 'custom' && (
+                    {activeSection === 'bfc' && !isSuperAdmin ? (
+                        <div className="gd-bfc-filters">
+                            <div className={`gd-filter-group gd-filter-selects ${bfcFilterMode === 'period' ? 'active' : ''}`}>
+                                <label className="gd-filter-select-field">
+                                    <span>Année</span>
+                                    <select aria-label="Année BFC" value={bfcYear} onChange={e => { setBfcYear(e.target.value); setBfcFilterMode('period'); }}>
+                                        {(bfcYears.length ? bfcYears : [Number(bfcYear)]).map(year => (
+                                            <option key={year} value={year}>{year}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <label className="gd-filter-select-field">
+                                    <span>Mois</span>
+                                    <select aria-label="Mois BFC" value={bfcMonth} onChange={e => { setBfcMonth(e.target.value); setBfcFilterMode('period'); }}>
+                                        <option value="">Toute la Periode</option>
+                                        {monthLabels.map((month, index) => (
+                                            <option key={month} value={String(index + 1).padStart(2, '0')}>{month}</option>
+                                        ))}
+                                    </select>
+                                </label>
+                                <button className={`gd-filter-pill ${bfcFilterMode === 'all' ? 'active' : ''}`} onClick={() => setBfcFilterMode('all')}>Tout</button>
+                                <button className={`gd-filter-pill ${bfcFilterMode === 'custom' ? 'active' : ''}`} onClick={() => setBfcFilterMode('custom')}>Custom</button>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="gd-filter-group">
+                            {['today', 'week', 'month', 'year', 'all', 'custom'].map(t => (
+                                <button key={t} className={`gd-filter-pill ${filterType === t ? 'active' : ''}`}
+                                    onClick={() => setFilterType(t)}>
+                                    {{ today: 'Jour', week: 'Semaine', month: 'Mois', year: 'Année', all: 'Tout', custom: 'Custom' }[t]}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+                    {((activeSection === 'bfc' && bfcFilterMode === 'custom') || (activeSection !== 'bfc' && filterType === 'custom')) && (
                         <div className="gd-date-range">
                             <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} />
                             <span>→</span>
@@ -746,18 +827,18 @@ function Dashboard({ refreshTrigger }) {
                         <>
                             {/* KPIs BFC */}
                             <div className="gd-kpi-row gd-kpi-row-4">
-                                <KpiCard icon={<FiBarChart2 />} label="Périodes" color="neutral"
+                                <KpiCard icon={<FiBarChart2 />} label={isBfcMonthlySelection ? `Période · ${bfcSelectedMonthLabel}` : 'Périodes'} color="neutral"
                                     value={bfc.nb_periodes}
                                     sub={`Dernière : ${bfc.derniere_periode}`} loading={loading} />
-                                <KpiCard icon={<FiDollarSign />} label="CA Net" color="primary"
+                                <KpiCard icon={<FiDollarSign />} label={isBfcMonthlySelection ? `CA Net · ${bfcSelectedMonthLabel}` : 'CA Net cumulé'} color="primary"
                                     value={fmtMontant(bfc.pnl_cumule?.ca_net || 0)} unit="TND"
-                                    sub="Cumul réalisé" loading={loading} />
-                                <KpiCard icon={<FiTrendingUp />} label="EBITDA" color={bfc.pnl_cumule?.ebitda >= 0 ? 'success' : 'danger'}
+                                    sub={isBfcMonthlySelection ? 'Mois sélectionné' : 'Cumul réalisé'} loading={loading} />
+                                <KpiCard icon={<FiTrendingUp />} label={isBfcMonthlySelection ? `EBITDA · ${bfcSelectedMonthLabel}` : 'EBITDA cumulé'} color={bfc.pnl_cumule?.ebitda >= 0 ? 'success' : 'danger'}
                                     value={fmtMontant(bfc.pnl_cumule?.ebitda || 0)} unit="TND"
-                                    sub={`${(bfc.pnl_cumule?.ebitda_pct || 0).toFixed(3)}% (cumul)`} loading={loading} />
-                                <KpiCard icon={<FiTarget />} label="Résultat Net" color={bfc.pnl_cumule?.resultat_net >= 0 ? 'success' : 'danger'}
+                                    sub={`${(bfc.pnl_cumule?.ebitda_pct || 0).toFixed(3)}%${isBfcMonthlySelection ? '' : ' (cumul)'}`} loading={loading} />
+                                <KpiCard icon={<FiTarget />} label={isBfcMonthlySelection ? `Résultat Net · ${bfcSelectedMonthLabel}` : 'Résultat Net cumulé'} color={bfc.pnl_cumule?.resultat_net >= 0 ? 'success' : 'danger'}
                                     value={fmtMontant(bfc.pnl_cumule?.resultat_net || 0)} unit="TND"
-                                    sub={`${(bfc.pnl_cumule?.resultat_net_pct || 0).toFixed(3)}% (cumul)`} loading={loading} />
+                                    sub={`${(bfc.pnl_cumule?.resultat_net_pct || 0).toFixed(3)}%${isBfcMonthlySelection ? '' : ' (cumul)'}`} loading={loading} />
                             </div>
 
                             {/* Tendance + P&L */}
@@ -780,7 +861,7 @@ function Dashboard({ refreshTrigger }) {
                                     </ResponsiveContainer>
                                 </Section>
 
-                                <Section title="Compte de Résultat" subtitle={`Période : ${bfc.derniere_periode}`} icon={<FiClipboard />} className="gd-col-small">
+                                <Section title="Compte de Résultat" subtitle={`Période : ${bfcPnlPeriodLabel}`} icon={<FiClipboard />} className="gd-col-small">
                                     {bfc.pnl_detail ? (
                                         <div className="gd-pnl-detail">
                                             <PnlRow label="CA Net" value={bfc.pnl_detail.ca_net} bold />
@@ -798,6 +879,49 @@ function Dashboard({ refreshTrigger }) {
                                     ) : <EmptyChart message="Aucun P&L disponible" />}
                                 </Section>
                             </div>
+
+                            {/* Analyses décisionnelles complémentaires */}
+                            <div className="gd-row-2col">
+                                <Section title="Résultat financier" subtitle="Produits et charges financières par mois" icon={<FiActivity />} className="gd-col-large">
+                                    <ResponsiveContainer width="100%" height={290}>
+                                        <ComposedChart data={bfc.tendance} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                            <XAxis dataKey="periode" fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                                            <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={60} />
+                                            <Tooltip content={<CustomTooltip />} />
+                                            <Legend wrapperStyle={{ fontSize: 12 }} />
+                                            <Bar dataKey="produits_financiers" name="Produits financiers" fill={COLORS.debit} radius={[4, 4, 0, 0]} barSize={22} />
+                                            <Bar dataKey="charges_financieres" name="Charges financières" fill={COLORS.creditLight} radius={[4, 4, 0, 0]} barSize={22} />
+                                            <Line type="monotone" dataKey="resultat_financier" name="Résultat financier" stroke={COLORS.purple}
+                                                strokeWidth={2.5} dot={{ r: 4, fill: COLORS.purple }} />
+                                        </ComposedChart>
+                                    </ResponsiveContainer>
+                                </Section>
+
+                                <Section title="Structure des charges" subtitle="Poids des postes sur la période" icon={<FiPieChart />} className="gd-col-small">
+                                    <ChargeStructure data={bfc.charge_structure || []} />
+                                </Section>
+                            </div>
+
+                            <Section title="Comparaison N-1" subtitle="Même période de l'année précédente" icon={<FiTrendingUp />}>
+                                    {bfc.comparison_n1?.available ? (
+                                        <ResponsiveContainer width="100%" height={310}>
+                                            <BarChart data={bfc.comparison_n1.data} margin={{ top: 10, right: 15, left: 0, bottom: 20 }}>
+                                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                                <XAxis dataKey="name" fontSize={10} interval={0} tick={{ fill: 'var(--text-muted)' }} />
+                                                <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={60} />
+                                                <Tooltip content={<CustomTooltip />} />
+                                                <Legend wrapperStyle={{ fontSize: 12 }} />
+                                                <Bar dataKey="n_1" name="N-1" fill={COLORS.neutral} radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="periode" name="Période filtrée" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                                            </BarChart>
+                                        </ResponsiveContainer>
+                                    ) : <EmptyChart message="Aucune donnée disponible sur la même période N-1" />}
+                            </Section>
+
+                            <Section title="Points d'attention" subtitle="Signaux calculés sur la période filtrée" icon={<FiMonitor />}>
+                                <FinancialAlerts alerts={bfc.alerts || []} />
+                            </Section>
 
                             {/* Produits vs Charges */}
                             {bfc.tendance.length > 1 && (
@@ -927,6 +1051,52 @@ function PnlRow({ label, value, bold, highlight, pct }) {
                     <span className="gd-pnl-pct" style={{ color }}>{pct >= 0 ? '+' : ''}{pct.toFixed(3)}%</span>
                 )}
             </div>
+        </div>
+    );
+}
+
+function ChargeStructure({ data }) {
+    if (!data.length) return <EmptyChart message="Aucune charge sur la période filtrée" />;
+    const total = data.reduce((sum, item) => sum + item.value, 0);
+    return (
+        <div className="gd-pie-wrap">
+            <ResponsiveContainer width="100%" height={190}>
+                <PieChart>
+                    <Pie data={data} cx="50%" cy="50%" innerRadius={52} outerRadius={78}
+                        paddingAngle={3} dataKey="value" strokeWidth={0}>
+                        {data.map((item, index) => <Cell key={item.name} fill={PIE_COLORS[index % PIE_COLORS.length]} />)}
+                    </Pie>
+                    <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+            </ResponsiveContainer>
+            <div className="gd-charge-legend">
+                {data.map((item, index) => (
+                    <div className="gd-charge-item" key={item.name}>
+                        <span className="gd-pie-dot" style={{ background: PIE_COLORS[index % PIE_COLORS.length] }} />
+                        <span className="gd-charge-name">{item.name}</span>
+                        <strong>{total ? (item.value / total * 100).toFixed(1) : '0.0'}%</strong>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function FinancialAlerts({ alerts }) {
+    if (!alerts.length) return <EmptyChart message="Aucun signal disponible" />;
+    return (
+        <div className="gd-financial-alerts">
+            {alerts.map((alert, index) => (
+                <div className={`gd-financial-alert gd-financial-alert-${alert.level}`} key={`${alert.title}-${index}`}>
+                    <span className="gd-financial-alert-icon">
+                        {alert.level === 'success' ? <FiCheckCircle /> : alert.level === 'danger' ? <FiTrendingDown /> : <FiActivity />}
+                    </span>
+                    <div>
+                        <strong>{alert.title}</strong>
+                        <p>{alert.message}</p>
+                    </div>
+                </div>
+            ))}
         </div>
     );
 }
