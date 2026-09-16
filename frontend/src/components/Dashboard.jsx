@@ -130,7 +130,7 @@ function Section({ title, subtitle, icon, children, className = '' }) {
 // COMPOSANT PRINCIPAL
 // ═══════════════════════════════════════════════════════════
 
-function Dashboard({ refreshTrigger }) {
+function Dashboard({ refreshTrigger, onNavigate }) {
     const { isSuperAdmin } = useAuth();
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
@@ -151,6 +151,7 @@ function Dashboard({ refreshTrigger }) {
     const reconnectTimer = useRef(null);
     const loadDataRef = useRef(null);
     const isSuperAdminRef = useRef(isSuperAdmin);
+    const bfcYearInitializedRef = useRef(false);
 
     // ── Période ──
     const getDateRange = useCallback(() => {
@@ -281,8 +282,10 @@ function Dashboard({ refreshTrigger }) {
             .then(result => {
                 const years = result?.years || [];
                 setBfcYears(years);
-                if (years.length) {
-                    setBfcYear(current => years.includes(Number(current)) ? current : String(years[0]));
+                if (years.length && !bfcYearInitializedRef.current) {
+                    setBfcYear(String(years[0]));
+                    setBfcMonth('');
+                    bfcYearInitializedRef.current = true;
                 }
             })
             .catch(() => setBfcYears([]));
@@ -292,6 +295,7 @@ function Dashboard({ refreshTrigger }) {
     const caisse = data?.caisse;
     const migration = data?.migration;
     const bfc = data?.bfc;
+    const overview = data?.overview;
     const adminUsers = data?.users;
     const adminSessions = data?.sessions;
     const adminAudit = data?.audit;
@@ -354,6 +358,22 @@ function Dashboard({ refreshTrigger }) {
         : 'indisponible';
 
     const navSections = isSuperAdmin ? ADMIN_SECTIONS : SECTIONS;
+
+    const openOverviewTarget = useCallback((target) => {
+        if (target === 'tresorerie' || target === 'bfc') {
+            setActiveSection(target);
+            return;
+        }
+        onNavigate?.(target);
+    }, [onNavigate]);
+
+    const openLatestBfcYear = useCallback(() => {
+        const latestYear = overview?.kpis?.latest_bfc_year;
+        if (latestYear) setBfcYear(String(latestYear));
+        setBfcMonth('');
+        setBfcFilterMode('period');
+        setActiveSection('bfc');
+    }, [overview?.kpis?.latest_bfc_year]);
 
     useEffect(() => {
         if (isSuperAdmin && !['overview', 'audit', 'users'].includes(activeSection)) {
@@ -458,7 +478,7 @@ function Dashboard({ refreshTrigger }) {
                     return (
                         <button key={s.id}
                             className={`gd-snav-card ${isActive ? 'active' : ''}`}
-                            onClick={() => setActiveSection(s.id)}
+                            onClick={() => s.id === 'bfc' ? openLatestBfcYear() : setActiveSection(s.id)}
                             style={{ '--snav-accent': s.accent }}>
                             <div className="gd-snav-icon-wrap">
                                 <span className="gd-snav-icon">{s.icon}</span>
@@ -620,95 +640,52 @@ function Dashboard({ refreshTrigger }) {
                     {(activeSection === 'overview') && (
                         <>
                             {/* KPI GLOBAUX */}
-                            <div className="gd-kpi-row">
+                            <div className="gd-kpi-row gd-kpi-row-5">
                                 <KpiCard icon={<FiDollarSign />} label="Solde Caisse" color="primary"
                                     value={fmtMontant(caisse?.solde_actuel || 0)} unit="TND"
                                     trend={caisse?.solde_actuel >= 0 ? 'up' : 'down'}
-                                    trendLabel={caisse?.solde_actuel >= 0 ? 'Positif' : 'Négatif'} loading={loading} />
-                                <KpiCard icon={<FiArrowDownCircle />} label="Total Entrées" color="debit"
-                                    value={fmtMontant(caisse?.total_debit || 0)} unit="TND"
-                                    sub={`${caisse?.nombre_ecritures || 0} écritures`} loading={loading} />
-                                <KpiCard icon={<FiArrowUpCircle />} label="Total Sorties" color="credit"
-                                    value={fmtMontant(caisse?.total_credit || 0)} unit="TND" loading={loading} />
+                                    trendLabel={caisse?.solde_actuel >= 0 ? 'Positif' : 'Négatif'}
+                                    onClick={() => openOverviewTarget('tresorerie')} loading={loading} />
                                 <KpiCard icon={<FiRefreshCw />} label="Taux Migration" color="purple"
                                     value={`${tauxMigration}%`}
-                                    sub={`${caisse?.ecritures_migrees || 0} / ${caisse?.nombre_ecritures || 0}`} loading={loading} />
+                                    sub={`${caisse?.ecritures_migrees || 0} / ${caisse?.nombre_ecritures || 0}`}
+                                    onClick={() => openOverviewTarget('tresorerie')} loading={loading} />
                                 <KpiCard icon={<FiCheckCircle />} label="Balance Sage" color={migration?.equilibre ? 'success' : 'danger'}
                                     value={migration?.equilibre ? 'Équilibrée' : 'Déséquilibrée'}
-                                    sub={`${migration?.nb_pieces || 0} pièces`} loading={loading} />
-                                <KpiCard icon={<FiBarChart2 />} label="Périodes BFC" color="neutral"
-                                    value={bfc?.nb_periodes || 0}
-                                    sub={bfc?.derniere_periode ? `Dernier : ${bfc.derniere_periode}` : 'Aucune donnée'} loading={loading} />
+                                    sub={`${migration?.nb_pieces || 0} pièces`}
+                                    onClick={() => openOverviewTarget('tresorerie')} loading={loading} />
+                                <KpiCard icon={<FiBarChart2 />} label="CA Net BFC" color="debit"
+                                    value={fmtMontant(overview?.kpis?.ca_net || 0)} unit="TND"
+                                    sub={overview?.kpis?.latest_bfc_year ? `Cumul ${overview.kpis.latest_bfc_year}` : 'Aucune période'}
+                                    onClick={openLatestBfcYear} loading={loading} />
+                                <KpiCard icon={<FiTarget />} label="Résultat Net BFC" color={(overview?.kpis?.resultat_net || 0) >= 0 ? 'success' : 'danger'}
+                                    value={fmtMontant(overview?.kpis?.resultat_net || 0)} unit="TND"
+                                    sub={`${(overview?.kpis?.resultat_net_pct || 0).toFixed(3)}% · Cumul ${overview?.kpis?.latest_bfc_year || '—'}`}
+                                    onClick={openLatestBfcYear} loading={loading} />
                             </div>
 
-                            {/* Résumé rapide — Flux + Répartition */}
                             <div className="gd-row-2col">
-                                <Section title="Flux de Trésorerie" subtitle="Évolution journalière" icon={<FiTrendingUp />} className="gd-col-large">
-                                    {caisse?.evolution?.length > 0 ? (
-                                        <ResponsiveContainer width="100%" height={280}>
-                                            <ComposedChart data={caisse.evolution} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                                                <defs>
-                                                    <linearGradient id="gradDebit" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor={COLORS.debit} stopOpacity={0.3} />
-                                                        <stop offset="95%" stopColor={COLORS.debit} stopOpacity={0} />
-                                                    </linearGradient>
-                                                    <linearGradient id="gradCredit" x1="0" y1="0" x2="0" y2="1">
-                                                        <stop offset="5%" stopColor={COLORS.credit} stopOpacity={0.3} />
-                                                        <stop offset="95%" stopColor={COLORS.credit} stopOpacity={0} />
-                                                    </linearGradient>
-                                                </defs>
+                                <Section title="Comparaison N-1" subtitle="Période filtrée face à la même période précédente" icon={<FiTrendingUp />} className="gd-col-large">
+                                    {overview?.comparison?.available ? (
+                                        <ResponsiveContainer width="100%" height={285}>
+                                            <BarChart data={overview.comparison.data} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
                                                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                                                <XAxis dataKey="jour" tickFormatter={fmtDate} fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
-                                                <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={55} />
+                                                <XAxis dataKey="name" fontSize={10} interval={0} tick={{ fill: 'var(--text-muted)' }} />
+                                                <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={60} />
                                                 <Tooltip content={<CustomTooltip />} />
                                                 <Legend wrapperStyle={{ fontSize: 12 }} />
-                                                <Area type="monotone" dataKey="debit" name="Débit" stroke={COLORS.debit} fill="url(#gradDebit)" strokeWidth={2} />
-                                                <Area type="monotone" dataKey="credit" name="Crédit" stroke={COLORS.credit} fill="url(#gradCredit)" strokeWidth={2} />
-                                                <Line type="monotone" dataKey="solde_cumul" name="Solde cumulé" stroke={COLORS.primary} strokeWidth={2.5} dot={false} strokeDasharray="6 3" />
-                                            </ComposedChart>
+                                                <Bar dataKey="n_1" name="N-1" fill={COLORS.neutral} radius={[4, 4, 0, 0]} />
+                                                <Bar dataKey="periode" name="Période filtrée" fill={COLORS.primary} radius={[4, 4, 0, 0]} />
+                                            </BarChart>
                                         </ResponsiveContainer>
-                                    ) : <EmptyChart message="Aucune écriture sur cette période" />}
+                                    ) : <EmptyChart message="Aucune donnée disponible pour la comparaison N-1" />}
                                 </Section>
 
-                                <Section title="Répartition" subtitle="Entrées vs Sorties" icon={<FiPieChart />} className="gd-col-small">
-                                    {pieData.length > 0 ? (
-                                        <div className="gd-pie-wrap">
-                                            <ResponsiveContainer width="100%" height={200}>
-                                                <PieChart>
-                                                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
-                                                        paddingAngle={4} dataKey="value" strokeWidth={0}>
-                                                        <Cell fill={COLORS.debit} />
-                                                        <Cell fill={COLORS.credit} />
-                                                    </Pie>
-                                                    <Tooltip formatter={(v) => `${fmtMontant(v)} TND`} />
-                                                </PieChart>
-                                            </ResponsiveContainer>
-                                            <div className="gd-pie-legend">
-                                                <div className="gd-pie-item">
-                                                    <span className="gd-pie-dot" style={{ background: COLORS.debit }} />
-                                                    <div>
-                                                        <span className="gd-pie-lbl">Entrées</span>
-                                                        <span className="gd-pie-val">{fmtMontant(caisse.total_debit)} TND</span>
-                                                        <span className="gd-pie-pct">
-                                                            {((caisse.total_debit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                                <div className="gd-pie-item">
-                                                    <span className="gd-pie-dot" style={{ background: COLORS.credit }} />
-                                                    <div>
-                                                        <span className="gd-pie-lbl">Sorties</span>
-                                                        <span className="gd-pie-val">{fmtMontant(caisse.total_credit)} TND</span>
-                                                        <span className="gd-pie-pct">
-                                                            {((caisse.total_credit / (caisse.total_debit + caisse.total_credit)) * 100).toFixed(3)}%
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : <EmptyChart message="Aucune donnée" />}
+                                <Section title="Centre d'attention" subtitle="Anomalies et actions prioritaires" icon={<FiMonitor />} className="gd-col-small">
+                                    <FinancialAlerts alerts={overview?.alerts || []} onSelect={(alert) => openOverviewTarget(alert.target_section)} />
                                 </Section>
                             </div>
+
                         </>
                     )}
 
@@ -1015,9 +992,11 @@ function Dashboard({ refreshTrigger }) {
 // SOUS-COMPOSANTS
 // ═══════════════════════════════════════════════════════════
 
-function KpiCard({ icon, label, color, value, unit, sub, trend, trendLabel, loading }) {
+function KpiCard({ icon, label, color, value, unit, sub, trend, trendLabel, loading, onClick }) {
+    const CardTag = onClick ? 'button' : 'div';
     return (
-        <div className={`gd-kpi gd-kpi-${color} ${loading ? 'gd-shimmer' : ''}`}>
+        <CardTag type={onClick ? 'button' : undefined} onClick={onClick}
+            className={`gd-kpi gd-kpi-${color} ${onClick ? 'gd-kpi-clickable' : ''} ${loading ? 'gd-shimmer' : ''}`}>
             <div className="gd-kpi-top">
                 <span className="gd-kpi-icon">{icon}</span>
                 <span className="gd-kpi-label">{label}</span>
@@ -1034,7 +1013,7 @@ function KpiCard({ icon, label, color, value, unit, sub, trend, trendLabel, load
                 )}
                 {sub && <span className="gd-kpi-sub">{sub}</span>}
             </div>
-        </div>
+        </CardTag>
     );
 }
 
@@ -1082,12 +1061,17 @@ function ChargeStructure({ data }) {
     );
 }
 
-function FinancialAlerts({ alerts }) {
+function FinancialAlerts({ alerts, onSelect }) {
     if (!alerts.length) return <EmptyChart message="Aucun signal disponible" />;
     return (
         <div className="gd-financial-alerts">
-            {alerts.map((alert, index) => (
-                <div className={`gd-financial-alert gd-financial-alert-${alert.level}`} key={`${alert.title}-${index}`}>
+            {alerts.map((alert, index) => {
+                const AlertTag = onSelect && alert.target_section ? 'button' : 'div';
+                return (
+                <AlertTag type={AlertTag === 'button' ? 'button' : undefined}
+                    onClick={AlertTag === 'button' ? () => onSelect(alert) : undefined}
+                    className={`gd-financial-alert gd-financial-alert-${alert.level} ${AlertTag === 'button' ? 'clickable' : ''}`}
+                    key={`${alert.title}-${index}`}>
                     <span className="gd-financial-alert-icon">
                         {alert.level === 'success' ? <FiCheckCircle /> : alert.level === 'danger' ? <FiTrendingDown /> : <FiActivity />}
                     </span>
@@ -1095,8 +1079,9 @@ function FinancialAlerts({ alerts }) {
                         <strong>{alert.title}</strong>
                         <p>{alert.message}</p>
                     </div>
-                </div>
-            ))}
+                </AlertTag>
+                );
+            })}
         </div>
     );
 }

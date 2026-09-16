@@ -231,7 +231,9 @@ function App() {
                 </header>
 
                 <div className="content-wrapper">
-                    {activeTab === 'dashboard' && canAccessTab('dashboard') && <Dashboard refreshTrigger={refreshTrigger} />}
+                    {activeTab === 'dashboard' && canAccessTab('dashboard') && (
+                        <Dashboard refreshTrigger={refreshTrigger} onNavigate={(tab) => canAccessTab(tab) && setActiveTab(tab)} />
+                    )}
                     {activeTab === 'reporting' && hasPermission('reporting', 'read') && <Reporting refreshTrigger={reportingRefresh} />}
                     {activeTab === 'saisie' && hasPermission('saisie_caisse') && <SaisieCaisse refreshTrigger={refreshTrigger} />}
                     {activeTab === 'export' && hasPermission('export_csv') && <ExportCSV />}

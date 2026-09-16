@@ -144,13 +144,16 @@ def get_global_dashboard(
     """
     with db.get_cursor() as cursor:
         caisse = _get_caisse_stats(cursor, date_debut, date_fin)
-        migration = _get_migration_stats(cursor)
+        migration = _get_migration_stats(cursor, date_debut, date_fin)
         bfc = _get_bfc_stats(cursor, date_debut, date_fin)
+        latest_bfc = _get_latest_bfc_year_kpis(cursor)
+        overview = _get_overview_stats(cursor, caisse, migration, bfc, latest_bfc, date_debut, date_fin)
 
     return {
         "caisse": caisse,
         "migration": migration,
         "bfc": bfc,
+        "overview": overview,
     }
 
 
@@ -308,9 +311,18 @@ def _get_caisse_stats(cursor, date_debut, date_fin):
 # SECTION 2 — Statistiques Migration Sage
 # ═══════════════════════════════════════════════════════════
 
-def _get_migration_stats(cursor):
+def _get_migration_stats(cursor, date_debut=None, date_fin=None):
+    where_clause = "WHERE 1=1"
+    params = []
+    if date_debut:
+        where_clause += " AND date_compta >= %s"
+        params.append(date_debut)
+    if date_fin:
+        where_clause += " AND date_compta <= %s"
+        params.append(date_fin)
+
     # ── Volume migré ──
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT 
             COUNT(*)                        AS total_ecritures,
             COALESCE(SUM(montant_debit), 0) AS total_debit,
@@ -318,7 +330,8 @@ def _get_migration_stats(cursor):
             COUNT(DISTINCT numero_piece)     AS nb_pieces,
             COUNT(DISTINCT compte)           AS nb_comptes
         FROM ecritures_sage
-    """)
+        {where_clause}
+    """, params)
     vol = cursor.fetchone()
 
     # ── Balance ──
@@ -327,29 +340,31 @@ def _get_migration_stats(cursor):
     difference = round(total_debit - total_credit, 3)
 
     # ── Pièces en déséquilibre ──
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT COUNT(*) AS nb
         FROM (
             SELECT numero_piece
             FROM ecritures_sage
+            {where_clause}
             GROUP BY numero_piece
             HAVING ABS(SUM(montant_debit) - SUM(montant_credit)) > 0.001
         ) sub
-    """)
+    """, params)
     nb_deseq = cursor.fetchone()['nb']
 
     # ── Évolution mensuelle des migrations ──
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT 
             DATE_FORMAT(date_compta, '%%Y-%%m') AS mois,
             COUNT(*)                             AS nb_ecritures,
             COALESCE(SUM(montant_debit), 0)      AS debit,
             COALESCE(SUM(montant_credit), 0)     AS credit
         FROM ecritures_sage
+        {where_clause}
         GROUP BY DATE_FORMAT(date_compta, '%%Y-%%m')
         ORDER BY mois ASC
         LIMIT 12
-    """)
+    """, params)
     evolution_mensuelle = [
         {
             "mois": r['mois'],
@@ -361,17 +376,18 @@ def _get_migration_stats(cursor):
     ]
 
     # ── Top comptes utilisés ──
-    cursor.execute("""
+    cursor.execute(f"""
         SELECT 
             compte,
             COUNT(*) AS occurrences,
             COALESCE(SUM(montant_debit), 0) AS total_debit,
             COALESCE(SUM(montant_credit), 0) AS total_credit
         FROM ecritures_sage
+        {where_clause}
         GROUP BY compte
         ORDER BY occurrences DESC
         LIMIT 5
-    """)
+    """, params)
     top_comptes = [
         {
             "compte": r['compte'],
@@ -641,4 +657,96 @@ def _get_bfc_stats(cursor, date_debut=None, date_fin=None):
             "data": comparison,
         },
         "alerts": alerts,
+    }
+
+
+def _get_latest_bfc_year_kpis(cursor):
+    cursor.execute("SELECT MAX(periode) AS latest_periode FROM sage_bfc_monthly")
+    latest_row = cursor.fetchone() or {}
+    latest_period = latest_row.get("latest_periode")
+    if not latest_period:
+        return {"year": None, "ca_net": 0.0, "resultat_net": 0.0, "resultat_net_pct": 0.0}
+
+    latest_date = latest_period if isinstance(latest_period, date) else date.fromisoformat(str(latest_period)[:10])
+    year_start = date(latest_date.year, 1, 1)
+    next_year = date(latest_date.year + 1, 1, 1)
+    cursor.execute(
+        "SELECT periode, resume FROM sage_bfc_monthly "
+        "WHERE periode >= %s AND periode < %s ORDER BY periode ASC",
+        [year_start, next_year],
+    )
+    totals = _aggregate_bfc(cursor.fetchall())
+    return {
+        "year": latest_date.year,
+        "ca_net": totals["ca_net"],
+        "resultat_net": totals["resultat_net"],
+        "resultat_net_pct": totals["resultat_net_pct"],
+    }
+
+
+def _get_previous_cash_flow(cursor, date_debut, date_fin):
+    if not date_debut and not date_fin:
+        return None
+    where_clause = "WHERE 1=1"
+    params = []
+    if date_debut:
+        where_clause += " AND date_ecriture >= %s"
+        params.append(_previous_year(date_debut))
+    if date_fin:
+        where_clause += " AND date_ecriture <= %s"
+        params.append(_previous_year(date_fin))
+    cursor.execute(
+        f"SELECT COUNT(*) AS row_count, COALESCE(SUM(debit), 0) AS debit, COALESCE(SUM(credit), 0) AS credit "
+        f"FROM ecritures_caisse {where_clause}",
+        params,
+    )
+    row = cursor.fetchone() or {}
+    if not int(row.get("row_count") or 0):
+        return None
+    return float(row.get("debit") or 0) - float(row.get("credit") or 0)
+
+
+def _get_overview_stats(cursor, caisse, migration, bfc, latest_bfc, date_debut, date_fin):
+    pending = int(caisse.get("ecritures_en_attente") or 0)
+    bfc_periods = int(bfc.get("nb_periodes") or 0)
+
+    alerts = []
+    if float(caisse.get("solde_actuel") or 0) < 0:
+        alerts.append({"level": "danger", "title": "Solde de caisse négatif", "message": "Le solde actuel nécessite une vérification.", "target_section": "tresorerie"})
+    if pending:
+        alerts.append({"level": "warning", "title": "Écritures à migrer", "message": f"{pending} écriture(s) attendent la migration vers SAGE.", "target_section": "tresorerie"})
+    if not migration.get("equilibre"):
+        alerts.append({"level": "danger", "title": "Balance SAGE déséquilibrée", "message": f"Écart constaté : {abs(float(migration.get('difference') or 0)):,.3f} TND.", "target_section": "tresorerie"})
+    if int(migration.get("nb_desequilibres") or 0):
+        alerts.append({"level": "warning", "title": "Pièces déséquilibrées", "message": f"{migration['nb_desequilibres']} pièce(s) présentent un déséquilibre.", "target_section": "tresorerie"})
+    if not bfc_periods:
+        alerts.append({"level": "warning", "title": "Analyse BFC indisponible", "message": "Aucune balance BFC n'est disponible pour la période.", "target_section": "bfc"})
+    else:
+        for alert in bfc.get("alerts", []):
+            if alert.get("level") in {"danger", "warning"}:
+                alerts.append({**alert, "target_section": "bfc"})
+    if not alerts:
+        alerts.append({"level": "success", "title": "Situation maîtrisée", "message": "Aucune anomalie prioritaire sur la période filtrée.", "target_section": None})
+
+    current_cash_flow = float(caisse.get("total_debit") or 0) - float(caisse.get("total_credit") or 0)
+    previous_cash_flow = _get_previous_cash_flow(cursor, date_debut, date_fin)
+    comparison = [{"name": "Flux net", "periode": current_cash_flow, "n_1": previous_cash_flow or 0}]
+    bfc_comparison = {item["name"]: item for item in bfc.get("comparison_n1", {}).get("data", [])}
+    for name in ("CA Net", "EBITDA", "Résultat net"):
+        item = bfc_comparison.get(name)
+        if item:
+            comparison.append({"name": name, "periode": item["periode"], "n_1": item["n_1"]})
+    comparison_available = previous_cash_flow is not None or bool(bfc.get("comparison_n1", {}).get("available"))
+
+    return {
+        "kpis": {
+            "cash_flow": current_cash_flow,
+            "pending_migration": pending,
+            "latest_bfc_year": latest_bfc.get("year"),
+            "ca_net": float(latest_bfc.get("ca_net") or 0),
+            "resultat_net": float(latest_bfc.get("resultat_net") or 0),
+            "resultat_net_pct": float(latest_bfc.get("resultat_net_pct") or 0),
+        },
+        "alerts": alerts,
+        "comparison": {"available": comparison_available, "data": comparison},
     }
