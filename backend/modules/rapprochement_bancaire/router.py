@@ -326,6 +326,42 @@ def get_reconciliation_result(
     return result
 
 
+@router.delete("/rapprochement/results/{result_id}")
+def delete_reconciliation_result(
+    result_id: int,
+    request: Request,
+    user: dict = Depends(require_permission_code("rapprochement_bancaire.run")),
+):
+    """Supprime uniquement un résultat historisé de rapprochement."""
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT sage_file_name, bank_file_name, compte_banque, compte_comptable, periode "
+            "FROM bank_reconciliation_results WHERE id = %s",
+            (result_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Résultat de rapprochement introuvable")
+        cursor.execute("DELETE FROM bank_reconciliation_results WHERE id = %s", (result_id,))
+
+    log_audit_action(
+        user=user,
+        action="delete_result",
+        module="rapprochement_bancaire",
+        entity_type="reconciliation",
+        entity_id=str(result_id),
+        detail={
+            "sage_file": row.get("sage_file_name"),
+            "bank_file": row.get("bank_file_name"),
+            "bank_journal": row.get("compte_banque"),
+            "account_code": row.get("compte_comptable"),
+            "period": str(row.get("periode") or ""),
+        },
+        request=request,
+    )
+    return {"message": "Le rapprochement a été supprimé de l’historique."}
+
+
 @router.post("/rapprochement/export-pdf")
 def export_reconciliation_pdf(
     payload: ReconciliationPdfRequest,

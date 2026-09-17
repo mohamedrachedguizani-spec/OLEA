@@ -4544,6 +4544,8 @@ body {
 .reco-history-actions { display: flex; gap: .35rem; }
 .reco-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-card); color: var(--text-secondary); cursor: pointer; }
 .reco-icon-button:hover { border-color: var(--olea-terracotta); color: var(--olea-terracotta); }
+.reco-icon-button-danger:hover { border-color: var(--error); color: var(--error); background: rgba(183, 72, 43, .06); }
+.reco-icon-button:disabled { opacity: .55; cursor: wait; }
 .reco-history-empty { padding: 2.5rem !important; text-align: center; color: var(--text-muted) !important; }
 .reco-history-pagination { display: flex; align-items: center; justify-content: flex-end; gap: .75rem; padding: .85rem 1.25rem; }
 .reco-history-pagination span { color: var(--text-muted); font-size: .75rem; }

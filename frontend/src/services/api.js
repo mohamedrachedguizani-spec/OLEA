@@ -532,6 +532,17 @@ class ApiService {
         return response.json();
     }
 
+    static async deleteReconciliationResult(resultId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/results/${resultId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression' }));
+            throw new Error(err.detail || 'Erreur lors de la suppression');
+        }
+        return response.json();
+    }
+
     
     // ===================== Configuration =====================
 

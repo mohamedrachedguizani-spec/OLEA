@@ -8,6 +8,7 @@ import {
     FiEye,
     FiFileText,
     FiSearch,
+    FiTrash2,
     FiX,
 } from 'react-icons/fi';
 import ApiService from '../services/api';
@@ -130,6 +131,8 @@ function RapprochementBancaire({ navigationTarget }) {
     const [historyJournal, setHistoryJournal] = useState('');
     const [historyPeriod, setHistoryPeriod] = useState('');
     const [historySearch, setHistorySearch] = useState('');
+    const [historyRefresh, setHistoryRefresh] = useState(0);
+    const [deletingHistoryId, setDeletingHistoryId] = useState(null);
     const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', blob: null, filename: '' });
 
     useEffect(() => {
@@ -202,7 +205,7 @@ function RapprochementBancaire({ navigationTarget }) {
             cancelled = true;
             clearTimeout(timer);
         };
-    }, [workspaceView, historyPage, historyJournal, historyPeriod, historySearch]);
+    }, [workspaceView, historyPage, historyJournal, historyPeriod, historySearch, historyRefresh]);
 
     useEffect(() => () => {
         if (pdfPreview.url) URL.revokeObjectURL(pdfPreview.url);
@@ -379,11 +382,30 @@ function RapprochementBancaire({ navigationTarget }) {
             setFilterQuery('');
             setStep(2);
             setWorkspaceView('new');
-            setSuccess('Le rapprochement sélectionné a été chargé.');
         } catch (err) {
             setError(err.message || 'Impossible de charger ce rapprochement.');
         } finally {
             setLoading(false);
+        }
+    };
+
+    const deleteHistoryResult = async (item) => {
+        const label = `${item.bank_journal || 'Compte bancaire'} · ${item.period || 'période non renseignée'}`;
+        if (!window.confirm(`Supprimer définitivement le rapprochement ${label} de l’historique ?`)) return;
+        setDeletingHistoryId(item.id);
+        setError('');
+        try {
+            const response = await ApiService.deleteReconciliationResult(item.id);
+            setSuccess(response.message || 'Le rapprochement a été supprimé.');
+            if (history.items.length === 1 && historyPage > 1) {
+                setHistoryPage((value) => value - 1);
+            } else {
+                setHistoryRefresh((value) => value + 1);
+            }
+        } catch (err) {
+            setError(err.message || 'Impossible de supprimer ce rapprochement.');
+        } finally {
+            setDeletingHistoryId(null);
         }
     };
 
@@ -689,6 +711,16 @@ function RapprochementBancaire({ navigationTarget }) {
                                     <div className="reco-history-actions">
                                         <button type="button" className="reco-icon-button" title="Consulter" aria-label="Consulter le rapprochement" onClick={() => openHistoryResult(item.id)}><FiEye /></button>
                                         {has('rapprochement_bancaire.export_pdf') && <button type="button" className="reco-icon-button" title="Prévisualiser le PDF" aria-label="Prévisualiser le PDF" onClick={() => openHistoryResult(item.id, true)}><FiFileText /></button>}
+                                        <button
+                                            type="button"
+                                            className="reco-icon-button reco-icon-button-danger"
+                                            title="Supprimer"
+                                            aria-label="Supprimer le rapprochement"
+                                            disabled={deletingHistoryId === item.id}
+                                            onClick={() => deleteHistoryResult(item)}
+                                        >
+                                            {deletingHistoryId === item.id ? <span className="spinner" /> : <FiTrash2 />}
+                                        </button>
                                     </div>
                                 </td>
                             </tr>
