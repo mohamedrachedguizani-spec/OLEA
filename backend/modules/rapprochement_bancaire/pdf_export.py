@@ -69,7 +69,9 @@ def _table(title, headers, rows, widths, styles):
         ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, ROW_ALT]),
     ]))
-    return [title_block, table, Spacer(1, 6 * mm)]
+    # Keep the section heading attached to at least the beginning of its table.
+    # ReportLab can still split long tables across subsequent pages.
+    return [KeepTogether([title_block, table]), Spacer(1, 6 * mm)]
 
 
 def _page(canvas, doc):
@@ -90,6 +92,7 @@ def _page(canvas, doc):
 def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
     result = payload.result
     stats = result.stats
+    context = result.context
     buffer = BytesIO()
     document = SimpleDocTemplate(
         buffer,
@@ -138,17 +141,96 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
             "PdfEmpty", parent=base["Normal"], fontName="Helvetica-Oblique",
             fontSize=8, leading=10, textColor=MUTED, leftIndent=3 * mm,
         ),
+        "context_label": ParagraphStyle(
+            "PdfContextLabel", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=7, leading=9, textColor=MUTED,
+        ),
+        "context_value": ParagraphStyle(
+            "PdfContextValue", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=8.5, leading=10, textColor=TEXT,
+        ),
     }
 
     generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
     story = [
         Paragraph("Résultats du rapprochement bancaire", styles["title"]),
-        Paragraph(
-            f"Généré le {generated_at}<br/>Grand livre Sage : {escape(_text(payload.sage_filename))}"
-            f" &nbsp;&nbsp;|&nbsp;&nbsp; Relevé bancaire : {escape(_text(payload.bank_filename))}",
-            styles["subtitle"],
-        ),
     ]
+
+    if context:
+        context_data = [
+            [
+                Paragraph("Compte bancaire (journal)", styles["context_label"]),
+                Paragraph("Compte comptable", styles["context_label"]),
+                Paragraph("Période", styles["context_label"]),
+                Paragraph("Date de rapprochement", styles["context_label"]),
+            ],
+            [
+                Paragraph(escape(context.bank_journal), styles["context_value"]),
+                Paragraph(escape(context.account_code), styles["context_value"]),
+                Paragraph(f"{_date(context.period_start)} au {_date(context.period_end)}", styles["context_value"]),
+                Paragraph(generated_at, styles["context_value"]),
+            ],
+        ]
+        context_table = Table(context_data, colWidths=[65 * mm] * 4)
+        context_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), OLEA_GREEN_LIGHT),
+            ("BOX", (0, 0), (-1, -1), 0.7, OLEA_GREEN),
+            ("INNERGRID", (0, 0), (-1, -1), 0.3, GRID),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 5),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+        ]))
+        story.extend([context_table, Spacer(1, 2.5 * mm)])
+
+    story.append(Paragraph(
+        f"Grand livre Sage : {escape(_text(payload.sage_filename))}"
+        f" &nbsp;&nbsp;|&nbsp;&nbsp; Relevé bancaire : {escape(_text(payload.bank_filename))}",
+        styles["subtitle"],
+    ))
+
+    if context:
+        sage_opening = context.sage_opening.amount
+        bank_opening = context.bank_opening.amount
+        sage_closing = None if sage_opening is None else sage_opening + stats.sage_total_debit - stats.sage_total_credit
+        bank_closing = None if bank_opening is None else bank_opening + stats.bank_total_credit - stats.bank_total_debit
+        closing_difference = None if sage_closing is None or bank_closing is None else bank_closing - sage_closing
+        status_label = {
+            "conforme": "Conforme",
+            "ecart": "Écart à vérifier",
+            "unverifiable": "Non vérifiable",
+        }.get(context.opening_status, context.opening_status)
+        balance_rows = [
+            ["Solde initial SAGE", _money(sage_opening) if sage_opening is not None else "Non détecté"],
+            ["Solde de départ banque", _money(bank_opening) if bank_opening is not None else "Non détecté"],
+            ["Écart initial (Banque - SAGE)", _money(context.opening_difference) if context.opening_difference is not None else "Non calculable"],
+            ["Statut du contrôle initial", status_label],
+            ["Solde comptable théorique fin", _money(sage_closing) if sage_closing is not None else "Non calculable"],
+            ["Solde bancaire théorique fin", _money(bank_closing) if bank_closing is not None else "Non calculable"],
+            ["Écart théorique fin", _money(closing_difference) if closing_difference is not None else "Non calculable"],
+        ]
+        balance_table = Table(
+            [[Paragraph(escape(label), styles["table_cell"]), Paragraph(escape(str(value)), styles["context_value"])] for label, value in balance_rows],
+            colWidths=[90 * mm, 45 * mm],
+            hAlign="LEFT",
+        )
+        balance_table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), ROW_ALT),
+            ("BOX", (0, 0), (-1, -1), 0.5, GRID),
+            ("INNERGRID", (0, 0), (-1, -1), 0.25, GRID),
+            ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 5),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.extend([
+            Paragraph("Contrôle des soldes de départ", styles["section"]),
+            balance_table,
+            Spacer(1, 5 * mm),
+        ])
 
     summary_items = [
         ("Mouvements banque", stats.total_bank_movements),

@@ -444,6 +444,12 @@ class ApiService {
     }
 
     // ===================== Rapprochement Bancaire =====================
+    static async getReconciliationBankAccounts() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/bank-accounts`);
+        if (!response.ok) throw new Error('Impossible de charger les comptes bancaires');
+        return response.json();
+    }
+
     static async compareReconciliation(formData) {
         const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/compare`, {
             method: 'POST',

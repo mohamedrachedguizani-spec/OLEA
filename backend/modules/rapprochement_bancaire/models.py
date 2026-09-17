@@ -51,12 +51,33 @@ class ReconciliationStats(BaseModel):
     sage_total_debit: float = 0.0
     sage_total_credit: float = 0.0
 
+
+class OpeningBalanceInfo(BaseModel):
+    amount: Optional[float] = None
+    label: Optional[str] = None
+    balance_date: Optional[date] = None
+
+
+class ReconciliationContext(BaseModel):
+    bank_journal: str
+    account_code: str
+    sage_filename: Optional[str] = None
+    bank_filename: Optional[str] = None
+    period: str
+    period_start: date
+    period_end: date
+    sage_opening: OpeningBalanceInfo
+    bank_opening: OpeningBalanceInfo
+    opening_difference: Optional[float] = None
+    opening_status: str
+
 class ReconciliationResult(BaseModel):
     stats: ReconciliationStats
     reconciled: List[ReconciledPair]
     bank_only: List[BankMovement]
     sage_only: List[SageMovement]
     discrepancies: List[DiscrepancyPair]
+    context: Optional[ReconciliationContext] = None
 
 
 class ReconciliationPdfRequest(BaseModel):

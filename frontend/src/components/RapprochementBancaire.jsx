@@ -4,6 +4,7 @@ import ReactDOM from 'react-dom';
 import {
     FiAlertTriangle,
     FiBookOpen,
+    FiCalendar,
     FiCheckCircle,
     FiCreditCard,
     FiDownload,
@@ -34,6 +35,51 @@ function KpiCard({ icon, label, color, value, unit, sub }) {
     );
 }
 
+function OpeningBalanceControl({ context, formatAmount }) {
+    if (!context) return null;
+    const statusLabels = {
+        conforme: 'Soldes de départ conformes',
+        ecart: 'Écart initial détecté',
+        unverifiable: 'Contrôle initial non vérifiable',
+    };
+    const displayBalance = (balance) => balance?.amount === null || balance?.amount === undefined
+        ? 'Non détecté'
+        : `${formatAmount(balance.amount)} TND`;
+
+    return (
+        <section className={`reco-opening-panel reco-opening-${context.opening_status}`}>
+            <div className="reco-opening-header">
+                <div>
+                    <span className="reco-opening-eyebrow">Contrôle préalable</span>
+                    <h3>{statusLabels[context.opening_status] || 'Contrôle des soldes de départ'}</h3>
+                    <p>{context.bank_journal} · {context.account_code} · Période {context.period}</p>
+                </div>
+                <span className="reco-opening-badge">{context.opening_status === 'conforme' ? 'Conforme' : context.opening_status === 'ecart' ? 'À vérifier' : 'Incomplet'}</span>
+            </div>
+            <div className="reco-opening-values">
+                <div>
+                    <span>Solde initial SAGE</span>
+                    <strong>{displayBalance(context.sage_opening)}</strong>
+                    <small>{context.sage_opening?.label || 'Libellé non trouvé'}</small>
+                </div>
+                <div>
+                    <span>Solde de départ banque</span>
+                    <strong>{displayBalance(context.bank_opening)}</strong>
+                    <small>{context.bank_opening?.label || 'Libellé non trouvé'}</small>
+                </div>
+                <div>
+                    <span>Écart initial</span>
+                    <strong>{context.opening_difference === null || context.opening_difference === undefined ? 'Non calculable' : `${formatAmount(context.opening_difference)} TND`}</strong>
+                    <small>Banque - SAGE</small>
+                </div>
+            </div>
+            {context.opening_status === 'ecart' && (
+                <p className="reco-opening-warning">L'analyse a été poursuivie, mais cet écart doit être vérifié avant la validation définitive du rapprochement.</p>
+            )}
+        </section>
+    );
+}
+
 function RapprochementBancaire({ navigationTarget }) {
     const { has } = useAuth();
     const [step, setStep] = useState(1);
@@ -45,6 +91,9 @@ function RapprochementBancaire({ navigationTarget }) {
     // Files
     const [sageFile, setSageFile] = useState(null);
     const [bankFile, setBankFile] = useState(null);
+    const [bankAccounts, setBankAccounts] = useState([]);
+    const [bankJournal, setBankJournal] = useState('');
+    const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
 
     // Drag active states
     const [dragActiveSage, setDragActiveSage] = useState(false);
@@ -56,6 +105,17 @@ function RapprochementBancaire({ navigationTarget }) {
     // Reconciliation results
     const [result, setResult] = useState(null);
     const [activeTab, setActiveTab] = useState('reconciled'); // 'reconciled' | 'discrepancies' | 'bank_only' | 'sage_only'
+
+    useEffect(() => {
+        ApiService.getReconciliationBankAccounts()
+            .then((items) => {
+                setBankAccounts(Array.isArray(items) ? items : []);
+                if (Array.isArray(items) && items.length) {
+                    setBankJournal((current) => current || items[0].journal);
+                }
+            })
+            .catch((err) => setError(err.message || 'Impossible de charger les comptes bancaires.'));
+    }, []);
 
     useEffect(() => {
         const requestedView = navigationTarget?.params?.view;
@@ -73,6 +133,8 @@ function RapprochementBancaire({ navigationTarget }) {
             .then((data) => {
                 if (cancelled) return;
                 setResult(data);
+                if (data.context?.bank_journal) setBankJournal(data.context.bank_journal);
+                if (data.context?.period) setPeriod(data.context.period);
                 setStep(2);
                 setSuccess('Le rapprochement concerné a été chargé.');
             })
@@ -155,10 +217,20 @@ function RapprochementBancaire({ navigationTarget }) {
             setError('Veuillez sélectionner le relevé bancaire.');
             return;
         }
+        if (!bankJournal) {
+            setError('Veuillez sélectionner le compte bancaire (journal).');
+            return;
+        }
+        if (!period) {
+            setError('Veuillez sélectionner la période du rapprochement.');
+            return;
+        }
 
         const formData = new FormData();
         formData.append('sage_file', sageFile);
         formData.append('bank_file', bankFile);
+        formData.append('bank_journal', bankJournal);
+        formData.append('period', period);
         formData.append('date_tolerance_days', 3);
         formData.append('match_on_label', 'false');
         formData.append('match_on_date', 'false');
@@ -197,13 +269,16 @@ function RapprochementBancaire({ navigationTarget }) {
         try {
             const pdfBlob = await ApiService.exportReconciliationPdf({
                 result,
-                sage_filename: sageFile?.name || null,
-                bank_filename: bankFile?.name || null,
+                sage_filename: sageFile?.name || result.context?.sage_filename || null,
+                bank_filename: bankFile?.name || result.context?.bank_filename || null,
             });
             const downloadUrl = URL.createObjectURL(pdfBlob);
             const link = document.createElement('a');
             link.href = downloadUrl;
-            link.download = `rapprochement_bancaire_${new Date().toISOString().slice(0, 10)}.pdf`;
+            const contextSuffix = result.context
+                ? `${result.context.bank_journal}_${result.context.period}`
+                : new Date().toISOString().slice(0, 10);
+            link.download = `rapprochement_bancaire_${contextSuffix}.pdf`;
             document.body.appendChild(link);
             link.click();
             link.remove();
@@ -256,6 +331,27 @@ function RapprochementBancaire({ navigationTarget }) {
 
     const renderStep1 = () => (
         <form onSubmit={handleLaunchReconciliation} className="sage-upload-section mb-4" style={{ padding: '2rem 1.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-lg)' }}>
+            <div className="reco-context-grid">
+                <div className="form-group">
+                    <label>
+                        <span className="icon bank-form-icon"><FiCreditCard /></span> Compte bancaire (journal)
+                    </label>
+                    <select className="form-control" value={bankJournal} onChange={(event) => setBankJournal(event.target.value)} required>
+                        <option value="">Sélectionner</option>
+                        {bankAccounts.map((item) => (
+                            <option key={item.journal} value={item.journal}>
+                                {item.journal} - {item.account_code}
+                            </option>
+                        ))}
+                    </select>
+                </div>
+                <div className="form-group">
+                    <label>
+                        <span className="icon bank-form-icon"><FiCalendar /></span> Période (mois et année)
+                    </label>
+                    <input type="month" className="form-control" value={period} onChange={(event) => setPeriod(event.target.value)} required />
+                </div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', marginBottom: '1.5rem' }}>
                 
                 {/* Sage Upload Box */}
@@ -443,7 +539,8 @@ function RapprochementBancaire({ navigationTarget }) {
 
     const renderStep2 = () => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            
+            <OpeningBalanceControl context={result.context} formatAmount={formatAmount} />
+
             {/* KPI CARDS */}
             <div className="gd-kpi-row">
                 <KpiCard icon={<FiCreditCard />} label="Total Relevé Banque" color="neutral" value={result.stats.total_bank_movements} unit="mvmts" />

@@ -4403,6 +4403,53 @@ body {
 .gd-financial-alert-success { border-left-color: var(--success); }
 .gd-financial-alert-success .gd-financial-alert-icon { color: var(--success); }
 
+/* ── Rapprochement bancaire ── */
+.reco-context-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-md);
+    background: var(--bg-muted);
+}
+.reco-opening-panel {
+    padding: 1rem 1.1rem;
+    border: 1px solid var(--border-light);
+    border-left: 4px solid var(--info);
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+}
+.reco-opening-conforme { border-left-color: var(--success); }
+.reco-opening-ecart { border-left-color: var(--error); }
+.reco-opening-unverifiable { border-left-color: var(--warning, #d4a528); }
+.reco-opening-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; }
+.reco-opening-eyebrow {
+    display: block;
+    margin-bottom: 0.2rem;
+    color: var(--text-muted);
+    font-size: 0.67rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+.reco-opening-header h3 { margin: 0; color: var(--text-primary); font-size: 1rem; }
+.reco-opening-header p { margin: 0.25rem 0 0; color: var(--text-muted); font-size: 0.76rem; }
+.reco-opening-badge {
+    padding: 0.3rem 0.65rem;
+    border-radius: var(--radius-full);
+    background: var(--bg-muted);
+    color: var(--text-secondary);
+    font-size: 0.68rem;
+    font-weight: 700;
+    white-space: nowrap;
+}
+.reco-opening-values { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-top: 1rem; }
+.reco-opening-values > div { padding: 0.75rem; border-radius: var(--radius-md); background: var(--bg-muted); }
+.reco-opening-values span, .reco-opening-values small { display: block; color: var(--text-muted); font-size: 0.68rem; }
+.reco-opening-values strong { display: block; margin: 0.3rem 0; color: var(--text-primary); font-size: 0.95rem; }
+.reco-opening-warning { margin: 0.8rem 0 0; color: var(--error); font-size: 0.74rem; font-weight: 600; }
 /* ── Section (chart card) ── */
 .gd-section {
     background: var(--bg-card);
@@ -5139,6 +5186,8 @@ body {
     .gd-snav-icon { font-size: 1.05rem; }
     .gd-snav-label { font-size: 0.78rem; }
     .gd-snav-badge { min-width: 22px; height: 20px; font-size: 0.65rem; padding: 0 5px; }
+    .reco-context-grid, .reco-opening-values { grid-template-columns: 1fr; }
+    .reco-opening-header { flex-direction: column; }
 }
 
 /* ==================== Comprehensive Dark Mode Fixes ==================== */

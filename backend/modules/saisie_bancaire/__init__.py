@@ -128,6 +128,9 @@ def init_saisie_bancaire_tables():
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 sage_file_name VARCHAR(255) NULL,
                 bank_file_name VARCHAR(255) NULL,
+                compte_banque VARCHAR(32) NULL,
+                compte_comptable VARCHAR(32) NULL,
+                periode DATE NULL,
                 result_json LONGTEXT NOT NULL,
                 created_by_user_id INT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -136,6 +139,25 @@ def init_saisie_bancaire_tables():
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """
         )
+
+        for col, col_def in [
+            ("compte_banque", "VARCHAR(32) NULL"),
+            ("compte_comptable", "VARCHAR(32) NULL"),
+            ("periode", "DATE NULL"),
+        ]:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS cnt FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'bank_reconciliation_results'
+                  AND column_name = %s
+                """,
+                (col,),
+            )
+            if cursor.fetchone()["cnt"] == 0:
+                cursor.execute(
+                    f"ALTER TABLE bank_reconciliation_results ADD COLUMN {col} {col_def}"
+                )
 
 
 __all__ = ["router", "init_saisie_bancaire_tables"]

@@ -1,8 +1,10 @@
 import io
 import re
+import unicodedata
 import pandas as pd
+import pdfplumber
 from datetime import date, datetime, timedelta
-from typing import List, Dict, Tuple, Optional
+from typing import List
 from fastapi import HTTPException
 from difflib import SequenceMatcher
 
@@ -13,7 +15,8 @@ from modules.rapprochement_bancaire.models import (
     DiscrepancyPair,
     ReconciliationStats,
     ReconciliationResult,
-    ReconciliationOptions
+    ReconciliationOptions,
+    OpeningBalanceInfo,
 )
 
 # Import the parsing helpers from saisie_bancaire service
@@ -21,9 +24,126 @@ from modules.saisie_bancaire.service import (
     _parse_csv_text,
     _parse_pdf,
     _extract_movements,
+    _find_single_amount,
+    _map_columns,
     _parse_amount,
     _parse_date
 )
+
+
+SAGE_OPENING_LABELS = ("solde initial", "cumul avant", "solde ouverture", "report a nouveau")
+BANK_OPENING_LABELS = (
+    "solde depart",
+    "solde de depart",
+    "solde debut de periode",
+    "opening balance",
+)
+
+FRENCH_DATE_PATTERN = re.compile(
+    r"\b\d{1,2}\s+(?:janvier|janv|fevrier|fevr|mars|avril|avr|mai|juin|"
+    r"juillet|juil|aout|septembre|sept|octobre|oct|novembre|nov|decembre|dec)"
+    r"\.?\s+\d{2,4}\b",
+    re.IGNORECASE,
+)
+NUMERIC_DATE_PATTERN = re.compile(r"\b\d{1,2}[/.-]\d{1,2}[/.-]\d{2,4}\b")
+MONEY_PATTERN = re.compile(
+    r"[-+]?(?:\d{1,3}(?:[ ,.\u00a0\u202f]\d{3})+|\d+)(?:[,.]\d{2,3})"
+)
+
+
+def _normalize_text(value) -> str:
+    text = unicodedata.normalize("NFKD", str(value or ""))
+    text = "".join(char for char in text if not unicodedata.combining(char))
+    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+
+
+def _read_sage_dataframe(file_bytes: bytes, filename: str) -> pd.DataFrame:
+    extension = filename.split(".")[-1].lower()
+    if extension in {"xlsx", "xls"}:
+        # Conserver les dates Excel comme objets date/heure. Une conversion forcée
+        # en texte transformait par exemple 2026-05-01 en 2026-01-05 avec dayfirst.
+        df = pd.read_excel(io.BytesIO(file_bytes), dtype=object)
+    elif extension in {"csv", "txt"}:
+        try:
+            content = file_bytes.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            try:
+                content = file_bytes.decode("latin-1")
+            except UnicodeDecodeError:
+                content = file_bytes.decode("utf-8", errors="ignore")
+        non_empty_lines = [line for line in content.splitlines() if line.strip()][:20]
+        semi_count = sum(line.count(";") for line in non_empty_lines)
+        comma_count = sum(line.count(",") for line in non_empty_lines)
+        df = pd.read_csv(io.StringIO(content), sep=";" if semi_count > comma_count else ",", dtype=str)
+    else:
+        raise HTTPException(status_code=400, detail="Format de fichier Sage non supporté")
+
+    df.columns = [str(col).strip() for col in df.columns]
+    normalized_columns = [_normalize_text(col).replace(" ", "") for col in df.columns]
+    has_headers = (
+        any("compte" in col or "code" in col for col in normalized_columns)
+        and any("date" in col for col in normalized_columns)
+        and any("deb" in col or "cre" in col for col in normalized_columns)
+    )
+    if not has_headers:
+        for idx in range(min(100, len(df))):
+            values = [_normalize_text(value).replace(" ", "") for value in df.iloc[idx] if not pd.isna(value)]
+            if (
+                any("compte" in value or "code" in value for value in values)
+                and any("date" in value for value in values)
+                and any("deb" in value or "cre" in value for value in values)
+            ):
+                new_columns = [str(value).strip() for value in df.iloc[idx]]
+                df = df.iloc[idx + 1:].copy()
+                df.columns = new_columns
+                break
+    return df
+
+
+def _map_sage_columns(df: pd.DataFrame) -> dict:
+    mapping = {}
+    for col in df.columns:
+        normalized = _normalize_text(col).replace(" ", "")
+        if "codecompte" in normalized or ("compte" in normalized and "code" in normalized):
+            mapping["code_compte"] = col
+        elif "compte" in normalized and ("libel" in normalized or "nom" in normalized):
+            mapping["libelle_compte"] = col
+        elif "date" in normalized:
+            mapping["date_ecriture"] = col
+        elif "journal" in normalized or "jnl" in normalized:
+            mapping["journal"] = col
+        elif "piece" in normalized or "num" in normalized:
+            mapping["numero_piece"] = col
+        elif "libel" in normalized:
+            mapping["libelle_ecriture"] = col
+        elif "ref" in normalized:
+            mapping["reference_piece"] = col
+        elif "deb" in normalized:
+            mapping["debit"] = col
+        elif "cre" in normalized:
+            mapping["credit"] = col
+        elif normalized == "solde" or "balance" in normalized:
+            mapping["balance"] = col
+
+    fallbacks = {"code_compte": 0, "date_ecriture": 2, "debit": 9, "credit": 10}
+    for required, index in fallbacks.items():
+        if required not in mapping and len(df.columns) > index:
+            mapping[required] = df.columns[index]
+    for required in ("code_compte", "date_ecriture", "debit", "credit"):
+        if required not in mapping:
+            raise HTTPException(status_code=400, detail=f"Colonne requise '{required}' manquante dans le fichier Sage.")
+    return mapping
+
+
+def _read_bank_dataframe(file_bytes: bytes, filename: str, file_type: str) -> pd.DataFrame:
+    extension = filename.split(".")[-1].lower()
+    if extension in {"xlsx", "xls"}:
+        return pd.read_excel(io.BytesIO(file_bytes), dtype=str)
+    if extension in {"csv", "txt"}:
+        return _parse_csv_text(file_bytes.decode("utf-8", errors="ignore"))
+    if extension == "pdf" or "pdf" in file_type:
+        return _parse_pdf(file_bytes)
+    raise HTTPException(status_code=400, detail="Format de relevé bancaire non supporté")
 
 
 def normalize_libelle(libelle: str) -> str:
@@ -49,104 +169,18 @@ def get_similarity_ratio(a: str, b: str) -> float:
 
 def parse_sage_file(file_bytes: bytes, filename: str) -> List[SageMovement]:
     """Parse un fichier Grand Livre Sage (CSV ou Excel) et retourne une liste de SageMovement."""
-    extension = filename.split(".")[-1].lower()
-    if extension in {"xlsx", "xls"}:
-        df = pd.read_excel(io.BytesIO(file_bytes), dtype=str)
-    elif extension in {"csv", "txt"}:
-        # Tente de décoder avec différents encodages (latin-1 gère bien les accents français)
-        try:
-            content = file_bytes.decode("utf-8-sig")
-        except UnicodeDecodeError:
-            try:
-                content = file_bytes.decode("latin-1")
-            except UnicodeDecodeError:
-                content = file_bytes.decode("utf-8", errors="ignore")
-        
-        # Détection robuste du délimiteur (compte les points-virgules vs virgules sur les 20 premières lignes non vides)
-        non_empty_lines = [line for line in content.splitlines() if line.strip()][:20]
-        semi_count = sum(line.count(";") for line in non_empty_lines)
-        comma_count = sum(line.count(",") for line in non_empty_lines)
-        sep = ";" if semi_count > comma_count else ","
-        df = pd.read_csv(io.StringIO(content), sep=sep, dtype=str)
-    else:
-        raise HTTPException(status_code=400, detail="Format de fichier Sage non supporté")
-
-    # Nettoyer les en-têtes de colonnes
-    df.columns = [str(col).strip() for col in df.columns]
-
-    # Essayer de trouver la ligne d'en-tête réelle de manière robuste
-    # Étape 1 : Vérifier si les colonnes actuelles contiennent déjà les en-têtes requis
-    cols_normalized = [str(c).lower().replace("é", "e").replace("è", "e").replace(" ", "") for c in df.columns]
-    cols_normalized = [re.sub(r"[^a-z0-9]", "", c) for c in cols_normalized]
-    
-    has_compte = any("compte" in c or "code" in c for c in cols_normalized)
-    has_date = any("date" in c for c in cols_normalized)
-    has_debit_or_credit = any("deb" in c or "cre" in c or "dbit" in c or "crdit" in c for c in cols_normalized)
-    
-    # Si les colonnes actuelles ne sont pas les en-têtes, on scanne les lignes
-    if not (has_compte and has_date and has_debit_or_credit):
-        header_row_idx = None
-        for idx in range(min(100, len(df))):
-            row_vals = [str(val).strip().lower().replace("é", "e").replace("è", "e").replace(" ", "") for val in df.iloc[idx] if not pd.isna(val)]
-            row_vals_norm = [re.sub(r"[^a-z0-9]", "", v) for v in row_vals]
-            
-            h_compte = any("compte" in v or "code" in v for v in row_vals_norm)
-            h_date = any("date" in v for v in row_vals_norm)
-            h_debit_or_credit = any("deb" in v or "cre" in v or "dbit" in v or "crdit" in v for v in row_vals_norm)
-            
-            if h_compte and h_date and h_debit_or_credit:
-                header_row_idx = idx
-                break
-                
-        if header_row_idx is not None:
-            new_cols = [str(val).strip() for val in df.iloc[header_row_idx]]
-            df = df.iloc[header_row_idx + 1:].copy()
-            df.columns = [str(col).strip() for col in new_cols]
-
-    # Mappage des colonnes (robuste face aux corruptions d'encodage et accents)
-    col_mapping = {}
-    for col in df.columns:
-        normalized = col.lower().replace("é", "e").replace("è", "e").replace(" ", "")
-        # Supprimer les caractères non-alphanumériques potentiellement corrompus
-        normalized = re.sub(r"[^a-z0-9]", "", normalized)
-        
-        if "codecompte" in normalized or ("compte" in normalized and "code" in normalized):
-            col_mapping["code_compte"] = col
-        elif "compte" in normalized and ("libel" in normalized or "nom" in normalized):
-            col_mapping["libelle_compte"] = col
-        elif "date" in normalized:
-            col_mapping["date_ecriture"] = col
-        elif "journal" in normalized or "jnl" in normalized:
-            col_mapping["journal"] = col
-        elif "piece" in normalized or "num" in normalized:
-            col_mapping["numero_piece"] = col
-        elif "libel" in normalized:
-            col_mapping["libelle_ecriture"] = col
-        elif "ref" in normalized:
-            col_mapping["reference_piece"] = col
-        elif "deb" in normalized or "dbit" in normalized:
-            col_mapping["debit"] = col
-        elif "cre" in normalized or "crdit" in normalized:
-            col_mapping["credit"] = col
-
-    # Validation
-    for req in ["code_compte", "date_ecriture", "debit", "credit"]:
-        if req not in col_mapping:
-            # Fallbacks manuels si non trouvés par heuristique
-            if req == "code_compte" and len(df.columns) > 0: col_mapping["code_compte"] = df.columns[0]
-            elif req == "date_ecriture" and len(df.columns) > 2: col_mapping["date_ecriture"] = df.columns[2]
-            elif req == "debit" and len(df.columns) > 9: col_mapping["debit"] = df.columns[9]
-            elif req == "credit" and len(df.columns) > 10: col_mapping["credit"] = df.columns[10]
-            
-            # Si toujours manquant après fallback
-            if req not in col_mapping:
-                raise HTTPException(status_code=400, detail=f"Colonne requise '{req}' manquante dans le fichier Sage.")
+    df = _read_sage_dataframe(file_bytes, filename)
+    col_mapping = _map_sage_columns(df)
 
     movements = []
     for _, row in df.iterrows():
         # Ignorer les lignes de totaux ou de report à nouveau cumulé si elles ne contiennent pas de code compte valide
         code = str(row.get(col_mapping.get("code_compte")) or "").strip()
         if not code or code.lower() == "nan" or "total" in code.lower():
+            continue
+
+        source_label = str(row.get(col_mapping.get("libelle_ecriture")) or "").strip()
+        if any(pattern in _normalize_text(source_label) for pattern in SAGE_OPENING_LABELS):
             continue
 
         date_val = _parse_date(row.get(col_mapping.get("date_ecriture")))
@@ -191,22 +225,13 @@ def parse_sage_file(file_bytes: bytes, filename: str) -> List[SageMovement]:
 
 def parse_bank_file(file_bytes: bytes, filename: str, file_type: str) -> List[BankMovement]:
     """Parse le relevé bancaire (PDF, Excel, CSV) et retourne une liste de BankMovement."""
-    extension = filename.split(".")[-1].lower()
-    
-    if extension in {"xlsx", "xls"}:
-        df = pd.read_excel(io.BytesIO(file_bytes), dtype=str)
-    elif extension in {"csv", "txt"}:
-        content = file_bytes.decode("utf-8", errors="ignore")
-        df = _parse_csv_text(content)
-    elif extension in {"pdf"} or "pdf" in file_type:
-        df = _parse_pdf(file_bytes)
-    else:
-        raise HTTPException(status_code=400, detail="Format de relevé bancaire non supporté")
-
+    df = _read_bank_dataframe(file_bytes, filename, file_type)
     extracted = _extract_movements(df)
     
     movements = []
     for m in extracted:
+        if any(pattern in _normalize_text(m.get("libelle")) for pattern in BANK_OPENING_LABELS):
+            continue
         # Montant directionnel pour le relevé bancaire :
         # Crédit (inflow) = positif (+), Débit (outflow) = négatif (-)
         # Ceci s'aligne avec Sage où Débit (compte 5) = augmentation (+), Crédit = diminution (-)
@@ -222,6 +247,127 @@ def parse_bank_file(file_bytes: bytes, filename: str, file_type: str) -> List[Ba
         ))
         
     return movements
+
+
+def _matching_opening_label(row, preferred_columns, patterns):
+    for column in preferred_columns:
+        if column is None:
+            continue
+        value = row.get(column)
+        normalized = _normalize_text(value)
+        if any(pattern in normalized for pattern in patterns):
+            return str(value).replace("\n", " ").strip()
+    for value in row.values:
+        normalized = _normalize_text(value)
+        if any(pattern in normalized for pattern in patterns):
+            return str(value).replace("\n", " ").strip()
+    return None
+
+
+def extract_sage_opening_balance(
+    file_bytes: bytes,
+    filename: str,
+) -> OpeningBalanceInfo:
+    """Extrait la ligne « Cumul avant » sans l'ajouter aux mouvements rapprochables."""
+    df = _read_sage_dataframe(file_bytes, filename)
+    mapping = _map_sage_columns(df)
+    candidates = []
+    for _, row in df.iterrows():
+        label = _matching_opening_label(
+            row,
+            [mapping.get("libelle_ecriture"), mapping.get("libelle_compte")],
+            SAGE_OPENING_LABELS,
+        )
+        if not label:
+            continue
+        balance_column = mapping.get("balance")
+        balance_value = row.get(balance_column) if balance_column else None
+        has_balance = balance_value is not None and not pd.isna(balance_value) and str(balance_value).strip() != ""
+        if has_balance:
+            amount = _parse_amount(balance_value)
+        else:
+            debit = _parse_amount(row.get(mapping.get("debit")))
+            credit = _parse_amount(row.get(mapping.get("credit")))
+            amount = debit - credit
+        candidates.append(OpeningBalanceInfo(
+            amount=round(amount, 3),
+            label=label,
+            balance_date=_parse_date(row.get(mapping.get("date_ecriture"))),
+        ))
+    return candidates[-1] if candidates else OpeningBalanceInfo()
+
+
+def _extract_opening_amount_from_line(line: str) -> float:
+    """Isole le montant final sans concaténer l'année courte qui le précède."""
+    without_dates = FRENCH_DATE_PATTERN.sub(" ", line)
+    without_dates = NUMERIC_DATE_PATTERN.sub(" ", without_dates)
+    amounts = MONEY_PATTERN.findall(without_dates)
+    return _parse_amount(amounts[-1]) if amounts else 0.0
+
+
+def _extract_opening_date_from_line(line: str):
+    numeric_match = NUMERIC_DATE_PATTERN.search(line)
+    if numeric_match:
+        return _parse_date(numeric_match.group(0))
+    french_match = FRENCH_DATE_PATTERN.search(_normalize_text(line))
+    return _parse_date(french_match.group(0)) if french_match else None
+
+
+def extract_bank_opening_balance(
+    file_bytes: bytes,
+    filename: str,
+    file_type: str,
+) -> OpeningBalanceInfo:
+    """Extrait le solde de départ bancaire avant le parseur partagé de Saisie Bancaire."""
+    is_pdf = filename.split(".")[-1].lower() == "pdf" or "pdf" in file_type
+    try:
+        df = _read_bank_dataframe(file_bytes, filename, file_type)
+    except HTTPException:
+        if not is_pdf:
+            raise
+        df = pd.DataFrame()
+    mapping = _map_columns(df)
+    candidates = []
+    for _, row in df.iterrows():
+        label = _matching_opening_label(row, [mapping.get("libelle")], BANK_OPENING_LABELS)
+        if not label:
+            continue
+        debit = _parse_amount(row.get(mapping.get("debit")))
+        credit = _parse_amount(row.get(mapping.get("credit")))
+        amount = credit - debit
+        if amount == 0:
+            excluded = {
+                mapping.get("date_operation"), mapping.get("date_valeur"),
+                mapping.get("libelle"), mapping.get("reference"),
+                mapping.get("debit"), mapping.get("credit"),
+            }
+            amount = _find_single_amount(row, {column for column in excluded if column})
+        if amount == 0:
+            continue
+        candidates.append(OpeningBalanceInfo(
+            amount=round(amount, 3),
+            label=label,
+            balance_date=_parse_date(row.get(mapping.get("date_operation"))),
+        ))
+    if candidates:
+        return candidates[-1]
+
+    if is_pdf:
+        with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            for page in pdf.pages:
+                for line in (page.extract_text() or "").splitlines():
+                    normalized = _normalize_text(line)
+                    if not any(pattern in normalized for pattern in BANK_OPENING_LABELS):
+                        continue
+                    amount = _extract_opening_amount_from_line(line)
+                    if amount == 0:
+                        continue
+                    return OpeningBalanceInfo(
+                        amount=round(amount, 3),
+                        label=line.strip(),
+                        balance_date=_extract_opening_date_from_line(line),
+                    )
+    return OpeningBalanceInfo()
 
 
 def reconcile(
