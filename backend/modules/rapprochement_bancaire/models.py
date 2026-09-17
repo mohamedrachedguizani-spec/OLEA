@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from datetime import date
+from datetime import date, datetime
 from typing import List, Optional
 
 class ReconciliationOptions(BaseModel):
@@ -70,8 +70,15 @@ class ReconciliationContext(BaseModel):
     bank_opening: OpeningBalanceInfo
     opening_difference: Optional[float] = None
     opening_status: str
+    sage_closing_balance: Optional[float] = None
+    bank_closing_balance: Optional[float] = None
+    adjusted_sage_balance: Optional[float] = None
+    adjusted_bank_balance: Optional[float] = None
+    residual_difference: Optional[float] = None
+    reconciliation_status: str = "unverifiable"
 
 class ReconciliationResult(BaseModel):
+    id: Optional[int] = None
     stats: ReconciliationStats
     reconciled: List[ReconciledPair]
     bank_only: List[BankMovement]
@@ -84,3 +91,29 @@ class ReconciliationPdfRequest(BaseModel):
     result: ReconciliationResult
     sage_filename: Optional[str] = None
     bank_filename: Optional[str] = None
+
+
+class ReconciliationHistoryItem(BaseModel):
+    id: int
+    bank_journal: Optional[str] = None
+    account_code: Optional[str] = None
+    period: Optional[str] = None
+    sage_filename: Optional[str] = None
+    bank_filename: Optional[str] = None
+    total_bank_movements: int = 0
+    total_sage_movements: int = 0
+    auto_reconciled_count: int = 0
+    discrepancies_count: int = 0
+    total_discrepancy_amount: float = 0.0
+    automation_rate: float = 0.0
+    opening_status: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+
+
+class ReconciliationHistoryResponse(BaseModel):
+    items: List[ReconciliationHistoryItem]
+    page: int
+    page_size: int
+    total: int
+    total_pages: int

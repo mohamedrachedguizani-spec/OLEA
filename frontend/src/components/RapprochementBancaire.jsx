@@ -2,36 +2,54 @@
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import {
-    FiAlertTriangle,
-    FiBookOpen,
     FiCalendar,
-    FiCheckCircle,
     FiCreditCard,
     FiDownload,
-    FiTrendingDown,
-    FiZap,
+    FiEye,
+    FiFileText,
+    FiSearch,
+    FiX,
 } from 'react-icons/fi';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
 
-function KpiCard({ icon, label, color, value, unit, sub }) {
+function ReconciliationSummary({ stats, formatAmount }) {
+    const automationRate = Math.max(0, Math.min(100, Number(stats.automation_rate) || 0));
     return (
-        <div className={`gd-kpi gd-kpi-${color}`}>
-            <div className="gd-kpi-top">
-                <span className="gd-kpi-icon">{icon}</span>
-                <span className="gd-kpi-label">{label}</span>
-            </div>
-            <div className="gd-kpi-mid">
-                <span className="gd-kpi-value">{value}</span>
-                {unit && <span className="gd-kpi-unit">{unit}</span>}
-            </div>
-            {sub && (
-                <div className="gd-kpi-bot">
-                    <span className="gd-kpi-sub">{sub}</span>
+        <section className="reco-summary" aria-labelledby="reco-summary-title">
+            <div className="reco-summary-heading">
+                <div>
+                    <span className="reco-opening-eyebrow">Vue de contrôle</span>
+                    <h3 id="reco-summary-title">Synthèse du rapprochement</h3>
                 </div>
-            )}
-        </div>
+                <span className={stats.discrepancies_count ? 'reco-summary-status warning' : 'reco-summary-status success'}>
+                    {stats.discrepancies_count ? `${stats.discrepancies_count} écart(s) à traiter` : 'Aucun écart de montant'}
+                </span>
+            </div>
+            <div className="reco-summary-body">
+                <div className="reco-summary-volume">
+                    <h4>Activité analysée</h4>
+                    <dl>
+                        <div><dt>Mouvements banque</dt><dd>{stats.total_bank_movements}</dd></div>
+                        <div><dt>Écritures SAGE</dt><dd>{stats.total_sage_movements}</dd></div>
+                        <div><dt>Rapprochées automatiquement</dt><dd>{stats.auto_reconciled_count}</dd></div>
+                    </dl>
+                </div>
+                <div className="reco-summary-control">
+                    <div className="reco-rate-line">
+                        <div><span>Taux d’automatisation</span><strong>{automationRate.toFixed(2)} %</strong></div>
+                        <div className="reco-progress" role="progressbar" aria-valuenow={automationRate} aria-valuemin="0" aria-valuemax="100">
+                            <span style={{ width: `${automationRate}%` }} />
+                        </div>
+                    </div>
+                    <div className="reco-discrepancy-line">
+                        <div><span>Écarts de montant</span><strong>{stats.discrepancies_count}</strong></div>
+                        <div><span>Montant cumulé</span><strong>{formatAmount(stats.total_discrepancy_amount)} TND</strong></div>
+                    </div>
+                </div>
+            </div>
+        </section>
     );
 }
 
@@ -82,6 +100,7 @@ function OpeningBalanceControl({ context, formatAmount }) {
 
 function RapprochementBancaire({ navigationTarget }) {
     const { has } = useAuth();
+    const [workspaceView, setWorkspaceView] = useState('new');
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [exportingPdf, setExportingPdf] = useState(false);
@@ -105,6 +124,13 @@ function RapprochementBancaire({ navigationTarget }) {
     // Reconciliation results
     const [result, setResult] = useState(null);
     const [activeTab, setActiveTab] = useState('reconciled'); // 'reconciled' | 'discrepancies' | 'bank_only' | 'sage_only'
+    const [history, setHistory] = useState({ items: [], page: 1, page_size: 10, total: 0, total_pages: 0 });
+    const [historyLoading, setHistoryLoading] = useState(false);
+    const [historyPage, setHistoryPage] = useState(1);
+    const [historyJournal, setHistoryJournal] = useState('');
+    const [historyPeriod, setHistoryPeriod] = useState('');
+    const [historySearch, setHistorySearch] = useState('');
+    const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', blob: null, filename: '' });
 
     useEffect(() => {
         ApiService.getReconciliationBankAccounts()
@@ -136,6 +162,7 @@ function RapprochementBancaire({ navigationTarget }) {
                 if (data.context?.bank_journal) setBankJournal(data.context.bank_journal);
                 if (data.context?.period) setPeriod(data.context.period);
                 setStep(2);
+                setWorkspaceView('new');
                 setSuccess('Le rapprochement concerné a été chargé.');
             })
             .catch((err) => {
@@ -150,6 +177,36 @@ function RapprochementBancaire({ navigationTarget }) {
         };
     }, [navigationTarget]);
     const [filterQuery, setFilterQuery] = useState('');
+
+    useEffect(() => {
+        if (workspaceView !== 'history') return undefined;
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            setHistoryLoading(true);
+            try {
+                const data = await ApiService.getReconciliationHistory({
+                    page: historyPage,
+                    pageSize: 10,
+                    journal: historyJournal,
+                    period: historyPeriod,
+                    search: historySearch,
+                });
+                if (!cancelled) setHistory(data);
+            } catch (err) {
+                if (!cancelled) setError(err.message || "Impossible de charger l'historique.");
+            } finally {
+                if (!cancelled) setHistoryLoading(false);
+            }
+        }, 250);
+        return () => {
+            cancelled = true;
+            clearTimeout(timer);
+        };
+    }, [workspaceView, historyPage, historyJournal, historyPeriod, historySearch]);
+
+    useEffect(() => () => {
+        if (pdfPreview.url) URL.revokeObjectURL(pdfPreview.url);
+    }, [pdfPreview.url]);
 
     // Disparaître les notifications après 2 secondes
     useEffect(() => {
@@ -241,6 +298,7 @@ function RapprochementBancaire({ navigationTarget }) {
             setResult(data);
             setSuccess('Rapprochement effectué avec succès.');
             setStep(2);
+            setHistoryPage(1);
         } catch (err) {
             setError(err.message || 'Une erreur est survenue lors du rapprochement.');
         } finally {
@@ -260,34 +318,72 @@ function RapprochementBancaire({ navigationTarget }) {
         setStep(1);
     };
 
-    const handleExportPdf = async () => {
-        if (!result || exportingPdf) return;
+    const closePdfPreview = () => {
+        setPdfPreview({ open: false, url: '', blob: null, filename: '' });
+    };
+
+    const openPdfPreview = async (resultToExport = result) => {
+        if (!resultToExport || exportingPdf) return;
 
         setError('');
         setSuccess('');
         setExportingPdf(true);
         try {
             const pdfBlob = await ApiService.exportReconciliationPdf({
-                result,
-                sage_filename: sageFile?.name || result.context?.sage_filename || null,
-                bank_filename: bankFile?.name || result.context?.bank_filename || null,
+                result: resultToExport,
+                sage_filename: sageFile?.name || resultToExport.context?.sage_filename || null,
+                bank_filename: bankFile?.name || resultToExport.context?.bank_filename || null,
             });
-            const downloadUrl = URL.createObjectURL(pdfBlob);
-            const link = document.createElement('a');
-            link.href = downloadUrl;
-            const contextSuffix = result.context
-                ? `${result.context.bank_journal}_${result.context.period}`
+            const previewUrl = URL.createObjectURL(pdfBlob);
+            const contextSuffix = resultToExport.context
+                ? `${resultToExport.context.bank_journal}_${resultToExport.context.period}`
                 : new Date().toISOString().slice(0, 10);
-            link.download = `rapprochement_bancaire_${contextSuffix}.pdf`;
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(downloadUrl);
-            setSuccess('Le rapport PDF a été généré avec succès.');
+            setPdfPreview({
+                open: true,
+                url: previewUrl,
+                blob: pdfBlob,
+                filename: `rapprochement_bancaire_${contextSuffix}.pdf`,
+            });
         } catch (err) {
-            setError(err.message || 'Une erreur est survenue lors de l’export PDF.');
+            setError(err.message || 'Une erreur est survenue lors de la prévisualisation du PDF.');
         } finally {
             setExportingPdf(false);
+        }
+    };
+
+    const downloadPreviewedPdf = () => {
+        if (!pdfPreview.blob) return;
+        const link = document.createElement('a');
+        link.href = pdfPreview.url;
+        link.download = pdfPreview.filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setSuccess('Le rapport PDF a été téléchargé avec succès.');
+        closePdfPreview();
+    };
+
+    const openHistoryResult = async (resultId, previewPdf = false) => {
+        setLoading(true);
+        setError('');
+        try {
+            const data = await ApiService.getReconciliationResult(resultId);
+            if (previewPdf) {
+                await openPdfPreview(data);
+                return;
+            }
+            setResult(data);
+            setBankJournal(data.context?.bank_journal || '');
+            setPeriod(data.context?.period || period);
+            setActiveTab('reconciled');
+            setFilterQuery('');
+            setStep(2);
+            setWorkspaceView('new');
+            setSuccess('Le rapprochement sélectionné a été chargé.');
+        } catch (err) {
+            setError(err.message || 'Impossible de charger ce rapprochement.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -537,19 +633,94 @@ function RapprochementBancaire({ navigationTarget }) {
         </form>
     );
 
+    const renderHistory = () => (
+        <section className="reco-history" aria-labelledby="reco-history-title">
+            <div className="reco-history-header">
+                <div>
+                    <span className="reco-opening-eyebrow">Traçabilité</span>
+                    <h3 id="reco-history-title">Rapprochements réalisés</h3>
+                    <p>Retrouvez, consultez et rééditez les analyses enregistrées.</p>
+                </div>
+                <span className="reco-history-count">{history.total} résultat{history.total > 1 ? 's' : ''}</span>
+            </div>
+            <div className="reco-history-filters">
+                <label className="reco-search-field">
+                    <FiSearch aria-hidden="true" />
+                    <input
+                        type="search"
+                        value={historySearch}
+                        onChange={(event) => { setHistorySearch(event.target.value); setHistoryPage(1); }}
+                        placeholder="Fichier, compte ou utilisateur..."
+                        aria-label="Rechercher dans l'historique"
+                    />
+                </label>
+                <select value={historyJournal} onChange={(event) => { setHistoryJournal(event.target.value); setHistoryPage(1); }} aria-label="Filtrer par journal">
+                    <option value="">Tous les journaux</option>
+                    {bankAccounts.map((item) => <option key={item.journal} value={item.journal}>{item.journal} · {item.account_code}</option>)}
+                </select>
+                <input type="month" value={historyPeriod} onChange={(event) => { setHistoryPeriod(event.target.value); setHistoryPage(1); }} aria-label="Filtrer par période" />
+                {(historyJournal || historyPeriod || historySearch) && (
+                    <button type="button" className="btn btn-secondary" onClick={() => { setHistoryJournal(''); setHistoryPeriod(''); setHistorySearch(''); setHistoryPage(1); }}>
+                        Réinitialiser
+                    </button>
+                )}
+            </div>
+            <div className="reco-history-table-wrap">
+                <table className="reco-history-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th><th>Compte bancaire</th><th>Période</th><th>Fichiers analysés</th>
+                            <th>Automatisation</th><th>Écarts</th><th>Contrôle initial</th><th>Réalisé par</th><th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {historyLoading && <tr><td colSpan="9" className="reco-history-empty">Chargement de l’historique…</td></tr>}
+                        {!historyLoading && history.items.map((item) => (
+                            <tr key={item.id}>
+                                <td><strong>{new Date(item.created_at).toLocaleDateString('fr-FR')}</strong><small>{new Date(item.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</small></td>
+                                <td><strong>{item.bank_journal || '-'}</strong><small>{item.account_code || '-'}</small></td>
+                                <td>{item.period || '-'}</td>
+                                <td className="reco-history-files"><span title={item.sage_filename}>{item.sage_filename || '-'}</span><small title={item.bank_filename}>{item.bank_filename || '-'}</small></td>
+                                <td><strong>{Number(item.automation_rate || 0).toFixed(2)} %</strong><small>{item.auto_reconciled_count} rapprochement(s)</small></td>
+                                <td><strong className={item.discrepancies_count ? 'reco-text-warning' : 'reco-text-success'}>{item.discrepancies_count}</strong><small>{formatAmount(item.total_discrepancy_amount)} TND</small></td>
+                                <td><span className={`reco-history-status ${item.opening_status || 'unverifiable'}`}>{item.opening_status === 'conforme' ? 'Conforme' : item.opening_status === 'ecart' ? 'À vérifier' : 'Incomplet'}</span></td>
+                                <td>{item.created_by || '-'}</td>
+                                <td>
+                                    <div className="reco-history-actions">
+                                        <button type="button" className="reco-icon-button" title="Consulter" aria-label="Consulter le rapprochement" onClick={() => openHistoryResult(item.id)}><FiEye /></button>
+                                        {has('rapprochement_bancaire.export_pdf') && <button type="button" className="reco-icon-button" title="Prévisualiser le PDF" aria-label="Prévisualiser le PDF" onClick={() => openHistoryResult(item.id, true)}><FiFileText /></button>}
+                                    </div>
+                                </td>
+                            </tr>
+                        ))}
+                        {!historyLoading && history.items.length === 0 && <tr><td colSpan="9" className="reco-history-empty">Aucun rapprochement ne correspond aux critères.</td></tr>}
+                    </tbody>
+                </table>
+            </div>
+            {history.total_pages > 1 && (
+                <div className="reco-history-pagination">
+                    <button type="button" className="btn btn-secondary" disabled={historyPage <= 1} onClick={() => setHistoryPage((value) => value - 1)}>Précédent</button>
+                    <span>Page {history.page} sur {history.total_pages}</span>
+                    <button type="button" className="btn btn-secondary" disabled={historyPage >= history.total_pages} onClick={() => setHistoryPage((value) => value + 1)}>Suivant</button>
+                </div>
+            )}
+        </section>
+    );
+
     const renderStep2 = () => (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+            <div className="reco-result-toolbar">
+                <div>
+                    <span>Résultat du rapprochement</span>
+                    <strong>{result.context?.bank_journal || '-'} · {result.context?.period || '-'}</strong>
+                </div>
+                <button type="button" className="btn btn-primary" onClick={() => openPdfPreview()} disabled={exportingPdf || !has('rapprochement_bancaire.export_pdf')}>
+                    {exportingPdf ? <><span className="spinner" /> Préparation…</> : <><FiDownload aria-hidden="true" /> EXPORT PDF</>}
+                </button>
+            </div>
             <OpeningBalanceControl context={result.context} formatAmount={formatAmount} />
 
-            {/* KPI CARDS */}
-            <div className="gd-kpi-row">
-                <KpiCard icon={<FiCreditCard />} label="Total Relevé Banque" color="neutral" value={result.stats.total_bank_movements} unit="mvmts" />
-                <KpiCard icon={<FiBookOpen />} label="Total Écritures Sage" color="neutral" value={result.stats.total_sage_movements} unit="lignes" />
-                <KpiCard icon={<FiCheckCircle />} label="Rapprochées Auto" color="success" value={result.stats.auto_reconciled_count} />
-                <KpiCard icon={<FiAlertTriangle />} label="Écarts de Montant" color="danger" value={result.stats.discrepancies_count} />
-                <KpiCard icon={<FiTrendingDown />} label="Montant des Écarts" color="primary" value={formatAmount(result.stats.total_discrepancy_amount)} unit="DT" />
-                <KpiCard icon={<FiZap />} label="Taux d'Automatisation" color="purple" value={`${result.stats.automation_rate}%`} />
-            </div>
+            <ReconciliationSummary stats={result.stats} formatAmount={formatAmount} />
 
             {/* Navigation Tabs and Search inside Results */}
             <div className="card shadow-sm" style={{ padding: '1.25rem' }}>
@@ -756,25 +927,6 @@ function RapprochementBancaire({ navigationTarget }) {
                 </div>
             </div>
             
-            {/* Step 2 Back Actions */}
-            <div className="form-actions" style={{ marginTop: '1.5rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
-                <button className="btn btn-secondary" onClick={handleReset}>
-                    Retour à l’import
-                </button>
-                <button className="btn btn-primary" onClick={handleExportPdf} disabled={exportingPdf || !has('rapprochement_bancaire.export_pdf')}>
-                    {exportingPdf ? (
-                        <>
-                            <span className="spinner" style={{ marginRight: '0.5rem' }} />
-                            Génération du PDF...
-                        </>
-                    ) : (
-                        <>
-                            <FiDownload aria-hidden="true" style={{ marginRight: '0.5rem' }} />
-                            Exporter les résultats en PDF
-                        </>
-                    )}
-                </button>
-            </div>
         </div>
     );
 
@@ -790,12 +942,47 @@ function RapprochementBancaire({ navigationTarget }) {
                 </div>,
                 document.body
             )}
+            {pdfPreview.open && ReactDOM.createPortal(
+                <div className="reco-pdf-modal" role="dialog" aria-modal="true" aria-labelledby="reco-pdf-title">
+                    <div className="reco-pdf-dialog">
+                        <div className="reco-pdf-header">
+                            <div>
+                                <span className="reco-opening-eyebrow">Aperçu avant export</span>
+                                <h3 id="reco-pdf-title">Rapport de rapprochement bancaire</h3>
+                            </div>
+                            <button type="button" className="reco-modal-close" onClick={closePdfPreview} aria-label="Fermer la prévisualisation"><FiX /></button>
+                        </div>
+                        <div className="reco-pdf-preview">
+                            <iframe src={pdfPreview.url} title="Prévisualisation du rapport PDF" />
+                        </div>
+                        <div className="reco-pdf-footer">
+                            <button type="button" className="btn btn-secondary" onClick={closePdfPreview}>Annuler</button>
+                            <button type="button" className="btn btn-primary" onClick={downloadPreviewedPdf}><FiDownload aria-hidden="true" /> Télécharger le PDF</button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
             
             <div className="card-header">
                 <h2 className="card-title">
                     Rapprochement Bancaire
                 </h2>
             </div>
+
+            <nav className="reco-workspace-tabs" aria-label="Vues du rapprochement bancaire">
+                <button
+                    type="button"
+                    className={workspaceView === 'new' ? 'active' : ''}
+                    onClick={() => {
+                        handleReset();
+                        setWorkspaceView('new');
+                    }}
+                >
+                    Nouveau rapprochement
+                </button>
+                <button type="button" className={workspaceView === 'history' ? 'active' : ''} onClick={() => setWorkspaceView('history')}>Historique</button>
+            </nav>
 
             <div style={{ padding: '1.5rem' }}>
                 {success && (
@@ -805,8 +992,9 @@ function RapprochementBancaire({ navigationTarget }) {
                     <div className="alert alert-danger slide-down" style={{ marginBottom: '1.5rem' }}>{error}</div>
                 )}
 
-                {step === 1 && renderStep1()}
-                {step === 2 && renderStep2()}
+                {workspaceView === 'history' && renderHistory()}
+                {workspaceView === 'new' && step === 1 && renderStep1()}
+                {workspaceView === 'new' && step === 2 && renderStep2()}
             </div>
         </div>
     );

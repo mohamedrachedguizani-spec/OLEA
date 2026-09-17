@@ -519,6 +519,19 @@ class ApiService {
         return response.blob();
     }
 
+    static async getReconciliationHistory({ page = 1, pageSize = 10, journal = '', period = '', search = '' } = {}) {
+        const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+        if (journal) params.set('journal', journal);
+        if (period) params.set('period', period);
+        if (search) params.set('search', search);
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/results?${params.toString()}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: "Erreur lors du chargement de l'historique" }));
+            throw new Error(err.detail || "Erreur lors du chargement de l'historique");
+        }
+        return response.json();
+    }
+
     
     // ===================== Configuration =====================
 

@@ -1,9 +1,11 @@
 from datetime import datetime
 from html import escape
 from io import BytesIO
+from pathlib import Path
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
+from reportlab.lib.utils import ImageReader
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
@@ -19,13 +21,14 @@ from reportlab.platypus import (
 from modules.rapprochement_bancaire.models import ReconciliationPdfRequest
 
 
-OLEA_GREEN = colors.HexColor("#4F5D2F")
-OLEA_GREEN_LIGHT = colors.HexColor("#E9ECDD")
-OLEA_TERRACOTTA = colors.HexColor("#B85C38")
-TEXT = colors.HexColor("#27312A")
+OLEA_TERRACOTTA = colors.HexColor("#B4482B")
+OLEA_TERRACOTTA_LIGHT = colors.HexColor("#F8ECE8")
+OLEA_AMBER = colors.HexColor("#F5AC3B")
+TEXT = colors.HexColor("#30343A")
 MUTED = colors.HexColor("#667085")
-GRID = colors.HexColor("#D9DED5")
-ROW_ALT = colors.HexColor("#F7F8F5")
+GRID = colors.HexColor("#E1E3E5")
+ROW_ALT = colors.HexColor("#F8F8F7")
+LOGO_PATH = Path(__file__).with_name("olea-logo.png")
 
 
 def _text(value, fallback="-"):
@@ -59,7 +62,7 @@ def _table(title, headers, rows, widths, styles):
     body = [[_paragraph(cell, styles["table_cell"]) for cell in row] for row in rows]
     table = Table([header, *body], colWidths=widths, repeatRows=1, hAlign="LEFT")
     table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), OLEA_GREEN),
+        ("BACKGROUND", (0, 0), (-1, 0), OLEA_TERRACOTTA),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("GRID", (0, 0), (-1, -1), 0.35, GRID),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -74,17 +77,152 @@ def _table(title, headers, rows, widths, styles):
     return [KeepTogether([title_block, table]), Spacer(1, 6 * mm)]
 
 
+def _unmatched_statement(result, context, sage_closing, bank_closing, period_end, styles):
+    """Présente le rapprochement selon les conventions débit/crédit des deux sources."""
+    accounting_debit = max(sage_closing or 0, 0)
+    accounting_credit = max(-(sage_closing or 0), 0)
+    bank_debit = max(-(bank_closing or 0), 0)
+    bank_credit = max(bank_closing or 0, 0)
+
+    data = [
+        [
+            Paragraph("ÉLÉMENTS", styles["statement_side"]),
+            Paragraph("OPÉRATIONS COMPTABLES (SAGE)", styles["statement_side"]), "",
+            Paragraph("RELEVÉ BANCAIRE", styles["statement_side"]), "",
+        ],
+        [
+            "", Paragraph("Débit (+)", styles["table_header"]),
+            Paragraph("Crédit (-)", styles["table_header"]),
+            Paragraph("Débit (-)", styles["table_header"]),
+            Paragraph("Crédit (+)", styles["table_header"]),
+        ],
+        [
+            Paragraph(f"Soldes au {_date(period_end)}", styles["statement_total"]),
+            _paragraph(_money(accounting_debit), styles["statement_amount"]) if accounting_debit else "",
+            _paragraph(_money(accounting_credit), styles["statement_amount"]) if accounting_credit else "",
+            _paragraph(_money(bank_debit), styles["statement_amount"]) if bank_debit else "",
+            _paragraph(_money(bank_credit), styles["statement_amount"]) if bank_credit else "",
+        ],
+    ]
+
+    # Les mouvements banque absents de SAGE corrigent le solde comptable.
+    for item in result.bank_only:
+        if item.amount >= 0:
+            accounting_debit += item.amount
+        else:
+            accounting_credit += abs(item.amount)
+        data.append([
+            _paragraph(
+                f"{_date(item.date_operation)} - {item.reference or 'Sans référence'} - {item.libelle}",
+                styles["table_cell"],
+            ),
+            _paragraph(_money(item.amount), styles["statement_amount"]) if item.amount > 0 else "",
+            _paragraph(_money(abs(item.amount)), styles["statement_amount"]) if item.amount < 0 else "",
+            "", "",
+        ])
+
+    # Les écritures SAGE absentes du relevé corrigent le solde bancaire.
+    for item in result.sage_only:
+        if item.amount >= 0:
+            bank_credit += item.amount
+        else:
+            bank_debit += abs(item.amount)
+        data.append([
+            _paragraph(
+                f"{_date(item.date_ecriture)} - {item.reference_piece or item.numero_piece} - {item.libelle_ecriture}",
+                styles["table_cell"],
+            ),
+            "", "",
+            _paragraph(_money(abs(item.amount)), styles["statement_amount"]) if item.amount < 0 else "",
+            _paragraph(_money(item.amount), styles["statement_amount"]) if item.amount > 0 else "",
+        ])
+
+    total_row = len(data)
+    data.append([
+        Paragraph("Totaux partiels", styles["statement_total"]),
+        _paragraph(_money(accounting_debit), styles["statement_amount"]),
+        _paragraph(_money(accounting_credit), styles["statement_amount"]),
+        _paragraph(_money(bank_debit), styles["statement_amount"]),
+        _paragraph(_money(bank_credit), styles["statement_amount"]),
+    ])
+
+    adjusted_sage = context.adjusted_sage_balance
+    adjusted_bank = context.adjusted_bank_balance
+    if adjusted_sage is None and sage_closing is not None:
+        adjusted_sage = accounting_debit - accounting_credit
+    if adjusted_bank is None and bank_closing is not None:
+        adjusted_bank = bank_credit - bank_debit
+    reconciled_row = len(data)
+    sage_debit = adjusted_sage if adjusted_sage is not None and adjusted_sage >= 0 else None
+    sage_credit = abs(adjusted_sage) if adjusted_sage is not None and adjusted_sage < 0 else None
+    statement_bank_debit = abs(adjusted_bank) if adjusted_bank is not None and adjusted_bank < 0 else None
+    statement_bank_credit = adjusted_bank if adjusted_bank is not None and adjusted_bank >= 0 else None
+    data.append([
+        Paragraph("Solde rapproché", styles["statement_total"]),
+        _paragraph(_money(sage_debit), styles["statement_amount"]) if sage_debit is not None else "",
+        _paragraph(_money(sage_credit), styles["statement_amount"]) if sage_credit is not None else "",
+        _paragraph(_money(statement_bank_debit), styles["statement_amount"]) if statement_bank_debit is not None else "",
+        _paragraph(_money(statement_bank_credit), styles["statement_amount"]) if statement_bank_credit is not None else "",
+    ])
+
+    table = Table(data, colWidths=[125*mm, 34*mm, 34*mm, 34*mm, 34*mm], repeatRows=2, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("SPAN", (1, 0), (2, 0)), ("SPAN", (3, 0), (4, 0)),
+        ("BACKGROUND", (0, 0), (2, 0), OLEA_TERRACOTTA_LIGHT),
+        ("BACKGROUND", (3, 0), (4, 0), colors.HexColor("#FFF3DD")),
+        ("BACKGROUND", (0, 1), (-1, 1), OLEA_TERRACOTTA),
+        ("TEXTCOLOR", (0, 1), (-1, 1), colors.white),
+        ("BACKGROUND", (0, 2), (-1, 2), ROW_ALT),
+        ("BACKGROUND", (0, total_row), (-1, total_row), ROW_ALT),
+        ("BACKGROUND", (0, reconciled_row), (-1, reconciled_row), OLEA_TERRACOTTA_LIGHT),
+        ("LINEBEFORE", (3, 0), (3, -1), 1.2, OLEA_AMBER),
+        ("GRID", (0, 0), (-1, -1), 0.35, GRID),
+        ("LINEABOVE", (0, 0), (-1, 0), 1.2, OLEA_TERRACOTTA),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (-1, -1), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4), ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("ROWBACKGROUNDS", (0, 3), (-1, total_row - 1), [colors.white, ROW_ALT]),
+    ]))
+
+    residual = None if adjusted_sage is None or adjusted_bank is None else adjusted_sage - adjusted_bank
+    discrepancy_note = f" {len(result.discrepancies)} écart(s) de montant restent à valider." if result.discrepancies else ""
+    if residual is not None and abs(residual) <= 0.01 and not result.discrepancies:
+        note = f"Les deux soldes ajustés sont identiques à {_money(adjusted_sage)} TND. Le rapprochement est équilibré."
+        note_style = styles["statement_success"]
+    elif residual is not None:
+        note = f"Écart résiduel à justifier : {_money(abs(residual))} TND.{discrepancy_note}"
+        note_style = styles["statement_warning"]
+    else:
+        note = "Le solde rapproché ne peut pas être calculé : un solde de départ est manquant."
+        note_style = styles["statement_warning"]
+
+    return [
+        Paragraph("Tableau de l'état de rapprochement", styles["section"]),
+        table,
+        Spacer(1, 2.5 * mm),
+        Paragraph(note, note_style),
+        Spacer(1, 6 * mm),
+    ]
+
+
 def _page(canvas, doc):
     canvas.saveState()
     page_width, page_height = landscape(A4)
-    canvas.setStrokeColor(OLEA_GREEN)
-    canvas.setLineWidth(1)
-    canvas.line(doc.leftMargin, page_height - 12 * mm, page_width - doc.rightMargin, page_height - 12 * mm)
+    if LOGO_PATH.exists():
+        canvas.drawImage(
+            ImageReader(str(LOGO_PATH)), doc.leftMargin, page_height - 19 * mm,
+            width=31 * mm, height=13.3 * mm, preserveAspectRatio=True, mask="auto",
+        )
+    canvas.setStrokeColor(OLEA_TERRACOTTA)
+    canvas.setLineWidth(1.2)
+    canvas.line(doc.leftMargin, page_height - 21 * mm, page_width - doc.rightMargin, page_height - 21 * mm)
     canvas.setFont("Helvetica-Bold", 8)
-    canvas.setFillColor(OLEA_GREEN)
-    canvas.drawString(doc.leftMargin, page_height - 9 * mm, "OLEA - Rapprochement bancaire")
+    canvas.setFillColor(TEXT)
+    canvas.drawRightString(page_width - doc.rightMargin, page_height - 13 * mm, "RAPPROCHEMENT BANCAIRE")
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(MUTED)
+    canvas.drawString(doc.leftMargin, 7 * mm, "Document généré par OLEA Finance")
     canvas.drawRightString(page_width - doc.rightMargin, 7 * mm, f"Page {doc.page}")
     canvas.restoreState()
 
@@ -99,7 +237,7 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
         pagesize=landscape(A4),
         rightMargin=12 * mm,
         leftMargin=12 * mm,
-        topMargin=18 * mm,
+        topMargin=27 * mm,
         bottomMargin=13 * mm,
         title="Résultats du rapprochement bancaire",
         author="OLEA",
@@ -109,7 +247,7 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
     styles = {
         "title": ParagraphStyle(
             "PdfTitle", parent=base["Title"], fontName="Helvetica-Bold",
-            fontSize=18, leading=22, textColor=OLEA_GREEN, alignment=TA_LEFT,
+            fontSize=18, leading=22, textColor=TEXT, alignment=TA_LEFT,
             spaceAfter=3 * mm,
         ),
         "subtitle": ParagraphStyle(
@@ -118,7 +256,7 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
         ),
         "section": ParagraphStyle(
             "PdfSection", parent=base["Heading2"], fontName="Helvetica-Bold",
-            fontSize=11, leading=14, textColor=OLEA_TERRACOTTA,
+            fontSize=10.5, leading=14, textColor=OLEA_TERRACOTTA,
             spaceBefore=2 * mm, spaceAfter=2 * mm,
         ),
         "table_header": ParagraphStyle(
@@ -149,11 +287,42 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
             "PdfContextValue", parent=base["Normal"], fontName="Helvetica-Bold",
             fontSize=8.5, leading=10, textColor=TEXT,
         ),
+        "document_ref": ParagraphStyle(
+            "PdfDocumentRef", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=7, leading=9, textColor=OLEA_TERRACOTTA,
+        ),
+        "statement_side": ParagraphStyle(
+            "PdfStatementSide", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=7.2, leading=9, textColor=TEXT,
+        ),
+        "statement_total": ParagraphStyle(
+            "PdfStatementTotal", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=6.4, leading=8, textColor=TEXT,
+        ),
+        "statement_amount": ParagraphStyle(
+            "PdfStatementAmount", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=6.4, leading=8, textColor=TEXT, alignment=2,
+        ),
+        "statement_success": ParagraphStyle(
+            "PdfStatementSuccess", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=8, leading=11, textColor=colors.HexColor("#25714A"),
+            leftIndent=2 * mm,
+        ),
+        "statement_warning": ParagraphStyle(
+            "PdfStatementWarning", parent=base["Normal"], fontName="Helvetica-Bold",
+            fontSize=8, leading=11, textColor=OLEA_TERRACOTTA,
+            leftIndent=2 * mm,
+        ),
     }
 
     generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
     story = [
-        Paragraph("Résultats du rapprochement bancaire", styles["title"]),
+        Paragraph("Rapport de rapprochement bancaire", styles["title"]),
+        Paragraph(
+            f"RAPPORT DE CONTRÔLE · ÉDITÉ LE {generated_at.upper()}",
+            styles["document_ref"],
+        ),
+        Spacer(1, 3 * mm),
     ]
 
     if context:
@@ -173,9 +342,10 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
         ]
         context_table = Table(context_data, colWidths=[65 * mm] * 4)
         context_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), OLEA_GREEN_LIGHT),
-            ("BOX", (0, 0), (-1, -1), 0.7, OLEA_GREEN),
-            ("INNERGRID", (0, 0), (-1, -1), 0.3, GRID),
+            ("BACKGROUND", (0, 0), (-1, 0), OLEA_TERRACOTTA_LIGHT),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.5, GRID),
+            ("LINEBEFORE", (1, 0), (-1, -1), 0.35, GRID),
+            ("LINEABOVE", (0, 0), (-1, 0), 1.2, OLEA_TERRACOTTA),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LEFTPADDING", (0, 0), (-1, -1), 6),
             ("RIGHTPADDING", (0, 0), (-1, -1), 6),
@@ -195,7 +365,6 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
         bank_opening = context.bank_opening.amount
         sage_closing = None if sage_opening is None else sage_opening + stats.sage_total_debit - stats.sage_total_credit
         bank_closing = None if bank_opening is None else bank_opening + stats.bank_total_credit - stats.bank_total_debit
-        closing_difference = None if sage_closing is None or bank_closing is None else bank_closing - sage_closing
         status_label = {
             "conforme": "Conforme",
             "ecart": "Écart à vérifier",
@@ -206,9 +375,6 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
             ["Solde de départ banque", _money(bank_opening) if bank_opening is not None else "Non détecté"],
             ["Écart initial (Banque - SAGE)", _money(context.opening_difference) if context.opening_difference is not None else "Non calculable"],
             ["Statut du contrôle initial", status_label],
-            ["Solde comptable théorique fin", _money(sage_closing) if sage_closing is not None else "Non calculable"],
-            ["Solde bancaire théorique fin", _money(bank_closing) if bank_closing is not None else "Non calculable"],
-            ["Écart théorique fin", _money(closing_difference) if closing_difference is not None else "Non calculable"],
         ]
         balance_table = Table(
             [[Paragraph(escape(label), styles["table_cell"]), Paragraph(escape(str(value)), styles["context_value"])] for label, value in balance_rows],
@@ -216,9 +382,10 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
             hAlign="LEFT",
         )
         balance_table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), ROW_ALT),
-            ("BOX", (0, 0), (-1, -1), 0.5, GRID),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, GRID),
+            ("ROWBACKGROUNDS", (0, 0), (-1, -1), [colors.white, ROW_ALT]),
+            ("LINEBELOW", (0, 0), (-1, -2), 0.35, GRID),
+            ("LINEBEFORE", (1, 0), (1, -1), 0.35, GRID),
+            ("LINEABOVE", (0, 0), (-1, 0), 1.2, OLEA_TERRACOTTA),
             ("ALIGN", (1, 0), (1, -1), "RIGHT"),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
             ("LEFTPADDING", (0, 0), (-1, -1), 5),
@@ -232,68 +399,25 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
             Spacer(1, 5 * mm),
         ])
 
-    summary_items = [
-        ("Mouvements banque", stats.total_bank_movements),
-        ("Écritures Sage", stats.total_sage_movements),
-        ("Rapprochés automatiquement", stats.auto_reconciled_count),
-        ("Écarts de montant", stats.discrepancies_count),
-        ("Montant total des écarts", f"{_money(stats.total_discrepancy_amount)} TND"),
-        ("Taux d’automatisation", f"{stats.automation_rate:.2f} %"),
-    ]
-    summary_data = [
-        [Paragraph(escape(label), styles["summary_label"]) for label, _ in summary_items],
-        [Paragraph(escape(str(value)), styles["summary_value"]) for _, value in summary_items],
-    ]
-    summary = Table(summary_data, colWidths=[43 * mm] * 6)
-    summary.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), OLEA_GREEN_LIGHT),
-        ("BOX", (0, 0), (-1, -1), 0.7, OLEA_GREEN),
-        ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.white),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 5),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-        ("TOPPADDING", (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
-    ]))
-    story.extend([summary, Spacer(1, 6 * mm)])
+    if context:
+        story.extend(_unmatched_statement(
+            result, context, sage_closing, bank_closing, context.period_end, styles
+        ))
 
     discrepancy_rows = [[
         _date(pair.sage.date_ecriture), pair.sage.libelle_ecriture, pair.sage.reference_piece,
         _money(pair.sage.amount), _date(pair.bank.date_operation), pair.bank.libelle,
         pair.bank.reference, _money(pair.bank.amount), _money(pair.difference),
     ] for pair in result.discrepancies]
-    story.extend(_table(
-        f"Écarts de montant ({len(discrepancy_rows)})",
-        ["Date Sage", "Libellé Sage", "Réf. Sage", "Montant Sage", "Date banque", "Libellé banque", "Réf. banque", "Montant banque", "Écart"],
-        discrepancy_rows,
-        [18*mm, 52*mm, 25*mm, 23*mm, 18*mm, 52*mm, 25*mm, 23*mm, 22*mm],
-        styles,
-    ))
+    if discrepancy_rows:
+        story.extend(_table(
+            f"Écarts de montant ({len(discrepancy_rows)})",
+            ["Date Sage", "Libellé Sage", "Réf. Sage", "Montant Sage", "Date banque", "Libellé banque", "Réf. banque", "Montant banque", "Écart"],
+            discrepancy_rows,
+            [18*mm, 52*mm, 25*mm, 23*mm, 18*mm, 52*mm, 25*mm, 23*mm, 22*mm],
+            styles,
+        ))
 
-    bank_only_rows = [[
-        _date(item.date_operation), item.reference, item.libelle,
-        _money(item.debit), _money(item.credit), _money(item.amount),
-    ] for item in result.bank_only]
-    story.extend(_table(
-        f"Mouvements présents uniquement en banque ({len(bank_only_rows)})",
-        ["Date", "Référence", "Libellé", "Débit", "Crédit", "Montant"],
-        bank_only_rows,
-        [24*mm, 35*mm, 116*mm, 30*mm, 30*mm, 30*mm],
-        styles,
-    ))
-
-    sage_only_rows = [[
-        _date(item.date_ecriture), item.journal, item.numero_piece,
-        item.reference_piece, item.libelle_ecriture, _money(item.debit),
-        _money(item.credit), _money(item.amount),
-    ] for item in result.sage_only]
-    story.extend(_table(
-        f"Écritures présentes uniquement dans Sage ({len(sage_only_rows)})",
-        ["Date", "Journal", "N° pièce", "Référence", "Libellé", "Débit", "Crédit", "Montant"],
-        sage_only_rows,
-        [20*mm, 18*mm, 25*mm, 30*mm, 92*mm, 25*mm, 25*mm, 25*mm],
-        styles,
-    ))
 
     document.build(story, onFirstPage=_page, onLaterPages=_page)
     buffer.seek(0)

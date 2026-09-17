@@ -132,6 +132,13 @@ def init_saisie_bancaire_tables():
                 compte_comptable VARCHAR(32) NULL,
                 periode DATE NULL,
                 result_json LONGTEXT NOT NULL,
+                total_bank_movements INT NULL,
+                total_sage_movements INT NULL,
+                auto_reconciled_count INT NULL,
+                discrepancies_count INT NULL,
+                total_discrepancy_amount DECIMAL(18,3) NULL,
+                automation_rate DECIMAL(7,2) NULL,
+                opening_status VARCHAR(32) NULL,
                 created_by_user_id INT NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 INDEX idx_bank_reco_result_created (created_at),
@@ -144,6 +151,13 @@ def init_saisie_bancaire_tables():
             ("compte_banque", "VARCHAR(32) NULL"),
             ("compte_comptable", "VARCHAR(32) NULL"),
             ("periode", "DATE NULL"),
+            ("total_bank_movements", "INT NULL"),
+            ("total_sage_movements", "INT NULL"),
+            ("auto_reconciled_count", "INT NULL"),
+            ("discrepancies_count", "INT NULL"),
+            ("total_discrepancy_amount", "DECIMAL(18,3) NULL"),
+            ("automation_rate", "DECIMAL(7,2) NULL"),
+            ("opening_status", "VARCHAR(32) NULL"),
         ]:
             cursor.execute(
                 """

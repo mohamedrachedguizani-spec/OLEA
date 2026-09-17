@@ -1,9 +1,10 @@
 import os
 import json
+import math
 from calendar import monthrange
 from datetime import date
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from modules.auth.dependencies import require_permission_code
@@ -16,6 +17,7 @@ from modules.rapprochement_bancaire.models import (
     ReconciliationContext,
     ReconciliationPdfRequest,
     ReconciliationResult,
+    ReconciliationHistoryResponse,
 )
 from modules.rapprochement_bancaire.pdf_export import build_reconciliation_pdf
 from modules.rapprochement_bancaire.constants import BANK_JOURNAL_ACCOUNTS
@@ -25,6 +27,7 @@ from modules.rapprochement_bancaire.service import (
     parse_sage_file,
     parse_bank_file,
     reconcile,
+    calculate_reconciliation_balances,
 )
 
 router = APIRouter(
@@ -118,6 +121,9 @@ def compare_files(
     if sage_opening.amount is not None and bank_opening.amount is not None:
         opening_difference = round(bank_opening.amount - sage_opening.amount, 3)
         opening_status = "conforme" if abs(opening_difference) <= 0.01 else "ecart"
+    balance_control = calculate_reconciliation_balances(
+        result, sage_opening.amount, bank_opening.amount
+    )
     result.context = ReconciliationContext(
         bank_journal=normalized_journal,
         account_code=account_code,
@@ -130,13 +136,16 @@ def compare_files(
         bank_opening=bank_opening,
         opening_difference=opening_difference,
         opening_status=opening_status,
+        **balance_control,
     )
 
     with db.get_cursor() as cursor:
         cursor.execute(
             "INSERT INTO bank_reconciliation_results "
-            "(sage_file_name, bank_file_name, compte_banque, compte_comptable, periode, result_json, created_by_user_id) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s)",
+            "(sage_file_name, bank_file_name, compte_banque, compte_comptable, periode, result_json, "
+            "total_bank_movements, total_sage_movements, auto_reconciled_count, discrepancies_count, "
+            "total_discrepancy_amount, automation_rate, opening_status, created_by_user_id) "
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 sage_file.filename,
                 bank_file.filename,
@@ -144,10 +153,18 @@ def compare_files(
                 account_code,
                 period_start,
                 result.model_dump_json() if hasattr(result, "model_dump_json") else result.json(),
+                result.stats.total_bank_movements,
+                result.stats.total_sage_movements,
+                result.stats.auto_reconciled_count,
+                result.stats.discrepancies_count,
+                result.stats.total_discrepancy_amount,
+                result.stats.automation_rate,
+                opening_status,
                 user["id"],
             ),
         )
         reconciliation_id = int(cursor.lastrowid)
+    result.id = reconciliation_id
 
     # Enregistrer dans l'audit log
     log_audit_action(
@@ -206,6 +223,89 @@ def compare_files(
     return result
 
 
+@router.get("/rapprochement/results", response_model=ReconciliationHistoryResponse)
+def list_reconciliation_results(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=100),
+    journal: str | None = Query(None),
+    period: str | None = Query(None),
+    search: str | None = Query(None),
+    _user: dict = Depends(require_permission_code("rapprochement_bancaire.run")),
+):
+    """Liste paginée des rapprochements réalisés, avec synthèse et auteur."""
+    clauses = []
+    params = []
+    if journal:
+        clauses.append("r.compte_banque = %s")
+        params.append(journal.strip().upper())
+    if period:
+        try:
+            year, month = (int(part) for part in period.split("-", 1))
+            period_start = date(year, month, 1)
+        except (TypeError, ValueError):
+            raise HTTPException(status_code=400, detail="La période doit être au format AAAA-MM.")
+        clauses.append("r.periode = %s")
+        params.append(period_start)
+    if search:
+        like = f"%{search.strip()}%"
+        clauses.append(
+            "(r.sage_file_name LIKE %s OR r.bank_file_name LIKE %s OR "
+            "r.compte_banque LIKE %s OR r.compte_comptable LIKE %s OR "
+            "u.username LIKE %s OR u.full_name LIKE %s)"
+        )
+        params.extend([like] * 6)
+
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    offset = (page - 1) * page_size
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            f"SELECT COUNT(*) AS total FROM bank_reconciliation_results r "
+            f"LEFT JOIN users u ON u.id = r.created_by_user_id {where}",
+            tuple(params),
+        )
+        total = int(cursor.fetchone()["total"])
+        cursor.execute(
+            "SELECT r.*, COALESCE(NULLIF(u.full_name, ''), u.username) AS created_by "
+            "FROM bank_reconciliation_results r "
+            f"LEFT JOIN users u ON u.id = r.created_by_user_id {where} "
+            "ORDER BY r.created_at DESC, r.id DESC LIMIT %s OFFSET %s",
+            tuple([*params, page_size, offset]),
+        )
+        rows = cursor.fetchall()
+
+    items = []
+    for row in rows:
+        raw = row.get("result_json")
+        stored = json.loads(raw) if isinstance(raw, str) else (raw or {})
+        stats = stored.get("stats") or {}
+        context = stored.get("context") or {}
+        period_value = row.get("periode")
+        items.append({
+            "id": row["id"],
+            "bank_journal": row.get("compte_banque") or context.get("bank_journal"),
+            "account_code": row.get("compte_comptable") or context.get("account_code"),
+            "period": period_value.strftime("%Y-%m") if period_value else context.get("period"),
+            "sage_filename": row.get("sage_file_name") or context.get("sage_filename"),
+            "bank_filename": row.get("bank_file_name") or context.get("bank_filename"),
+            "total_bank_movements": row.get("total_bank_movements") if row.get("total_bank_movements") is not None else stats.get("total_bank_movements", 0),
+            "total_sage_movements": row.get("total_sage_movements") if row.get("total_sage_movements") is not None else stats.get("total_sage_movements", 0),
+            "auto_reconciled_count": row.get("auto_reconciled_count") if row.get("auto_reconciled_count") is not None else stats.get("auto_reconciled_count", 0),
+            "discrepancies_count": row.get("discrepancies_count") if row.get("discrepancies_count") is not None else stats.get("discrepancies_count", 0),
+            "total_discrepancy_amount": float(row.get("total_discrepancy_amount") if row.get("total_discrepancy_amount") is not None else stats.get("total_discrepancy_amount", 0)),
+            "automation_rate": float(row.get("automation_rate") if row.get("automation_rate") is not None else stats.get("automation_rate", 0)),
+            "opening_status": row.get("opening_status") or context.get("opening_status"),
+            "created_by": row.get("created_by"),
+            "created_at": row["created_at"],
+        })
+    return {
+        "items": items,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "total_pages": math.ceil(total / page_size) if total else 0,
+    }
+
+
 @router.get("/rapprochement/results/{result_id}", response_model=ReconciliationResult)
 def get_reconciliation_result(
     result_id: int,
@@ -221,7 +321,9 @@ def get_reconciliation_result(
     if not row:
         raise HTTPException(status_code=404, detail="Résultat de rapprochement introuvable")
     payload = row["result_json"]
-    return json.loads(payload) if isinstance(payload, str) else payload
+    result = json.loads(payload) if isinstance(payload, str) else payload
+    result["id"] = result_id
+    return result
 
 
 @router.post("/rapprochement/export-pdf")

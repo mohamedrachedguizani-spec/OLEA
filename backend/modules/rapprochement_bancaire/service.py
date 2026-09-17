@@ -313,6 +313,63 @@ def _extract_opening_date_from_line(line: str):
     return _parse_date(french_match.group(0)) if french_match else None
 
 
+def _extract_biat_positioned_opening(pdf) -> OpeningBalanceInfo:
+    """Détermine le signe du solde BIAT depuis sa colonne visuelle Débit/Crédit."""
+    for page in pdf.pages:
+        words = page.extract_words() or []
+        debit_headers = []
+        credit_headers = []
+        for word in words:
+            compact = _normalize_text(word.get("text")).replace(" ", "")
+            center = (float(word["x0"]) + float(word["x1"])) / 2
+            if compact in {"debit", "dbit"}:
+                debit_headers.append((float(word["top"]), center))
+            elif compact in {"credit", "crdit"}:
+                credit_headers.append((float(word["top"]), center))
+
+        for anchor in words:
+            if _normalize_text(anchor.get("text")) != "solde":
+                continue
+            line_words = sorted(
+                (word for word in words if abs(float(word["top"]) - float(anchor["top"])) <= 1.5),
+                key=lambda word: float(word["x0"]),
+            )
+            line = " ".join(str(word.get("text") or "") for word in line_words)
+            normalized = _normalize_text(line)
+            if not any(pattern in normalized for pattern in BANK_OPENING_LABELS):
+                continue
+            amount = _extract_opening_amount_from_line(line)
+            if amount == 0 or len(line_words) < 2:
+                continue
+
+            gaps = [
+                float(line_words[index]["x0"]) - float(line_words[index - 1]["x1"])
+                for index in range(1, len(line_words))
+            ]
+            amount_start = gaps.index(max(gaps)) + 1
+            amount_words = line_words[amount_start:]
+            amount_center = (
+                float(amount_words[0]["x0"]) + float(amount_words[-1]["x1"])
+            ) / 2
+            line_top = float(anchor["top"])
+            debit_candidates = [item for item in debit_headers if item[0] < line_top]
+            credit_candidates = [item for item in credit_headers if item[0] < line_top]
+            debit_center = min(debit_candidates, key=lambda item: line_top - item[0])[1] if debit_candidates else None
+            credit_center = min(credit_candidates, key=lambda item: line_top - item[0])[1] if credit_candidates else None
+            if debit_center is not None and (
+                credit_center is None or abs(amount_center - debit_center) <= abs(amount_center - credit_center)
+            ):
+                amount = -abs(amount)
+            elif credit_center is not None:
+                amount = abs(amount)
+            return OpeningBalanceInfo(
+                amount=round(amount, 3),
+                label=line.strip(),
+                balance_date=_extract_opening_date_from_line(line),
+            )
+    return OpeningBalanceInfo()
+
+
 def extract_bank_opening_balance(
     file_bytes: bytes,
     filename: str,
@@ -354,6 +411,11 @@ def extract_bank_opening_balance(
 
     if is_pdf:
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+            pdf_text = "\n".join((page.extract_text() or "") for page in pdf.pages)
+            if "biat" in _normalize_text(pdf_text):
+                positioned = _extract_biat_positioned_opening(pdf)
+                if positioned.amount is not None:
+                    return positioned
             for page in pdf.pages:
                 for line in (page.extract_text() or "").splitlines():
                     normalized = _normalize_text(line)
@@ -368,6 +430,51 @@ def extract_bank_opening_balance(
                         balance_date=_extract_opening_date_from_line(line),
                     )
     return OpeningBalanceInfo()
+
+
+def calculate_reconciliation_balances(
+    result: ReconciliationResult,
+    sage_opening: float | None,
+    bank_opening: float | None,
+) -> dict:
+    """Calcule les deux soldes ajustés selon le principe de rapprochement bancaire.
+
+    Les mouvements présents uniquement en banque corrigent le solde comptable.
+    Les écritures présentes uniquement dans SAGE corrigent le solde bancaire.
+    """
+    stats = result.stats
+    sage_closing = None
+    bank_closing = None
+    if sage_opening is not None:
+        sage_closing = sage_opening + stats.sage_total_debit - stats.sage_total_credit
+    if bank_opening is not None:
+        bank_closing = bank_opening + stats.bank_total_credit - stats.bank_total_debit
+
+    adjusted_sage = None if sage_closing is None else (
+        sage_closing + sum(item.amount for item in result.bank_only)
+    )
+    adjusted_bank = None if bank_closing is None else (
+        bank_closing + sum(item.amount for item in result.sage_only)
+    )
+    residual = None
+    if adjusted_sage is not None and adjusted_bank is not None:
+        residual = adjusted_sage - adjusted_bank
+
+    if residual is None:
+        status = "unverifiable"
+    elif abs(residual) <= 0.01 and not result.discrepancies:
+        status = "balanced"
+    else:
+        status = "difference"
+
+    return {
+        "sage_closing_balance": round(sage_closing, 3) if sage_closing is not None else None,
+        "bank_closing_balance": round(bank_closing, 3) if bank_closing is not None else None,
+        "adjusted_sage_balance": round(adjusted_sage, 3) if adjusted_sage is not None else None,
+        "adjusted_bank_balance": round(adjusted_bank, 3) if adjusted_bank is not None else None,
+        "residual_difference": round(residual, 3) if residual is not None else None,
+        "reconciliation_status": status,
+    }
 
 
 def reconcile(
