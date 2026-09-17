@@ -1,7 +1,8 @@
 import io
 import json
 import unicodedata
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 
 import pandas as pd
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -48,6 +49,7 @@ PNL_LINE_SPECS = [
     ("Resultat Net %", "resultat_net_pct", "pct"),
 ]
 PNL_KEYS = {k for _, k, _ in PNL_LINE_SPECS}
+REPORTING_LOGO_PATH = Path(__file__).resolve().parents[1] / "rapprochement_bancaire" / "olea-logo.png"
 
 
 def _export_label_key(value) -> str:
@@ -1128,8 +1130,9 @@ def export_reporting_excel(
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
             TITLE_ROW = 0
-            HEADER_ROW = 2
-            DATA_START_ROW = 3
+            META_ROW = 3
+            HEADER_ROW = 6
+            DATA_START_ROW = 7
 
             if include_executive_summary:
                 executive_df.to_excel(writer, sheet_name="Executive_Summary", index=False, startrow=HEADER_ROW)
@@ -1152,38 +1155,70 @@ def export_reporting_excel(
                 global_state_df.to_excel(writer, sheet_name="Etat_Globale", index=False, startrow=HEADER_ROW)
             if include_cycles:
                 cycles_df.to_excel(writer, sheet_name="Cycles", index=False, startrow=HEADER_ROW)
+            alert_blocks: list[tuple[int, pd.DataFrame]] = []
             if include_alerts:
                 alerts_start_row = HEADER_ROW
                 if not annual_alerts_df.empty:
                     annual_alerts_df.to_excel(writer, sheet_name="Alertes", index=False, startrow=alerts_start_row)
+                    alert_blocks.append((alerts_start_row, annual_alerts_df))
                     alerts_start_row += len(annual_alerts_df) + 3
                 if not monthly_alerts_df.empty:
                     monthly_alerts_df.to_excel(writer, sheet_name="Alertes", index=False, startrow=alerts_start_row)
+                    alert_blocks.append((alerts_start_row, monthly_alerts_df))
 
             workbook = writer.book
-            money_fmt = workbook.add_format({"num_format": "#,##0.000"})
-            positive_money_fmt = workbook.add_format({"num_format": "+#,##0.000;-#,##0.000;0.000"})
-            pct_fmt = workbook.add_format({"num_format": "0.000"})
-            header_fmt = workbook.add_format({"bold": True, "font_color": "#FFFFFF", "bg_color": "#1E3A8A", "border": 1, "align": "center"})
-            kpi_row_fmt = workbook.add_format({"bg_color": "#EEF2FF", "bold": True, "num_format": "#,##0.000"})
-            aggregate_row_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True, "num_format": "#,##0.000"})
-            aggregate_formula_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True, "font_color": "#000000", "num_format": "#,##0.000"})
-            aggregate_pct_formula_fmt = workbook.add_format({"bg_color": "#E0F2FE", "bold": True, "font_color": "#000000", "num_format": "0.000"})
-            linked_formula_fmt = workbook.add_format({"font_color": "#008000", "num_format": "#,##0.000"})
-            linked_pct_formula_fmt = workbook.add_format({"font_color": "#008000", "num_format": "0.000"})
-            subaggregate_row_fmt = workbook.add_format({"bg_color": "#F8FAFC", "num_format": "#,##0.000"})
-            pnl_products_fmt = workbook.add_format({"bg_color": "#ECFDF5", "num_format": "#,##0.000"})
-            pnl_charges_fmt = workbook.add_format({"bg_color": "#FEF2F2", "num_format": "#,##0.000"})
-            pnl_result_fmt = workbook.add_format({"bg_color": "#EFF6FF", "bold": True, "num_format": "#,##0.000"})
-            pnl_products_agg_fmt = workbook.add_format({"bg_color": "#ECFDF5", "bold": True, "num_format": "#,##0.000"})
-            pnl_charges_agg_fmt = workbook.add_format({"bg_color": "#FEF2F2", "bold": True, "num_format": "#,##0.000"})
-            pnl_result_agg_fmt = workbook.add_format({"bg_color": "#EFF6FF", "bold": True, "num_format": "#,##0.000"})
+            body_border = {"bottom": 1, "bottom_color": "#E1E3E5"}
+            body_fmt = workbook.add_format({
+                **body_border, "font_name": "Arial", "font_size": 10,
+                "font_color": "#30343A", "valign": "vcenter",
+            })
+            money_fmt = workbook.add_format({**body_border, "num_format": "#,##0.000;-#,##0.000;0.000"})
+            positive_money_fmt = workbook.add_format({**body_border, "num_format": "+#,##0.000;-#,##0.000;0.000"})
+            pct_fmt = workbook.add_format({**body_border, "num_format": "0.000"})
+            header_fmt = workbook.add_format({
+                "bold": True, "font_color": "#FFFFFF", "bg_color": "#B4482B",
+                "border": 1, "border_color": "#E5C9C0", "align": "center",
+                "valign": "vcenter", "text_wrap": True, "font_name": "Arial", "font_size": 10,
+            })
+            kpi_row_fmt = workbook.add_format({**body_border, "bg_color": "#F8ECE8", "bold": True, "num_format": "#,##0.000;-#,##0.000;0.000"})
+            aggregate_row_fmt = workbook.add_format({**body_border, "bg_color": "#FFF3DD", "bold": True, "num_format": "#,##0.000;-#,##0.000;0.000"})
+            aggregate_formula_fmt = workbook.add_format({**body_border, "bg_color": "#FFF3DD", "bold": True, "font_color": "#000000", "num_format": "#,##0.000;-#,##0.000;0.000"})
+            aggregate_pct_formula_fmt = workbook.add_format({**body_border, "bg_color": "#FFF3DD", "bold": True, "font_color": "#000000", "num_format": "0.000"})
+            linked_formula_fmt = workbook.add_format({**body_border, "font_color": "#008000", "num_format": "#,##0.000;-#,##0.000;0.000"})
+            linked_pct_formula_fmt = workbook.add_format({**body_border, "font_color": "#008000", "num_format": "0.000"})
+            subaggregate_row_fmt = workbook.add_format({**body_border, "bg_color": "#F8F8F7", "num_format": "#,##0.000;-#,##0.000;0.000"})
+            subaggregate_label_fmt = workbook.add_format({
+                **body_border, "bg_color": "#F8F8F7", "italic": True,
+                "font_color": "#667085", "font_name": "Arial", "font_size": 10,
+            })
+            pnl_products_fmt = workbook.add_format({**body_border, "bg_color": "#FFF8EA", "num_format": "#,##0.000;-#,##0.000;0.000"})
+            pnl_charges_fmt = workbook.add_format({**body_border, "bg_color": "#FCEBE6", "num_format": "#,##0.000;-#,##0.000;0.000"})
+            pnl_result_fmt = workbook.add_format({**body_border, "bg_color": "#F8ECE8", "bold": True, "num_format": "#,##0.000;-#,##0.000;0.000"})
+            pnl_products_agg_fmt = workbook.add_format({**body_border, "bg_color": "#FFF8EA", "bold": True, "num_format": "#,##0.000;-#,##0.000;0.000"})
+            pnl_charges_agg_fmt = workbook.add_format({**body_border, "bg_color": "#FCEBE6", "bold": True, "num_format": "#,##0.000;-#,##0.000;0.000"})
+            pnl_result_agg_fmt = workbook.add_format({**body_border, "bg_color": "#F8ECE8", "bold": True, "num_format": "#,##0.000;-#,##0.000;0.000"})
             title_fmt = workbook.add_format({
                 "bold": True,
-                "font_size": 13,
-                "font_color": "#1E3A8A",
+                "font_size": 16,
+                "font_color": "#30343A",
                 "align": "left",
                 "valign": "vcenter",
+                "font_name": "Arial",
+            })
+            report_label_fmt = workbook.add_format({
+                "bold": True, "font_size": 9, "font_color": "#B4482B",
+                "font_name": "Arial", "align": "left", "valign": "vcenter",
+            })
+            meta_label_fmt = workbook.add_format({
+                "bold": True, "font_size": 8, "font_color": "#667085",
+                "bg_color": "#F8ECE8", "top": 2, "top_color": "#B4482B",
+                "left": 1, "left_color": "#E5C9C0", "font_name": "Arial",
+            })
+            meta_value_fmt = workbook.add_format({
+                "bold": True, "font_size": 10, "font_color": "#30343A",
+                "bg_color": "#F8ECE8", "bottom": 1, "bottom_color": "#E5C9C0",
+                "left": 1, "left_color": "#E5C9C0", "font_name": "Arial",
+                "align": "left", "valign": "vcenter",
             })
 
             sheet_titles = {
@@ -1198,6 +1233,7 @@ def export_reporting_excel(
                 "Cycles": "Reporting Décisionnel — Statut des Cycles",
                 "Alertes": "Reporting Décisionnel — Alertes",
             }
+            generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
 
             for sheet_name in writer.sheets.keys():
                 ws = writer.sheets[sheet_name]
@@ -1223,24 +1259,79 @@ def export_reporting_excel(
                 elif sheet_name == "Alertes":
                     df_source = pd.concat([annual_alerts_df, monthly_alerts_df], ignore_index=True)
 
-                if df_source is not None and not df_source.empty:
+                max_col = max((len(df_source.columns) - 1) if (df_source is not None and not df_source.empty) else 3, 7)
+                ws.hide_gridlines(2)
+                ws.set_tab_color("#B4482B" if sheet_name == "Executive_Summary" else "#D9947E")
+                ws.set_default_row(18)
+                ws.set_row(TITLE_ROW, 31)
+                ws.set_row(1, 19)
+                ws.set_row(2, 7)
+                ws.set_row(META_ROW, 17)
+                ws.set_row(META_ROW + 1, 21)
+                ws.set_row(5, 8)
+                ws.set_row(HEADER_ROW, 26)
+                ws.set_landscape()
+                ws.set_paper(9)
+                ws.fit_to_pages(1, 0)
+                ws.set_margins(left=0.3, right=0.3, top=0.45, bottom=0.45)
+                ws.set_footer('&L&8Document généré par OLEA Finance&C&8Reporting décisionnel&R&8Page &P sur &N')
+
+                if REPORTING_LOGO_PATH.is_file():
+                    ws.insert_image(TITLE_ROW, 0, str(REPORTING_LOGO_PATH), {
+                        "x_scale": 0.14,
+                        "y_scale": 0.14,
+                        "x_offset": 2,
+                        "y_offset": 2,
+                        "object_position": 1,
+                        "description": "Logo OLEA",
+                    })
+
+                title_text = sheet_titles.get(sheet_name, "Reporting Décisionnel")
+                ws.merge_range(TITLE_ROW, 2, TITLE_ROW, max_col, title_text, title_fmt)
+                ws.merge_range(1, 2, 1, max_col, "RAPPORT DE PILOTAGE", report_label_fmt)
+
+                meta_blocks = (
+                    (0, 1, "EXERCICE", str(target_year)),
+                    (2, 3, "CYCLE", str(effective_budget_cycle)),
+                    (4, 7, "DATE D'ÉDITION", generated_at),
+                )
+                for start_col, end_col, label, value in meta_blocks:
+                    ws.merge_range(META_ROW, start_col, META_ROW, end_col, label, meta_label_fmt)
+                    ws.merge_range(META_ROW + 1, start_col, META_ROW + 1, end_col, value, meta_value_fmt)
+
+                if df_source is not None and not df_source.empty and sheet_name != "Alertes":
                     ws.autofilter(HEADER_ROW, 0, HEADER_ROW + len(df_source), max(len(df_source.columns) - 1, 0))
+                    for col_idx, column_name in enumerate(df_source.columns):
+                        ws.write(HEADER_ROW, col_idx, column_name, header_fmt)
+                    for ridx in range(DATA_START_ROW, DATA_START_ROW + len(df_source)):
+                        ws.set_row(ridx, 20)
+                        ws.conditional_format(ridx, 0, ridx, len(df_source.columns) - 1, {
+                            "type": "no_errors", "format": body_fmt,
+                        })
+                elif sheet_name == "Alertes":
+                    for alert_header_row, alert_df in alert_blocks:
+                        for col_idx, column_name in enumerate(alert_df.columns):
+                            ws.write(alert_header_row, col_idx, column_name, header_fmt)
+                        for ridx in range(alert_header_row + 1, alert_header_row + 1 + len(alert_df)):
+                            ws.set_row(ridx, 20)
+                            ws.conditional_format(ridx, 0, ridx, len(alert_df.columns) - 1, {
+                                "type": "no_errors", "format": body_fmt,
+                            })
 
                 ws.freeze_panes(DATA_START_ROW, 0)
-                ws.set_row(HEADER_ROW, 22, header_fmt)
                 ws.set_column(0, 0, 34)
-                ws.set_column(1, 30, 18, money_fmt)
-
-                title_text = sheet_titles.get(sheet_name)
-                if title_text:
-                    max_col = max((len(df_source.columns) - 1) if (df_source is not None and not df_source.empty) else 3, 3)
-                    ws.merge_range(TITLE_ROW, 0, TITLE_ROW, max_col, title_text, title_fmt)
+                ws.set_column(1, max_col, 18, body_fmt)
 
                 if df_source is not None and not df_source.empty:
                     for idx, col in enumerate(df_source.columns):
                         name = str(col).lower()
                         if "taux" in name or "%" in name:
                             ws.set_column(idx, idx, 16, pct_fmt)
+                        elif any(token in name for token in [
+                            "prévision", "réalisé", "reste budget", "écart",
+                            "montant", "solde", "forecast", "actual",
+                        ]):
+                            ws.set_column(idx, idx, 18, money_fmt)
                         elif any(token in name for token in ["nature", "indice", "alerte", "modèle", "agrégat", "sous-agrégat", "mois"]):
                             ws.set_column(idx, idx, 28)
 
@@ -1290,7 +1381,9 @@ def export_reporting_excel(
 
                     if sheet_name == "Executive_Summary":
                         for ridx in range(DATA_START_ROW, DATA_START_ROW + len(df_source)):
-                            ws.set_row(ridx, 20, kpi_row_fmt)
+                            ws.conditional_format(ridx, 0, ridx, len(df_source.columns) - 1, {
+                                "type": "no_errors", "format": kpi_row_fmt,
+                            })
 
                     if sheet_name in {"Forecast_Annuel_Detail", "Forecast_Mensuel_Detail", "PnL_Formate", "PnL_Formate_Selection", "PnL_Formate_Global", "Etat_Globale"}:
                         lvl_idx = [str(c).lower() for c in df_source.columns].index("niveau") if "Niveau" in df_source.columns else -1
@@ -1308,22 +1401,29 @@ def export_reporting_excel(
                         for ridx, row in enumerate(df_source.to_dict(orient="records"), start=DATA_START_ROW):
                             level = row.get("Niveau")
                             if level == "Agrégat":
-                                ws.set_row(ridx, 20, aggregate_row_fmt)
+                                ws.conditional_format(ridx, 0, ridx, len(df_source.columns) - 1, {
+                                    "type": "no_errors", "format": aggregate_row_fmt,
+                                })
                             elif level == "Sous-agrégat":
-                                ws.set_row(ridx, 20, subaggregate_row_fmt)
+                                ws.conditional_format(ridx, 0, ridx, len(df_source.columns) - 1, {
+                                    "type": "no_errors", "format": subaggregate_row_fmt,
+                                })
 
                             if sheet_name in {"PnL_Formate", "PnL_Formate_Selection", "PnL_Formate_Global"}:
                                 label = str(row.get("Libellé") or "").lower()
                                 is_agg = row.get("Niveau") == "Agrégat"
                                 if any(x in label for x in ["charges", "frais", "impot", "dotations"]):
-                                    ws.set_row(ridx, 20, pnl_charges_agg_fmt if is_agg else pnl_charges_fmt)
+                                    row_format = pnl_charges_agg_fmt if is_agg else pnl_charges_fmt
                                 elif any(x in label for x in ["résultat", "resultat", "ebitda", "profit"]):
-                                    ws.set_row(ridx, 20, pnl_result_agg_fmt if is_agg else pnl_result_fmt)
+                                    row_format = pnl_result_agg_fmt if is_agg else pnl_result_fmt
                                 else:
-                                    ws.set_row(ridx, 20, pnl_products_agg_fmt if is_agg else pnl_products_fmt)
+                                    row_format = pnl_products_agg_fmt if is_agg else pnl_products_fmt
+                                ws.conditional_format(ridx, 0, ridx, len(df_source.columns) - 1, {
+                                    "type": "no_errors", "format": row_format,
+                                })
 
                             if lvl_idx >= 0 and lib_idx >= 0 and row.get("Niveau") == "Sous-agrégat":
-                                ws.write(ridx, lib_idx, row.get("Libellé"), workbook.add_format({"italic": True, "font_color": "#334155"}))
+                                ws.write(ridx, lib_idx, row.get("Libellé"), subaggregate_label_fmt)
 
                 if sheet_name == "Etat_Globale" and df_source is not None and not df_source.empty:
                     cols = list(df_source.columns)
@@ -1360,6 +1460,13 @@ def export_reporting_excel(
                         ws.set_column(lv_idx, lv_idx, 14)
 
                     ws.freeze_panes(DATA_START_ROW, 3)
+
+                if sheet_name == "Alertes" and alert_blocks:
+                    last_row = max(start_row + len(alert_df) for start_row, alert_df in alert_blocks)
+                else:
+                    last_row = HEADER_ROW + (len(df_source) if df_source is not None else 0)
+                ws.repeat_rows(HEADER_ROW, HEADER_ROW)
+                ws.print_area(TITLE_ROW, 0, max(last_row, HEADER_ROW), max_col)
 
         output.seek(0)
         filename = f"Reporting_OLEA_{target_year}_{cycle_code}_M{selected_month:02d}.xlsx"

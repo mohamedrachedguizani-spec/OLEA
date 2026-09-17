@@ -1293,8 +1293,23 @@ class ApiService {
         printWindow.document.open();
         printWindow.document.write(html);
         printWindow.document.close();
-        printWindow.focus();
-        printWindow.print();
+        const triggerPrint = async () => {
+            const images = Array.from(printWindow.document.images || []);
+            await Promise.all(images.map((image) => {
+                if (image.complete) return Promise.resolve();
+                return new Promise((resolve) => {
+                    image.addEventListener('load', resolve, { once: true });
+                    image.addEventListener('error', resolve, { once: true });
+                });
+            }));
+            printWindow.focus();
+            printWindow.print();
+        };
+        if (printWindow.document.readyState === 'complete') {
+            await triggerPrint();
+        } else {
+            printWindow.addEventListener('load', triggerPrint, { once: true });
+        }
     }
 
     // ===================== NOTIFICATIONS =====================

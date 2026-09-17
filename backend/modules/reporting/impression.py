@@ -1,3 +1,4 @@
+import base64
 import html
 from datetime import datetime
 from io import BytesIO
@@ -11,11 +12,12 @@ from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.platypus import LongTable, PageBreak, Paragraph, SimpleDocTemplate, Spacer, TableStyle
+from reportlab.platypus import LongTable, PageBreak, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from modules.auth.dependencies import require_permission_code
+from modules.auth.dependencies import require_any_permission_code, require_permission_code
 from modules.forecast.engine import get_annual_comparison, get_comparison, get_cycle_status, get_subagregats
 from .router import (
     _build_annual_forecast_export_rows,
@@ -37,15 +39,25 @@ router = APIRouter(
     dependencies=[Depends(require_permission_code("reporting.read"))],
 )
 
-PDF_BLUE = colors.HexColor("#1E3A8A")
-PDF_BLUE_LIGHT = colors.HexColor("#E0F2FE")
-PDF_TEXT = colors.HexColor("#0F172A")
-PDF_MUTED = colors.HexColor("#64748B")
-PDF_GRID = colors.HexColor("#CBD5E1")
-PDF_SUB = colors.HexColor("#F8FAFC")
-PDF_PRODUCT = colors.HexColor("#ECFDF5")
-PDF_CHARGE = colors.HexColor("#FEF2F2")
-PDF_RESULT = colors.HexColor("#EFF6FF")
+PDF_PRIMARY = colors.HexColor("#B4482B")
+PDF_PRIMARY_LIGHT = colors.HexColor("#F8ECE8")
+PDF_AMBER_LIGHT = colors.HexColor("#FFF3DD")
+PDF_TEXT = colors.HexColor("#30343A")
+PDF_MUTED = colors.HexColor("#667085")
+PDF_GRID = colors.HexColor("#E1E3E5")
+PDF_SUB = colors.HexColor("#F8F8F7")
+PDF_PRODUCT = colors.HexColor("#FFF8EA")
+PDF_CHARGE = colors.HexColor("#FCEBE6")
+PDF_RESULT = colors.HexColor("#F8ECE8")
+PDF_LOGO_PATH = Path(__file__).resolve().parents[1] / "rapprochement_bancaire" / "olea-logo.png"
+
+
+def _logo_data_uri() -> str:
+    """Embed the shared OLEA logo so browser printing remains self-contained."""
+    if not PDF_LOGO_PATH.is_file():
+        return ""
+    encoded = base64.b64encode(PDF_LOGO_PATH.read_bytes()).decode("ascii")
+    return f"data:image/png;base64,{encoded}"
 
 
 def _register_pdf_arrow_font() -> str | None:
@@ -160,14 +172,37 @@ def _table_html(df: pd.DataFrame, sheet_name: str) -> str:
 
 
 def _build_print_html(title_map: dict[str, str], frames: list[tuple[str, pd.DataFrame]], year: int, cycle_code: str) -> str:
+    generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
+    logo_uri = _logo_data_uri()
+    logo = (
+        f'<img class="logo" src="{logo_uri}" alt="OLEA" />'
+        if logo_uri
+        else '<div class="logo-fallback">OLEA</div>'
+    )
     sections = []
     for sheet_name, df in frames:
         title = title_map.get(sheet_name, sheet_name)
         sections.append(
             f"""
             <section class=\"sheet\">
+                <header class=\"print-header\">
+                    {logo}
+                    <span>REPORTING DÉCISIONNEL</span>
+                </header>
+                <div class=\"report-heading\">
+                    <div>
+                        <div class=\"eyebrow\">RAPPORT DE PILOTAGE</div>
+                        <h1>Reporting décisionnel</h1>
+                    </div>
+                    <div class=\"meta-grid\">
+                        <div><small>EXERCICE</small><strong>{year}</strong></div>
+                        <div><small>CYCLE</small><strong>{html.escape(str(cycle_code))}</strong></div>
+                        <div><small>ÉDITÉ LE</small><strong>{generated_at}</strong></div>
+                    </div>
+                </div>
                 <h2>{html.escape(title)}</h2>
                 {_table_html(df, sheet_name)}
+                <footer>Document généré par OLEA Finance</footer>
             </section>
             """
         )
@@ -192,21 +227,33 @@ def _build_print_html(title_map: dict[str, str], frames: list[tuple[str, pd.Data
                 print-color-adjust: exact !important;
             }}
         }}
-    body {{ font-family: Arial, sans-serif; color: #0f172a; }}
-    .meta {{ margin-bottom: 14px; font-size: 12px; color: #334155; }}
-    .sheet {{ page-break-after: always; }}
+    body {{ margin: 0; font-family: Arial, sans-serif; color: #30343a; background: #fff; }}
+    .sheet {{ position: relative; min-height: 178mm; page-break-after: always; padding-bottom: 8mm; }}
     .sheet:last-child {{ page-break-after: auto; }}
-    h2 {{ margin: 0 0 10px 0; color: #1E3A8A; font-size: 18px; }}
+    .print-header {{ display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid #b4482b; padding-bottom: 7px; margin-bottom: 14px; }}
+    .print-header span {{ color: #30343a; font-size: 10px; font-weight: 700; letter-spacing: 1.2px; }}
+    .logo {{ display: block; width: 96px; height: auto; max-height: 44px; object-fit: contain; }}
+    .logo-fallback {{ color: #b4482b; font-size: 22px; font-weight: 800; }}
+    .report-heading {{ display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; margin-bottom: 17px; }}
+    .eyebrow {{ color: #b4482b; font-size: 9px; font-weight: 700; letter-spacing: 1.15px; margin-bottom: 3px; }}
+    h1 {{ margin: 0; color: #30343a; font-size: 22px; line-height: 1.2; }}
+    .meta-grid {{ display: grid; grid-template-columns: repeat(3, minmax(92px, auto)); background: #f8ece8; border-top: 3px solid #b4482b; }}
+    .meta-grid > div {{ display: flex; flex-direction: column; padding: 7px 10px; border-left: 1px solid #e5c9c0; }}
+    .meta-grid > div:first-child {{ border-left: 0; }}
+    .meta-grid small {{ color: #667085; font-size: 8px; font-weight: 700; letter-spacing: .55px; }}
+    .meta-grid strong {{ margin-top: 2px; font-size: 10px; white-space: nowrap; }}
+    h2 {{ margin: 0 0 9px; color: #b4482b; font-size: 15px; }}
     table {{ border-collapse: collapse; width: 100%; font-size: 11px; }}
-    th {{ background: #1E3A8A; color: #fff; border: 1px solid #cbd5e1; padding: 6px; text-align: left; }}
-    td {{ border: 1px solid #cbd5e1; padding: 5px; }}
-    .row-kpi td {{ background: #EEF2FF; font-weight: 700; }}
-    .row-agg td {{ background: #E0F2FE; font-weight: 700; }}
-    .row-sub td {{ background: #F8FAFC; }}
-    .row-produit td {{ background: #ECFDF5; }}
-    .row-charge td {{ background: #FEF2F2; }}
-    .row-result td {{ background: #EFF6FF; font-weight: 700; }}
-    .empty {{ color: #64748b; font-style: italic; padding: 8px 0; }}
+    th {{ background: #b4482b; color: #fff; border: 1px solid #b4482b; padding: 7px 6px; text-align: left; font-size: 9px; letter-spacing: .25px; }}
+    td {{ border: 1px solid #e1e3e5; padding: 6px; }}
+    tbody tr:nth-child(even) td {{ background: #fbfbfa; }}
+    .row-kpi td, .row-result td {{ background: #f8ece8 !important; font-weight: 700; }}
+    .row-agg td {{ background: #fff3dd !important; font-weight: 700; }}
+    .row-sub td {{ background: #f8f8f7 !important; }}
+    .row-produit td {{ background: #fff8ea !important; }}
+    .row-charge td {{ background: #fcebe6 !important; }}
+    .empty {{ color: #667085; font-style: italic; padding: 8px 0; }}
+    footer {{ position: absolute; bottom: 0; left: 0; right: 0; border-top: 1px solid #e1e3e5; padding-top: 5px; color: #667085; font-size: 8px; }}
   </style>
 </head>
 <body>
@@ -249,14 +296,29 @@ def _pdf_column_widths(headers: list[str], rows: list[list[str]], available_widt
 def _reporting_pdf_page(canvas, document):
     page_width, page_height = landscape(A4)
     canvas.saveState()
-    canvas.setStrokeColor(PDF_BLUE)
-    canvas.setLineWidth(0.8)
-    canvas.line(document.leftMargin, page_height - 11 * mm, page_width - document.rightMargin, page_height - 11 * mm)
+    if PDF_LOGO_PATH.is_file():
+        canvas.drawImage(
+            ImageReader(str(PDF_LOGO_PATH)),
+            document.leftMargin,
+            page_height - 19 * mm,
+            width=31 * mm,
+            height=13.3 * mm,
+            preserveAspectRatio=True,
+            mask="auto",
+        )
+    else:
+        canvas.setFont("Helvetica-Bold", 15)
+        canvas.setFillColor(PDF_PRIMARY)
+        canvas.drawString(document.leftMargin, page_height - 13 * mm, "OLEA")
+    canvas.setStrokeColor(PDF_PRIMARY)
+    canvas.setLineWidth(1.2)
+    canvas.line(document.leftMargin, page_height - 21 * mm, page_width - document.rightMargin, page_height - 21 * mm)
     canvas.setFont("Helvetica-Bold", 8)
-    canvas.setFillColor(PDF_BLUE)
-    canvas.drawString(document.leftMargin, page_height - 8 * mm, "OLEA - Reporting décisionnel")
+    canvas.setFillColor(PDF_TEXT)
+    canvas.drawRightString(page_width - document.rightMargin, page_height - 13 * mm, "REPORTING DÉCISIONNEL")
     canvas.setFont("Helvetica", 7)
     canvas.setFillColor(PDF_MUTED)
+    canvas.drawString(document.leftMargin, 7 * mm, "Document généré par OLEA Finance")
     canvas.drawRightString(page_width - document.rightMargin, 7 * mm, f"Page {document.page}")
     canvas.restoreState()
 
@@ -268,8 +330,8 @@ def _build_reporting_pdf(sections: list[dict], year: int, cycle_code: str) -> By
         pagesize=landscape(A4),
         leftMargin=10 * mm,
         rightMargin=10 * mm,
-        topMargin=16 * mm,
-        bottomMargin=12 * mm,
+        topMargin=27 * mm,
+        bottomMargin=13 * mm,
         title=f"Reporting OLEA {year}",
         author="OLEA",
     )
@@ -277,15 +339,11 @@ def _build_reporting_pdf(sections: list[dict], year: int, cycle_code: str) -> By
     styles = {
         "title": ParagraphStyle(
             "ReportingPdfTitle", parent=base["Title"], fontName="Helvetica-Bold",
-            fontSize=17, leading=21, alignment=TA_LEFT, textColor=PDF_BLUE, spaceAfter=2 * mm,
-        ),
-        "meta": ParagraphStyle(
-            "ReportingPdfMeta", parent=base["Normal"], fontName="Helvetica",
-            fontSize=8, leading=10, textColor=PDF_MUTED, spaceAfter=5 * mm,
+            fontSize=18, leading=22, alignment=TA_LEFT, textColor=PDF_TEXT, spaceAfter=4 * mm,
         ),
         "section": ParagraphStyle(
             "ReportingPdfSection", parent=base["Heading2"], fontName="Helvetica-Bold",
-            fontSize=12, leading=15, textColor=PDF_BLUE, spaceAfter=3 * mm,
+            fontSize=11, leading=14, textColor=PDF_PRIMARY, spaceAfter=3 * mm,
         ),
         "empty": ParagraphStyle(
             "ReportingPdfEmpty", parent=base["Normal"], fontName="Helvetica-Oblique",
@@ -293,14 +351,36 @@ def _build_reporting_pdf(sections: list[dict], year: int, cycle_code: str) -> By
         ),
     }
     generated_at = datetime.now().strftime("%d/%m/%Y à %H:%M")
-    story = [
-        Paragraph("Reporting décisionnel", styles["title"]),
-        Paragraph(
-            f"Exercice {year} &nbsp;&nbsp;|&nbsp;&nbsp; Cycle {html.escape(str(cycle_code))}"
-            f" &nbsp;&nbsp;|&nbsp;&nbsp; Généré le {generated_at}",
-            styles["meta"],
-        ),
-    ]
+    meta_label = ParagraphStyle(
+        "ReportingPdfMetaLabel", parent=base["Normal"], fontName="Helvetica-Bold",
+        fontSize=6.5, leading=8, textColor=PDF_MUTED,
+    )
+    meta_value = ParagraphStyle(
+        "ReportingPdfMetaValue", parent=base["Normal"], fontName="Helvetica-Bold",
+        fontSize=8.5, leading=10, textColor=PDF_TEXT,
+    )
+    meta_table = Table(
+        [
+            [Paragraph("EXERCICE", meta_label), Paragraph("CYCLE", meta_label),
+             Paragraph("DATE D'ÉDITION", meta_label), Paragraph("SECTIONS", meta_label)],
+            [Paragraph(str(year), meta_value), Paragraph(html.escape(str(cycle_code)), meta_value),
+             Paragraph(generated_at, meta_value), Paragraph(str(len(sections)), meta_value)],
+        ],
+        colWidths=[65 * mm] * 4,
+        hAlign="LEFT",
+    )
+    meta_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), PDF_PRIMARY_LIGHT),
+        ("LINEABOVE", (0, 0), (-1, 0), 2, PDF_PRIMARY),
+        ("LINEBEFORE", (1, 0), (-1, -1), 0.4, colors.HexColor("#E5C9C0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, 0), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, 0), 1),
+        ("TOPPADDING", (0, 1), (-1, 1), 1),
+        ("BOTTOMPADDING", (0, 1), (-1, 1), 6),
+    ]))
+    story = [Paragraph("Reporting décisionnel", styles["title"]), meta_table, Spacer(1, 6 * mm)]
     available_width = landscape(A4)[0] - document.leftMargin - document.rightMargin
 
     for section_index, section in enumerate(sections):
@@ -335,7 +415,7 @@ def _build_reporting_pdf(sections: list[dict], year: int, cycle_code: str) -> By
             hAlign="LEFT",
         )
         commands = [
-            ("BACKGROUND", (0, 0), (-1, 0), PDF_BLUE),
+            ("BACKGROUND", (0, 0), (-1, 0), PDF_PRIMARY),
             ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
             ("GRID", (0, 0), (-1, -1), 0.3, PDF_GRID),
             ("VALIGN", (0, 0), (-1, -1), "TOP"),
@@ -347,7 +427,7 @@ def _build_reporting_pdf(sections: list[dict], year: int, cycle_code: str) -> By
         ]
         row_colors = {
             "row-kpi": PDF_RESULT,
-            "row-agg": PDF_BLUE_LIGHT,
+            "row-agg": PDF_AMBER_LIGHT,
             "row-sub": PDF_SUB,
             "row-produit": PDF_PRODUCT,
             "row-charge": PDF_CHARGE,
@@ -386,7 +466,7 @@ def print_reporting_html(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
-    _user: dict = Depends(require_permission_code("reporting.read")),
+    _user: dict = Depends(require_permission_code("reporting.print")),
 ):
     try:
         if not any([
@@ -615,7 +695,9 @@ def preview_reporting_sections(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
-    _user: dict = Depends(require_permission_code("reporting.export_pdf")),
+    _user: dict = Depends(require_any_permission_code(
+        "reporting.export_pdf", "reporting.export_excel", "reporting.print"
+    )),
 ):
     try:
         if not any([
@@ -812,7 +894,12 @@ def preview_reporting_sections(
             alerts_df = pd.concat([annual_alerts_df, monthly_alerts_df], ignore_index=True)
             sections.append(_df_to_section(alerts_df, "Alertes", title_map["Alertes"]))
 
-        return {"sections": sections, "target_year": target_year, "cycle_code": effective_budget_cycle}
+        return {
+            "sections": sections,
+            "target_year": target_year,
+            "cycle_code": effective_budget_cycle,
+            "generated_at": datetime.now().strftime("%d/%m/%Y à %H:%M"),
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -838,7 +925,7 @@ def export_reporting_pdf(
     include_global_state: bool = Query(False),
     include_pnl_selected: bool = Query(False),
     include_pnl_global: bool = Query(False),
-    _user: dict = Depends(require_permission_code("reporting.print")),
+    _user: dict = Depends(require_permission_code("reporting.export_pdf")),
 ):
     try:
         preview = preview_reporting_sections(

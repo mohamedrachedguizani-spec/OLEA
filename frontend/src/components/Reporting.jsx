@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom';
 import { FiBarChart2, FiDownload, FiFileText, FiPrinter, FiX } from 'react-icons/fi';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import oleaLogo from '../assets/olea-logo.svg';
 import '../styles/Reporting.css';
 
 const CYCLE_OPTIONS = ['INITIAL', 'M03', 'M06', 'M08'];
@@ -357,9 +358,9 @@ function Reporting({ refreshTrigger = 0 }) {
             {error && <div className="reporting-error">{error}</div>}
 
             {showPreviewModal && previewSections && ReactDOM.createPortal(
-                <div className="csv-preview-modal">
+                <div className="csv-preview-modal reporting-preview-modal">
                     <div className="csv-preview-backdrop" onClick={handleCancelPreview}></div>
-                    <div className="csv-preview-container">
+                    <div className="csv-preview-container reporting-preview-container">
                         <div className="csv-preview-header">
                             <div className="csv-preview-title">
                                 <span><FiFileText /></span>
@@ -372,34 +373,61 @@ function Reporting({ refreshTrigger = 0 }) {
                             <button className="csv-preview-close" onClick={handleCancelPreview}><FiX /></button>
                         </div>
 
-                        <div className="csv-preview-body">
-                            {(previewSections.sections || []).map((section, sIdx) => (
-                                <div key={sIdx} className="reporting-preview-section">
-                                    <h4 className="reporting-preview-section-title">{section.title}</h4>
-                                    {section.headers.length === 0 ? (
-                                        <div className="csv-preview-empty">Aucune donnée</div>
-                                    ) : (
-                                        <table className="csv-preview-table">
-                                            <thead>
-                                                <tr>
-                                                    {section.headers.map((h, hIdx) => (
-                                                        <th key={hIdx}>{h}</th>
-                                                    ))}
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {section.rows.map((row, rIdx) => (
-                                                    <tr key={rIdx} className={section.row_classes?.[rIdx] || ''}>
-                                                        {row.map((cell, cIdx) => (
-                                                            <td key={cIdx}>{cell}</td>
-                                                        ))}
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    )}
+                        <div className="csv-preview-body reporting-preview-body">
+                            <article className="reporting-preview-document">
+                                <header className="reporting-document-header">
+                                    <img src={oleaLogo} alt="OLEA" />
+                                    <strong>REPORTING DÉCISIONNEL</strong>
+                                </header>
+
+                                <div className="reporting-document-heading">
+                                    <div>
+                                        <span>RAPPORT DE PILOTAGE</span>
+                                        <h2>Reporting décisionnel</h2>
+                                    </div>
+                                    <div className="reporting-document-meta">
+                                        <div><small>EXERCICE</small><strong>{previewSections.target_year}</strong></div>
+                                        <div><small>CYCLE</small><strong>{previewSections.cycle_code}</strong></div>
+                                        <div><small>DATE D'ÉDITION</small><strong>{previewSections.generated_at || '—'}</strong></div>
+                                        <div><small>SECTIONS</small><strong>{previewSections.sections?.length || 0}</strong></div>
+                                    </div>
                                 </div>
-                            ))}
+
+                                {(previewSections.sections || []).map((section, sIdx) => (
+                                    <section key={sIdx} className="reporting-preview-section">
+                                        <h4 className="reporting-preview-section-title">{section.title}</h4>
+                                        {section.headers.length === 0 ? (
+                                            <div className="csv-preview-empty">Aucune donnée</div>
+                                        ) : (
+                                            <div className="reporting-preview-table-wrap">
+                                                <table className="csv-preview-table">
+                                                    <thead>
+                                                        <tr>
+                                                            {section.headers.map((h, hIdx) => (
+                                                                <th key={hIdx}>{h}</th>
+                                                            ))}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {section.rows.map((row, rIdx) => (
+                                                            <tr key={rIdx} className={section.row_classes?.[rIdx] || ''}>
+                                                                {row.map((cell, cIdx) => (
+                                                                    <td key={cIdx}>{cell}</td>
+                                                                ))}
+                                                            </tr>
+                                                        ))}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        )}
+                                    </section>
+                                ))}
+
+                                <footer className="reporting-document-footer">
+                                    <span>Document généré par OLEA Finance</span>
+                                    <span>{previewSections.target_year} · {previewSections.cycle_code}</span>
+                                </footer>
+                            </article>
                         </div>
 
                         <div className="csv-preview-footer">
