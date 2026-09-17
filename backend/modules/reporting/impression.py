@@ -277,9 +277,12 @@ def _pdf_safe_text(value) -> str:
 def _pdf_paragraph(value, style):
     text = html.escape(_pdf_safe_text(value))
     if "↳" in text:
-        if not PDF_ARROW_FONT:
-            raise RuntimeError("Police Unicode requise pour afficher la hiérarchie des sous-agrégats (↳)")
-        text = text.replace("↳", f'<font name="{PDF_ARROW_FONT}">↳</font>')
+        if PDF_ARROW_FONT:
+            text = text.replace("↳", f'<font name="{PDF_ARROW_FONT}">↳</font>')
+        else:
+            # Le PDF doit rester exportable sur les serveurs dépourvus de
+            # police Unicode. Le chevron ASCII conserve le niveau visuel.
+            text = text.replace("↳", "&gt;")
     return Paragraph(text, style)
 
 
