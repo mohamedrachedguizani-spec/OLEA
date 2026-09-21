@@ -37,6 +37,34 @@ function Login() {
                                 className="login-logo-image"
                             />
                         </div>
+                        <div className="login-brand-copy">
+                            <span className="login-brand-eyebrow">OLEA Finance</span>
+                            <h1 className="login-brand-heading">Votre pilotage financier, réuni en un seul espace.</h1>
+                            <p className="login-brand-description">
+                                Suivez vos opérations, analysez vos résultats et prenez des décisions éclairées.
+                            </p>
+                        </div>
+                        {/* <div className="login-brand-features" aria-label="Fonctionnalités principales">
+                            <div className="login-feature">
+                                <span className="login-feature-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m5 12 4 4L19 6"/></svg>
+                                </span>
+                                <div><strong>Suivi centralisé</strong><small>Une vue claire de vos activités financières</small></div>
+                            </div>
+                            <div className="login-feature">
+                                <span className="login-feature-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 19V9m5 10V5m5 14v-7m5 7V3"/></svg>
+                                </span>
+                                <div><strong>Analyse décisionnelle</strong><small>Des indicateurs utiles pour piloter l’activité</small></div>
+                            </div>
+                            <div className="login-feature">
+                                <span className="login-feature-icon">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+                                </span>
+                                <div><strong>Accès sécurisé</strong><small>Des droits adaptés à chaque profil</small></div>
+                            </div>
+                        </div> */}
+                        {/* <div className="login-brand-status"><span /> Plateforme de gestion OLEA</div> */}
                     </div>
                 </div>
 
@@ -44,12 +72,16 @@ function Login() {
                 <div className="login-form-panel">
                     <div className="login-form-content">
                         <div className="login-form-header">
-                            <h2 className="login-title">Connexion</h2>
-                            <p className="login-subtitle">Accédez à votre espace de gestion</p>
+                            <span className="login-badge">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
+                                Espace sécurisé
+                            </span>
+                            <h2 className="login-title">Bienvenue</h2>
+                            <p className="login-subtitle">Connectez-vous pour accéder à votre espace de gestion.</p>
                         </div>
 
                         {error && (
-                            <div className="login-error">
+                            <div className="login-error" role="alert">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                                     <circle cx="12" cy="12" r="10"/>
                                     <line x1="15" y1="9" x2="9" y2="15"/>
@@ -71,11 +103,16 @@ function Login() {
                                         id="username"
                                         type="text"
                                         value={username}
-                                        onChange={(e) => setUsername(e.target.value)}
+                                        onChange={(e) => {
+                                            setUsername(e.target.value);
+                                            if (error) setError('');
+                                        }}
                                         placeholder="Entrez votre identifiant"
                                         required
                                         autoComplete="username"
                                         autoFocus
+                                        disabled={loading}
+                                        aria-invalid={Boolean(error)}
                                     />
                                 </div>
                             </div>
@@ -91,16 +128,23 @@ function Login() {
                                         id="password"
                                         type={showPassword ? 'text' : 'password'}
                                         value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
+                                        onChange={(e) => {
+                                            setPassword(e.target.value);
+                                            if (error) setError('');
+                                        }}
                                         placeholder="Entrez votre mot de passe"
                                         required
                                         autoComplete="current-password"
+                                        disabled={loading}
+                                        aria-invalid={Boolean(error)}
                                     />
                                     <button
                                         type="button"
                                         className="login-toggle-password"
                                         onClick={() => setShowPassword(!showPassword)}
-                                        tabIndex={-1}
+                                        disabled={loading}
+                                        aria-label={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
+                                        title={showPassword ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                                     >
                                         {showPassword ? (
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -142,7 +186,7 @@ function Login() {
 
                         <div className="login-footer-text">
                             <span className="login-footer-help">Besoin d’accès ? Contactez votre administrateur.</span>
-                            <span>© 2026 OLEA Tunisie — Powered by Guizani Med Rached</span>
+                            <span>© {new Date().getFullYear()} OLEA Tunisie · Tous droits réservés</span>
                         </div>
                     </div>
                 </div>

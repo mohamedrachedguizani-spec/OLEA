@@ -108,6 +108,61 @@ function CustomTooltip({ active, payload, label, formatter }) {
     );
 }
 
+function usePrefersReducedMotion() {
+    const [prefersReducedMotion, setPrefersReducedMotion] = useState(() => (
+        typeof window !== 'undefined'
+        && typeof window.matchMedia === 'function'
+        && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    ));
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
+        const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+        const handleChange = (event) => setPrefersReducedMotion(event.matches);
+
+        setPrefersReducedMotion(mediaQuery.matches);
+        mediaQuery.addEventListener?.('change', handleChange);
+        return () => mediaQuery.removeEventListener?.('change', handleChange);
+    }, []);
+
+    return prefersReducedMotion;
+}
+
+function useStableSeriesData(data) {
+    const cacheRef = useRef({ signature: '', data: [] });
+    const nextData = Array.isArray(data) ? data : [];
+    const signature = JSON.stringify(nextData);
+
+    if (cacheRef.current.signature !== signature) {
+        cacheRef.current = { signature, data: nextData };
+    }
+
+    return cacheRef.current.data;
+}
+
+const FinancialTrendChart = React.memo(function FinancialTrendChart({ data, animate }) {
+    return (
+        <ResponsiveContainer width="100%" height={300}>
+            <LineChart data={data} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                <XAxis dataKey="periode" fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={60} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend wrapperStyle={{ fontSize: 12 }} />
+                <Line type="monotone" dataKey="ca_net" name="CA Net" stroke={COLORS.primary}
+                    strokeWidth={2.5} dot={{ r: 4, fill: COLORS.primary }} activeDot={{ r: 6 }}
+                    isAnimationActive={animate} animationDuration={900} animationEasing="ease-out" animationBegin={0} />
+                <Line type="monotone" dataKey="ebitda" name="EBITDA" stroke={COLORS.debit}
+                    strokeWidth={2} dot={{ r: 3, fill: COLORS.debit }}
+                    isAnimationActive={animate} animationDuration={900} animationEasing="ease-out" animationBegin={120} />
+                <Line type="monotone" dataKey="resultat_net" name="Résultat Net" stroke={COLORS.purple}
+                    strokeWidth={2} dot={{ r: 3, fill: COLORS.purple }}
+                    isAnimationActive={animate} animationDuration={900} animationEasing="ease-out" animationBegin={240} />
+            </LineChart>
+        </ResponsiveContainer>
+    );
+});
+
 // ─── Section wrapper réutilisable ───
 function Section({ title, subtitle, icon, children, className = '' }) {
     return (
@@ -295,6 +350,9 @@ function Dashboard({ refreshTrigger, onNavigate }) {
     const caisse = data?.caisse;
     const migration = data?.migration;
     const bfc = data?.bfc;
+    const bfcTrendData = useStableSeriesData(bfc?.tendance);
+    const prefersReducedMotion = usePrefersReducedMotion();
+    const animateBfcTrend = !prefersReducedMotion && bfcTrendData.length > 1;
     const overview = data?.overview;
     const adminUsers = data?.users;
     const adminSessions = data?.sessions;
@@ -821,21 +879,7 @@ function Dashboard({ refreshTrigger, onNavigate }) {
                             {/* Tendance + P&L */}
                             <div className="gd-row-2col">
                                 <Section title="Tendance Financière" subtitle="CA Net / EBITDA / Résultat Net" icon={<FiTrendingDown />} className="gd-col-large">
-                                    <ResponsiveContainer width="100%" height={300}>
-                                        <LineChart data={bfc.tendance} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
-                                            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
-                                            <XAxis dataKey="periode" fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
-                                            <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={60} />
-                                            <Tooltip content={<CustomTooltip />} />
-                                            <Legend wrapperStyle={{ fontSize: 12 }} />
-                                            <Line type="monotone" dataKey="ca_net" name="CA Net" stroke={COLORS.primary}
-                                                strokeWidth={2.5} dot={{ r: 4, fill: COLORS.primary }} activeDot={{ r: 6 }} />
-                                            <Line type="monotone" dataKey="ebitda" name="EBITDA" stroke={COLORS.debit}
-                                                strokeWidth={2} dot={{ r: 3, fill: COLORS.debit }} />
-                                            <Line type="monotone" dataKey="resultat_net" name="Résultat Net" stroke={COLORS.purple}
-                                                strokeWidth={2} dot={{ r: 3, fill: COLORS.purple }} />
-                                        </LineChart>
-                                    </ResponsiveContainer>
+                                    <FinancialTrendChart data={bfcTrendData} animate={animateBfcTrend} />
                                 </Section>
 
                                 <Section title="Compte de Résultat" subtitle={`Période : ${bfcPnlPeriodLabel}`} icon={<FiClipboard />} className="gd-col-small">

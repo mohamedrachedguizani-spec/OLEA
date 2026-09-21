@@ -17,7 +17,7 @@ function Sidebar({
     sidebarCollapsed,
     setSidebarCollapsed,
 }) {
-    const { user, logout, has, hasPermission } = useAuth();
+    const { logout, has, hasPermission } = useAuth();
     const [showPasswordModal, setShowPasswordModal] = useState(false);
     const [showSettingsMenu, setShowSettingsMenu] = useState(false);
     const [currentPassword, setCurrentPassword] = useState('');
@@ -25,22 +25,6 @@ function Sidebar({
     const [pwdError, setPwdError] = useState('');
     const [pwdSuccess, setPwdSuccess] = useState('');
     const [pwdLoading, setPwdLoading] = useState(false);
-
-    const roleLabel = {
-        superadmin: 'Super administrateur',
-        comptable: 'Comptable',
-        financier: 'Financier',
-        dirigeant: 'Dirigeant',
-        consultant: 'Consultant',
-    }[user?.role] || user?.role || '';
-
-    const userInitials = (user?.full_name || user?.username || 'OL')
-        .split(/\s+/)
-        .filter(Boolean)
-        .map(part => part.charAt(0))
-        .slice(0, 2)
-        .join('')
-        .toUpperCase();
 
     // Menu items filtrés selon les permissions de l'utilisateur
     const allMenuItems = [
@@ -347,27 +331,27 @@ function Sidebar({
                     <div className="sidebar-copyright">
                         <span>© 2026 OLEA Africa</span>
                     </div>
-                    <div className="erp-profile-card">
-                        <div className="erp-profile-avatar">{userInitials}</div>
-                        <div className="erp-profile-copy">
-                            <strong>{user?.full_name || user?.username}</strong>
-                            <span>{roleLabel}</span>
+                    <div className="sidebar-preferences">
+                        <span className="sidebar-preferences-title">Préférences</span>
+                        <div className="sidebar-preferences-actions">
+                            <button
+                                className="sidebar-preference-btn"
+                                onClick={() => setShowSettingsMenu(prev => !prev)}
+                                title="Paramètres"
+                                aria-label="Ouvrir les paramètres"
+                            >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                <span>Paramètres</span>
+                            </button>
+                            <button className="sidebar-preference-btn" onClick={() => setDarkMode(prev => !prev)} title={darkMode ? 'Mode clair' : 'Mode sombre'} aria-label={darkMode ? 'Activer le mode clair' : 'Activer le mode sombre'}>
+                                {darkMode ? (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
+                                ) : (
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+                                )}
+                                <span>{darkMode ? 'Mode clair' : 'Mode sombre'}</span>
+                            </button>
                         </div>
-                        <button
-                            className="erp-profile-action erp-profile-settings"
-                            onClick={() => setShowSettingsMenu(prev => !prev)}
-                            title="Paramètres"
-                            aria-label="Ouvrir les paramètres"
-                        >
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06-.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06-.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                        </button>
-                        <button className="erp-profile-action" onClick={() => setDarkMode(prev => !prev)} title={darkMode ? 'Mode clair' : 'Mode sombre'} aria-label={darkMode ? 'Activer le mode clair' : 'Activer le mode sombre'}>
-                            {darkMode ? (
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
-                            ) : (
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-                            )}
-                        </button>
                     </div>
                 </div>
 

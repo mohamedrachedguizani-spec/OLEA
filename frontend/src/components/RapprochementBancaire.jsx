@@ -15,6 +15,11 @@ import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
 
+const getCurrentPeriod = () => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+};
+
 function ReconciliationSummary({ stats, formatAmount }) {
     const automationRate = Math.max(0, Math.min(100, Number(stats.automation_rate) || 0));
     return (
@@ -113,7 +118,7 @@ function RapprochementBancaire({ navigationTarget }) {
     const [bankFile, setBankFile] = useState(null);
     const [bankAccounts, setBankAccounts] = useState([]);
     const [bankJournal, setBankJournal] = useState('');
-    const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+    const [period, setPeriod] = useState(getCurrentPeriod);
 
     // Drag active states
     const [dragActiveSage, setDragActiveSage] = useState(false);
@@ -138,10 +143,8 @@ function RapprochementBancaire({ navigationTarget }) {
     useEffect(() => {
         ApiService.getReconciliationBankAccounts()
             .then((items) => {
-                setBankAccounts(Array.isArray(items) ? items : []);
-                if (Array.isArray(items) && items.length) {
-                    setBankJournal((current) => current || items[0].journal);
-                }
+                const availableAccounts = Array.isArray(items) ? items : [];
+                setBankAccounts(availableAccounts);
             })
             .catch((err) => setError(err.message || 'Impossible de charger les comptes bancaires.'));
     }, []);
@@ -312,6 +315,8 @@ function RapprochementBancaire({ navigationTarget }) {
     const handleReset = () => {
         setSageFile(null);
         setBankFile(null);
+        setBankJournal('');
+        setPeriod(getCurrentPeriod());
         setResult(null);
         setError('');
         setSuccess('');
