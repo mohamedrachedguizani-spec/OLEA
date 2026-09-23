@@ -5180,6 +5180,14 @@
     padding: 0 0.45rem;
 }
 
+.forecast-sub-aggregate-input:disabled,
+.forecast-subitem-row input:disabled {
+    cursor: not-allowed;
+    background: var(--bg-secondary);
+    color: var(--text-secondary);
+    opacity: 0.8;
+}
+
 .forecast-subitem-label {
     font-size: 0.79rem;
     color: var(--text-primary);

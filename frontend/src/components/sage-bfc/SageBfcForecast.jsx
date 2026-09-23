@@ -29,6 +29,7 @@ const DERIVED_KEYS = new Set([
 
 function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
     const { has } = useAuth();
+    const canUpdateForecast = has('forecast.manual.update');
     const now = new Date();
     const isYearStart = now.getMonth() === 0;
     const inferredYear = useMemo(() => {
@@ -293,6 +294,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
     }, [targetYear, compareCycle, compareMonth, canDrilldown, subAggCacheKey, asDraft3]);
 
     const saveManualForAgregat = useCallback(async (agregatKey) => {
+        if (!canUpdateForecast) return;
         const cacheKey = subAggCacheKey(agregatKey, compareMonth);
         const data = subAggData[cacheKey];
         if (!data) return;
@@ -333,9 +335,10 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
         } finally {
             setManualSaveLoading('');
         }
-    }, [subAggCacheKey, subAggData, compareMonth, compareCycle, targetYear, reloadAll, loadSubAgregats]);
+    }, [canUpdateForecast, subAggCacheKey, subAggData, compareMonth, compareCycle, targetYear, reloadAll, loadSubAgregats]);
 
     const saveManualAnnualForAgregat = useCallback(async (agregatKey) => {
+        if (!canUpdateForecast) return;
         const cacheKey = subAggCacheKey(agregatKey, null);
         const data = subAggData[cacheKey];
         if (!data) return;
@@ -375,7 +378,7 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
         } finally {
             setManualSaveLoading('');
         }
-    }, [subAggCacheKey, subAggData, compareCycle, targetYear, reloadAll, loadSubAgregats]);
+    }, [canUpdateForecast, subAggCacheKey, subAggData, compareCycle, targetYear, reloadAll, loadSubAgregats]);
 
     const recomputeDraftAggregate = useCallback((items = []) => {
         const total = (items || []).reduce((sum, it) => {
@@ -751,6 +754,8 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
                                                                             type="number"
                                                                             className="forecast-sub-aggregate-input"
                                                                             value={data?.draftAggregate ?? ''}
+                                                                            disabled={!canUpdateForecast}
+                                                                            title={!canUpdateForecast ? 'Consultation uniquement' : undefined}
                                                                             onChange={(e) => {
                                                                                 const val = e.target.value;
                                                                                 setSubAggData((prev) => ({
@@ -767,17 +772,19 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
                                                                             }}
                                                                             onClick={(e) => e.stopPropagation()}
                                                                         />
-                                                                        <button
-                                                                            type="button"
-                                                                            className="btn-forecast"
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                saveManualAnnualForAgregat(row.agregat_key);
-                                                                            }}
-                                                                            disabled={!has('forecast.manual.update') || manualSaveLoading === saveKey}
-                                                                        >
-                                                                            {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer annuel'}
-                                                                        </button>
+                                                                        {canUpdateForecast && (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="btn-forecast"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    saveManualAnnualForAgregat(row.agregat_key);
+                                                                                }}
+                                                                                disabled={manualSaveLoading === saveKey}
+                                                                            >
+                                                                                {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer annuel'}
+                                                                            </button>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                                 {data?.loading ? (
@@ -793,6 +800,8 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
                                                                                     type="number"
                                                                                     step="0.001"
                                                                                     value={it.draft ?? ''}
+                                                                                    disabled={!canUpdateForecast}
+                                                                                    title={!canUpdateForecast ? 'Consultation uniquement' : undefined}
                                                                                     onChange={(e) => {
                                                                                         const val = e.target.value;
                                                                                         updateSubDraftAndAggregate(key, it.subagregat_key, val);
@@ -961,6 +970,8 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
                                                                             className="forecast-sub-aggregate-input"
                                                                             step="0.001"
                                                                             value={data?.draftAggregate ?? ''}
+                                                                            disabled={!canUpdateForecast}
+                                                                            title={!canUpdateForecast ? 'Consultation uniquement' : undefined}
                                                                             onChange={(e) => {
                                                                                 const val = e.target.value;
                                                                                 setSubAggData((prev) => ({
@@ -977,17 +988,19 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
                                                                             }}
                                                                             onClick={(e) => e.stopPropagation()}
                                                                         />
-                                                                        <button
-                                                                            type="button"
-                                                                            className="btn-forecast"
-                                                                            onClick={(e) => {
-                                                                                e.stopPropagation();
-                                                                                saveManualForAgregat(row.agregat_key);
-                                                                            }}
-                                                                            disabled={!has('forecast.manual.update') || manualSaveLoading === saveKey}
-                                                                        >
-                                                                            {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer'}
-                                                                        </button>
+                                                                        {canUpdateForecast && (
+                                                                            <button
+                                                                                type="button"
+                                                                                className="btn-forecast"
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    saveManualForAgregat(row.agregat_key);
+                                                                                }}
+                                                                                disabled={manualSaveLoading === saveKey}
+                                                                            >
+                                                                                {manualSaveLoading === saveKey ? 'Enregistrement...' : 'Enregistrer'}
+                                                                            </button>
+                                                                        )}
                                                                     </div>
                                                                 </div>
                                                                 {data?.loading ? (
@@ -1003,6 +1016,8 @@ function SageBfcForecast({ selectedMonth, refreshTrigger, navigationTarget }) {
                                                                                     type="number"
                                                                                     step="0.001"
                                                                                     value={it.draft ?? ''}
+                                                                                    disabled={!canUpdateForecast}
+                                                                                    title={!canUpdateForecast ? 'Consultation uniquement' : undefined}
                                                                                     onChange={(e) => {
                                                                                         const val = e.target.value;
                                                                                         updateSubDraftAndAggregate(key, it.subagregat_key, val);
