@@ -593,7 +593,7 @@ def _get_bfc_stats(cursor, date_debut=None, date_fin=None):
 
     resume_cumule = _aggregate_bfc(rows)
 
-    # ── P&L détaillé du dernier mois ──
+    # ── P&L détaillé du dernier mois (ou du cumul selon la sélection) ──
     pnl_detail = None
     if dernier_resume:
         pnl_detail = {
@@ -622,7 +622,7 @@ def _get_bfc_stats(cursor, date_debut=None, date_fin=None):
             "resultat_net_pct": float(dernier_resume.get('resultat_net_pct', 0)),
         }
 
-    # ── P&L cumulé (cartes KPI dashboard) ──
+    # ── P&L cumulé (cartes KPI dashboard et Compte de Résultat de la période) ──
     pnl_cumule = resume_cumule
 
     # Comparaison avec la même plage de mois de l'année précédente.

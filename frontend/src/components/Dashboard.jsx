@@ -883,21 +883,24 @@ function Dashboard({ refreshTrigger, onNavigate }) {
                                 </Section>
 
                                 <Section title="Compte de Résultat" subtitle={`Période : ${bfcPnlPeriodLabel}`} icon={<FiClipboard />} className="gd-col-small">
-                                    {bfc.pnl_detail ? (
+                                    {(bfc.pnl_cumule || bfc.pnl_detail) ? (() => {
+                                        const pnlData = bfc.pnl_cumule || bfc.pnl_detail;
+                                        return (
                                         <div className="gd-pnl-detail">
-                                            <PnlRow label="CA Net" value={bfc.pnl_detail.ca_net} bold />
-                                            <PnlRow label="Total Produits" value={bfc.pnl_detail.total_produits} />
-                                            <PnlRow label="Total Charges" value={-bfc.pnl_detail.total_charges} />
+                                            <PnlRow label="CA Net" value={pnlData.ca_net} bold />
+                                            <PnlRow label="Total Produits" value={pnlData.total_produits} />
+                                            <PnlRow label="Total Charges" value={-pnlData.total_charges} />
                                             <div className="gd-pnl-sep" />
-                                            <PnlRow label="EBITDA" value={bfc.pnl_detail.ebitda} bold pct={bfc.pnl_detail.ebitda_pct} />
-                                            <PnlRow label="Rés. Financier" value={bfc.pnl_detail.resultat_financier} />
-                                            <PnlRow label="Résultat Exceptionnel" value={bfc.pnl_detail.resultat_exceptionnel} />
-                                            <PnlRow label="Dotations" value={-bfc.pnl_detail.dotations} />
-                                            <PnlRow label="Impôt sur les sociétés" value={-bfc.pnl_detail.impot_societes} />
+                                            <PnlRow label="EBITDA" value={pnlData.ebitda} bold pct={pnlData.ebitda_pct} />
+                                            <PnlRow label="Rés. Financier" value={pnlData.resultat_financier} />
+                                            <PnlRow label="Résultat Exceptionnel" value={pnlData.resultat_exceptionnel} />
+                                            <PnlRow label="Dotations" value={-pnlData.dotations} />
+                                            <PnlRow label="Impôt sur les sociétés" value={-pnlData.impot_societes} />
                                             <div className="gd-pnl-sep" />
-                                            <PnlRow label="Résultat Net" value={bfc.pnl_detail.resultat_net} bold highlight pct={bfc.pnl_detail.resultat_net_pct} />
+                                            <PnlRow label="Résultat Net" value={pnlData.resultat_net} bold highlight pct={pnlData.resultat_net_pct} />
                                         </div>
-                                    ) : <EmptyChart message="Aucun P&L disponible" />}
+                                        );
+                                    })() : <EmptyChart message="Aucun P&L disponible" />}
                                 </Section>
                             </div>
 
