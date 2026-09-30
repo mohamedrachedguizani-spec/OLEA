@@ -408,6 +408,8 @@ body {
 .sidebar.collapsed .menu-label,
 .sidebar.collapsed .menu-active-dot,
 .sidebar.collapsed .sidebar-settings-btn span,
+.sidebar.collapsed .sidebar-preferences-title,
+.sidebar.collapsed .sidebar-preference-btn span,
 .sidebar.collapsed .sidebar-copyright {
     display: none;
 }
@@ -7076,9 +7078,29 @@ body {
     margin-top: 48px;
 }
 
-.sidebar.collapsed .theme-switcher,
-.sidebar.collapsed .sidebar-preferences {
+.sidebar.collapsed .theme-switcher {
     display: none;
+}
+
+.sidebar.collapsed .sidebar-preferences {
+    display: block;
+    margin-top: 8px;
+    padding-top: 8px;
+}
+
+.sidebar.collapsed .sidebar-preferences-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar.collapsed .sidebar-preference-btn {
+    width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0;
+    justify-content: center;
 }
 
 .sidebar.collapsed .sidebar-settings-dropdown {
