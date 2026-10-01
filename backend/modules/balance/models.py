@@ -1,0 +1,40 @@
+from pydantic import BaseModel
+from typing import Dict, List
+
+
+class LigneTransaction(BaseModel):
+    date: str
+    libelle: str
+    debit: float = 0.0
+    credit: float = 0.0
+    solde: float = 0.0
+    reste_du: float = 0.0      # part de cette écriture encore impayée (après lettrage FIFO)
+    jours_retard: int = 0
+    bucket: str = ""           # "" si l'écriture est soldée / n'est pas une créance
+
+
+class ClientBalance(BaseModel):
+    code: str
+    nom: str
+    total_solde: float = 0.0   # solde Sage (positif = client débiteur, négatif = avance / avoir)
+    non_echu: float = 0.0
+    echu_30: float = 0.0
+    echu_60: float = 0.0
+    echu_90: float = 0.0
+    echu_plus: float = 0.0
+    credit_non_affecte: float = 0.0   # paiements en excès (avance client)
+    dont_report: float = 0.0          # part des créances issue du report à nouveau (âge inconnu)
+    lignes: List[LigneTransaction] = []
+
+
+class BalanceAgeeResponse(BaseModel):
+    date_reference: str
+    delai_paiement: int = 0
+    total_general: float                 # solde net (débiteurs - créditeurs)
+    total_debiteur: float = 0.0
+    total_crediteur: float = 0.0
+    total_report: float = 0.0
+    totaux_buckets: Dict[str, float] = {}
+    nb_clients: int
+    clients: List[ClientBalance]
+    avertissements: List[str] = []

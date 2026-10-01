@@ -35,6 +35,7 @@ function Sidebar({
         { id: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: 'compare', module: 'rapprochement_bancaire' },
         { id: 'sage-bfc', label: 'SAGE → BFC', icon: 'transform', module: 'sage_bfc' },
         { id: 'reporting', label: 'Reporting', icon: 'reporting', module: 'reporting' },
+        { id: 'balance-agee', label: 'Balance Âgée Clients', icon: 'balance', module: 'balance_agee' },
         { id: 'configuration', label: 'Configuration', icon: 'settings', module: 'configuration' },
 
     ];
@@ -138,6 +139,13 @@ function Sidebar({
                     <line x1="5" y1="9" x2="19" y2="9"/>
                     <path d="M5 9c0 4 3 6 7 6s7-2 7-6"/>
                     <path d="M2 22h20"/>
+                </svg>
+            ),
+            balance: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                    <path d="M2 17l10 5 10-5"/>
+                    <path d="M2 12l10 5 10-5"/>
                 </svg>
             ),
         };

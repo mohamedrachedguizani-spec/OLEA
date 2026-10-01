@@ -16,6 +16,7 @@ import Reporting from './components/Reporting';
 import Configuration from './components/Configuration';
 import SaisieBancaire from './components/SaisieBancaire';
 import RapprochementBancaire from './components/RapprochementBancaire';
+import BalanceAgee from './components/BalanceAgee';
 import NotificationBell from './components/NotificationBell';
 import oleaLogo from './assets/olea-logo.svg';
 
@@ -23,7 +24,7 @@ const ACTIVE_TAB_STORAGE_KEY = 'olea-active-module';
 const APP_TABS = [
     'dashboard', 'saisie', 'export', 'rapprochement',
     'rapprochement_bancaire', 'sage-bfc', 'reporting',
-    'configuration', 'users', 'roles', 'audit',
+    'balance-agee', 'configuration', 'users', 'roles', 'audit',
 ];
 
 function App() {
@@ -62,6 +63,7 @@ function App() {
         configuration: hasPermission('configuration'),
         rapprochement: hasPermission('saisie_bancaire'),
         rapprochement_bancaire: hasPermission('rapprochement_bancaire'),
+        'balance-agee': hasPermission('balance_agee'),
         users: has('admin.users.read'),
         roles: has('admin.roles.read'),
         audit: has('admin.audit.read'),
@@ -247,6 +249,7 @@ function App() {
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration initialTab={configurationInitialTab} />}
                     {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire navigationTarget={notificationTarget?.tab === 'rapprochement' ? notificationTarget : null} />}
                     {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire navigationTarget={notificationTarget?.tab === 'rapprochement_bancaire' ? notificationTarget : null} />}
+                    {activeTab === 'balance-agee' && hasPermission('balance_agee', 'read') && <BalanceAgee />}
                     {activeTab === 'users' && has('admin.users.read') && <UserManagement />}
                     {activeTab === 'roles' && has('admin.roles.read') && <RoleManagement />}
                     {activeTab === 'audit' && has('admin.audit.read') && <AuditLogs />}

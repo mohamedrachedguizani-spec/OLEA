@@ -24,6 +24,12 @@ SAGE_BFC_PERMISSION_REPLACEMENTS = {
     "sage_bfc.recompute": "sage_bfc.import",
 }
 
+# Permissions à propager aux profils existants lors d'une montée de version
+NEW_PROFILE_PERMISSIONS = {
+    "COMPTABLE": {"balance_agee.read"},
+    "FINANCIER": {"balance_agee.read"},
+}
+
 
 def init_access_tables():
     """Crée et alimente le catalogue RBAC sans supprimer les droits existants."""
@@ -78,6 +84,7 @@ def init_access_tables():
 
             _consolidate_caisse_manage_permission(cursor)
             _consolidate_sage_bfc_permissions(cursor)
+            _propagate_new_permissions(cursor)
 
             for code, (name, description, permission_codes) in PROFILES.items():
                 cursor.execute(
@@ -105,6 +112,22 @@ def init_access_tables():
 
 def _profile_code_for_user(user_role: str) -> str:
     return DEFAULT_PROFILE_BY_USER_ROLE.get(user_role, "COMPTABLE")
+
+
+def _propagate_new_permissions(cursor):
+    """Ajoute les nouvelles permissions aux profils existants sans écraser les droits personnalisés."""
+    for profile_code, permission_codes in NEW_PROFILE_PERMISSIONS.items():
+        cursor.execute("SELECT id FROM access_roles WHERE code = %s", (profile_code,))
+        row = cursor.fetchone()
+        if not row:
+            continue
+        role_id = row["id"]
+        for perm_code in permission_codes:
+            cursor.execute(
+                "INSERT IGNORE INTO access_role_permissions (role_id, permission_id) "
+                "SELECT %s, id FROM access_permissions WHERE code = %s",
+                (role_id, perm_code),
+            )
 
 
 def _consolidate_caisse_manage_permission(cursor):

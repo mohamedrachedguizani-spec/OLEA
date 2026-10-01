@@ -1343,6 +1343,31 @@ class ApiService {
         if (!response.ok) throw new Error('Erreur suppression notification');
         return response.json();
     }
+
+    // ===================== BALANCE ÂGÉE CLIENT (Sans stockage BDD) =====================
+
+   // CORRECTION : ajouter dateReference comme paramètre
+    // ─── Balance âgée client (import PDF Sage) ───
+    static async parseBalanceAgee(file, dateReference = null) {
+        const formData = new FormData();
+        formData.append('file', file);
+        // Optionnel : si absent, le backend utilise la fin de période imprimée sur le PDF
+        if (dateReference) {
+            formData.append('date_reference', dateReference);
+        }
+        // delai_paiement n'est plus envoyé : le backend applique 0 par défaut
+
+        const response = await ApiService._fetch(`${API_BASE_URL}/balance/agee/parse`, {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du traitement du PDF' }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : 'Erreur lors du traitement du PDF');
+        }
+        return response.json();
+    }
 }
 
 export default ApiService;

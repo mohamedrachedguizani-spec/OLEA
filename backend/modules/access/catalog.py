@@ -51,6 +51,7 @@ PERMISSIONS = {
     "admin.roles.manage": ("Configurer les profils et permissions", "Administration"),
     "admin.audit.read": ("Consulter le journal d'audit", "Administration"),
     "admin.audit.delete": ("Purger le journal d'audit", "Administration"),
+    "balance_agee.read": ("Analyser la balance âgée clients depuis un PDF Sage", "Balance Âgée"),
 }
 
 
@@ -66,6 +67,7 @@ PROFILES = {
             "saisie_bancaire.sage.generate", "saisie_bancaire.sage.export",
             "rapprochement_bancaire.run", "rapprochement_bancaire.export_pdf",
             "sage_bfc.read", "sage_bfc.import",
+            "balance_agee.read",
         },
     ),
     "FINANCIER": (
@@ -78,8 +80,7 @@ PROFILES = {
             "forecast.history.import", "forecast.history.sync", "reporting.read",
             "reporting.export_excel", "reporting.export_pdf", "reporting.print",
             "configuration.accounts.read", "configuration.third_parties.read",
-            "configuration.mapping.read",
-        },
+            "configuration.mapping.read",            "balance_agee.read",        },
     ),
     "DIRIGEANT": (
         "Dirigeant",
