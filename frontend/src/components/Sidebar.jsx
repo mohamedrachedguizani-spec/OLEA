@@ -36,6 +36,7 @@ function Sidebar({
         { id: 'sage-bfc', label: 'SAGE → BFC', icon: 'transform', module: 'sage_bfc' },
         { id: 'reporting', label: 'Reporting', icon: 'reporting', module: 'reporting' },
         { id: 'balance-agee', label: 'Balance Âgée Clients', icon: 'balance', module: 'balance_agee' },
+        { id: 'balance-fournisseur', label: 'Balance Âgée Fournisseurs', icon: 'balance_frs', module: 'balance_fournisseur' },
         { id: 'configuration', label: 'Configuration', icon: 'settings', module: 'configuration' },
 
     ];
@@ -146,6 +147,13 @@ function Sidebar({
                     <path d="M12 2L2 7l10 5 10-5-10-5z"/>
                     <path d="M2 17l10 5 10-5"/>
                     <path d="M2 12l10 5 10-5"/>
+                </svg>
+            ),
+            balance_frs: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M12 22L2 17l10-5 10 5-10 5z"/>
+                    <path d="M2 12l10-5 10 5"/>
+                    <path d="M2 7l10-5 10 5"/>
                 </svg>
             ),
         };

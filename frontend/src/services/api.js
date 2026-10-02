@@ -1346,22 +1346,26 @@ class ApiService {
 
     // ===================== BALANCE ÂGÉE CLIENT (Sans stockage BDD) =====================
 
-   // CORRECTION : ajouter dateReference comme paramètre
-    // ─── Balance âgée client (import PDF Sage) ───
+    // ─── Balance âgée clients (import PDF Sage) ───
+    // dateReference optionnelle : vide = fin de période du PDF. Le délai de paiement n'est plus envoyé.
     static async parseBalanceAgee(file, dateReference = null) {
         const formData = new FormData();
         formData.append('file', file);
-        // Optionnel : si absent, le backend utilise la fin de période imprimée sur le PDF
-        if (dateReference) {
-            formData.append('date_reference', dateReference);
+        if (dateReference) formData.append('date_reference', dateReference);
+        const response = await ApiService._fetch(`${API_BASE_URL}/balance/agee/parse`, { method: 'POST', body: formData });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du traitement du PDF' }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : 'Erreur lors du traitement du PDF');
         }
-        // delai_paiement n'est plus envoyé : le backend applique 0 par défaut
+        return response.json();
+    }
 
-        const response = await ApiService._fetch(`${API_BASE_URL}/balance/agee/parse`, {
-            method: 'POST',
-            body: formData,
-        });
-
+    // ─── Balance âgée fournisseurs (import PDF Sage) ───
+    static async parseBalanceAgeeFournisseur(file, dateReference = null) {
+        const formData = new FormData();
+        formData.append('file', file);
+        if (dateReference) formData.append('date_reference', dateReference);
+        const response = await ApiService._fetch(`${API_BASE_URL}/balance-fournisseur/agee/parse`, { method: 'POST', body: formData });
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: 'Erreur lors du traitement du PDF' }));
             throw new Error(typeof err.detail === 'string' ? err.detail : 'Erreur lors du traitement du PDF');

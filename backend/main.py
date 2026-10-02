@@ -26,6 +26,7 @@ from modules.rapprochement_bancaire import router as rapprochement_bancaire_rout
 from modules.notifications import router as notifications_router, init_notifications_tables
 from modules.access import router as access_router, init_access_tables
 from modules.balance import router as balance_router
+from modules.balance_fournisseur import router as balance_fournisseur_router
 
 IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
 SWAGGER_ENABLED = os.getenv(
@@ -116,6 +117,7 @@ app.include_router(saisie_bancaire_router)
 app.include_router(rapprochement_bancaire_router)
 app.include_router(notifications_router)
 app.include_router(balance_router)
+app.include_router(balance_fournisseur_router)
 
 
 # ─── Enregistrer la boucle asyncio au démarrage ───

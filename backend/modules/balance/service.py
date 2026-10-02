@@ -226,16 +226,18 @@ def calculer_anciennete(lignes: List[Dict[str, Any]], date_ref: date, delai: int
     Un crédit en excès devient une avance qui vient réduire les débits suivants.
     Retourne (buckets, avance, reste_par_ligne).
     """
-    ouverts: List[List[float]] = []     # [index_ligne, reste]
-    avance = 0.0
+    ouverts: List[List[float]] = []     # créances ouvertes  [index_ligne, reste]
+    avances: List[List[float]] = []     # crédits non affectés [index_ligne, reste]
 
     for i, l in enumerate(lignes):
         net = l["net"]
         if net > EPS:
-            if avance > 0:                       # une avance éteint d'abord la nouvelle créance
-                used = min(avance, net)
-                avance -= used
+            while net > EPS and avances:         # une facture éteint d'abord les avances les plus anciennes
+                used = min(avances[0][1], net)
+                avances[0][1] -= used
                 net -= used
+                if avances[0][1] <= EPS:
+                    avances.pop(0)
             if net > EPS:
                 ouverts.append([i, net])
         elif net < -EPS:
@@ -246,7 +248,8 @@ def calculer_anciennete(lignes: List[Dict[str, Any]], date_ref: date, delai: int
                 a_payer -= used
                 if ouverts[0][1] <= EPS:
                     ouverts.pop(0)
-            avance += max(a_payer, 0.0)
+            if a_payer > EPS:
+                avances.append([i, a_payer])
 
     buckets = {"non_echu": 0.0, "1-30": 0.0, "31-60": 0.0, "61-90": 0.0, "+90": 0.0}
     reste_ligne: Dict[int, Tuple[float, int, str]] = {}
@@ -259,7 +262,15 @@ def calculer_anciennete(lignes: List[Dict[str, Any]], date_ref: date, delai: int
         b = get_bucket(jours)
         buckets[b] += reste
         reste_ligne[idx] = (reste, jours, b)
-    return buckets, avance, reste_ligne, dont_report
+    # Avances / avoirs : ancienneté = jours écoulés depuis l'encaissement (min. 1 -> tranche 1-30)
+    buckets_av = {k: 0.0 for k in buckets}
+    for idx, reste in avances:
+        jours = (date_ref - lignes[idx]["date"]).days
+        b = get_bucket(max(jours, 1))
+        buckets_av[b] += reste
+        reste_ligne[idx] = (reste, jours, b)
+    avance = sum(r for _, r in avances)
+    return buckets, avance, reste_ligne, dont_report, buckets_av
 
 
 # ───────────────────────── Étape 3 : assemblage ─────────────────────────
@@ -267,6 +278,7 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
     avert: List[str] = list(meta["avertissements"])
     result: List[ClientBalance] = []
     total_report = 0.0
+    totaux_av = {"non_echu": 0.0, "1-30": 0.0, "31-60": 0.0, "61-90": 0.0, "+90": 0.0}
     totaux = {"non_echu": 0.0, "1-30": 0.0, "31-60": 0.0, "61-90": 0.0, "+90": 0.0}
 
     for code, data in clients.items():
@@ -282,7 +294,7 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
         if abs(solde_final) < SEUIL_SOLDE:
             continue
 
-        buckets, avance, reste_ligne, dont_report = calculer_anciennete(lignes, date_ref, delai)
+        buckets, avance, reste_ligne, dont_report, buckets_av = calculer_anciennete(lignes, date_ref, delai)
 
         details = []
         for i, l in enumerate(lignes):
@@ -292,11 +304,16 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
                 debit=round(l["debit"], 3), credit=round(l["credit"], 3),
                 solde=round(l["solde"], 3), reste_du=round(reste, 3),
                 jours_retard=jours, bucket=b,
+                sens="C" if l["net"] < -EPS else ("D" if l["net"] > EPS else ""),
             ))
 
         # Invariant : après FIFO, créances ouvertes = solde si débiteur, sinon 0
         if abs(sum(buckets.values()) - max(solde_final, 0.0)) > 0.01:
             avert.append(f"{code} {data['nom']} : ventilation ({sum(buckets.values()):.3f}) ≠ solde ({solde_final:.3f})")
+        if abs(sum(buckets_av.values()) - max(-solde_final, 0.0)) > 0.01:
+            avert.append(f"{code} {data['nom']} : ventilation des avances ({sum(buckets_av.values()):.3f}) ≠ solde ({-solde_final:.3f})")
+        for k in totaux_av:
+            totaux_av[k] += buckets_av[k]
         total_report += dont_report
         for k in totaux:
             totaux[k] += buckets[k]
@@ -305,6 +322,7 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
             non_echu=round(buckets["non_echu"], 3), echu_30=round(buckets["1-30"], 3),
             echu_60=round(buckets["31-60"], 3), echu_90=round(buckets["61-90"], 3),
             echu_plus=round(buckets["+90"], 3), credit_non_affecte=round(avance, 3), dont_report=round(dont_report, 3),
+            avance_buckets={k: round(v, 3) for k, v in buckets_av.items()},
             lignes=details,
         ))
 
@@ -330,6 +348,7 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
         total_debiteur=round(sum(c.total_solde for c in result if c.total_solde > 0), 3),
         total_crediteur=round(sum(c.total_solde for c in result if c.total_solde < 0), 3),
         total_report=round(total_report, 3),
+        totaux_avances={k: round(v, 3) for k, v in totaux_av.items()},
         totaux_buckets={k: round(v, 3) for k, v in totaux.items()},
         nb_clients=len(result),
         clients=result,
