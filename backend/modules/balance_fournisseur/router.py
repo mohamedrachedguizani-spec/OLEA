@@ -7,6 +7,7 @@ from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.concurrency import run_in_threadpool
 
+from modules.balance.controle import TypeGrandLivreInvalide
 from .service import parser_pdf_fournisseur
 from .models import BalanceFournisseurResponse
 from modules.auth.dependencies import require_permission_code
@@ -56,6 +57,8 @@ async def parse_balance_agee_fournisseur(
 
     except HTTPException:
         raise
+    except TypeGrandLivreInvalide as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors du parsing : {str(e)}")
     finally:

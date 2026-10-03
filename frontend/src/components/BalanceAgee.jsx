@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import ApiService from '../services/api';
-import BalanceUpload, { BalanceHeader } from './BalanceUpload'; // Ajustez le chemin
+import BalanceUpload, { BalanceHeader } from './BalanceUpload';
+import BalanceControle from './BalanceControle'; // Ajustez le chemin
 import './BalanceAgee.css';
 
 const BUCKETS = [
@@ -111,6 +112,8 @@ const BalanceAgee = () => {
 
       {step === 'results' && data && (
         <>
+          <BalanceControle controle={data.controle} tiers="clients" />
+
           {data.avertissements?.length > 0 && (
             <div className="ba-warn">
               <button type="button" onClick={() => setShowWarn(!showWarn)}>

@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Dict, List
+from typing import Any, Dict, List
 
 
 class LigneTransaction(BaseModel):
@@ -40,4 +40,5 @@ class BalanceAgeeResponse(BaseModel):
     totaux_avances: Dict[str, float] = {}
     nb_clients: int
     clients: List[ClientBalance]
+    controle: Dict[str, Any] = {}
     avertissements: List[str] = []

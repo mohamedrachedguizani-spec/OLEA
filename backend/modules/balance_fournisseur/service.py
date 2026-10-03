@@ -10,6 +10,7 @@ from modules.balance.service import (
     EPS, SEUIL_SOLDE, PAT_CLIENT, PAT_CUMULS, PAT_PERIODE, PAT_TX,
     calculer_anciennete, extract_amounts, nettoyer_libelle, nom_client,
 )
+from modules.balance.controle import construire_controle, exiger_type
 from .models import BalanceFournisseurResponse, FournisseurBalance, LigneTransaction
 
 C_DETTE, C_FNP, C_AVANCE = "4010000T", "4080000T", "4091000T"
@@ -22,6 +23,7 @@ PAT_REPORT = re.compile(r"^(\d{7}T)\s+(TN-\d{6})\s+TN-\d{6}\s+Report")
 PAT_TOTAL_TIERS = re.compile(r"^Total\s+(\d{7}T)\s+(TN-\d{6})\s+du")
 PAT_TOTAL_COMPTE = re.compile(r"^Total\s+compte\s+(\d{7}T)\s+du")
 PAT_TOTAL_GENERAL = re.compile(r"^Total\s+général")
+PAT_BRUIT = re.compile(r"^Total\s+compte")
 PAT_DEBUT = re.compile(r"^(\d{2}/\d{2}/\d{2}\s|TN-\d{6}\s|\d{7}T\s|Cumuls?\s+avant|Total\s)")
 
 
@@ -53,7 +55,8 @@ def fusionner_lignes(lines: Iterable[str]) -> List[str]:
 def parser_lignes(lines: Iterable[str]):
     tiers: Dict[str, Dict[str, Any]] = {}
     meta: Dict[str, Any] = {"periode_fin": None, "total_general": None, "totaux_tiers": {},
-                            "totaux_compte": {}, "avertissements": []}
+                            "totaux_compte": {}, "totaux_detail": {}, "totaux_compte_detail": {},
+                            "total_general_detail": None, "ignorees": [], "avertissements": []}
     compte: Optional[str] = None
     code: Optional[str] = None
 
@@ -86,18 +89,22 @@ def parser_lignes(lines: Iterable[str]):
             amts = extract_amounts(line)
             if amts:
                 meta["total_general"] = amts[-1][0]
+                meta["total_general_detail"] = [a for a, _ in amts]
             continue
         m = PAT_TOTAL_COMPTE.match(line)
         if m:
             amts = extract_amounts(line)
             if amts:
                 meta["totaux_compte"][m.group(1)] = amts[-1][0]
+                meta["totaux_compte_detail"][m.group(1)] = [a for a, _ in amts]
             continue
         m = PAT_TOTAL_TIERS.match(line)
         if m:
             amts = extract_amounts(line)
             if amts:
                 meta["totaux_tiers"][(m.group(1), m.group(2))] = amts[-1][0]
+                if len(amts) >= 3:
+                    meta["totaux_detail"][(m.group(1), m.group(2))] = tuple(a for a, _ in amts[-3:])
             if m.group(2) not in tiers:
                 meta["avertissements"].append(f"{m.group(2)} : en-tête fournisseur non reconnu")
             continue
@@ -128,11 +135,13 @@ def parser_lignes(lines: Iterable[str]):
         if m:
             amts = extract_amounts(line)
             if not amts:
+                meta["ignorees"].append({"code": code, "ligne": line[:120], "raison": "aucun montant lisible"})
                 continue
             vals = [a for a, _ in amts]
             try:
                 d = datetime.strptime(m.group(1), "%d/%m/%y").date()
             except ValueError:
+                meta["ignorees"].append({"code": code, "ligne": line[:120], "raison": "date invalide"})
                 continue
             prev = lignes[-1]["solde"] if lignes else 0.0
             if len(vals) >= 3:
@@ -152,6 +161,8 @@ def parser_lignes(lines: Iterable[str]):
             libelle = nettoyer_libelle(line[len(m.group(1)):][: amts[0][1] - len(m.group(1))])
             lignes.append({"date": d, "libelle": libelle, "debit": debit, "credit": credit,
                            "solde": solde, "net": debit - credit})
+        elif extract_amounts(line) and not PAT_BRUIT.match(line):
+            meta["ignorees"].append({"code": code, "ligne": line[:120], "raison": "ligne avec montants non reconnue"})
     return tiers, meta
 
 
@@ -162,6 +173,7 @@ def _r3(v: float) -> float:
 def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFournisseurResponse:
     avert: List[str] = list(meta["avertissements"])
     res: List[FournisseurBalance] = []
+    exclus: List[Dict[str, Any]] = []
     totaux = {k: 0.0 for k in BUCKET_KEYS}
     totaux_av = {k: 0.0 for k in BUCKET_KEYS}
     total_report = 0.0
@@ -184,6 +196,9 @@ def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFourni
         fnp = -soldes.get(C_FNP, 0.0)
         avance = soldes.get(C_AVANCE, 0.0)         # + = avance versée
         if max(abs(dette), abs(fnp), abs(avance)) < SEUIL_SOLDE:
+            sans_mvt = not any(t["comptes"].values())
+            exclus.append({"code": code, "nom": t["nom"], "solde": _r3(dette),
+                           "raison": "Aucun mouvement sur la période" if sans_mvt else "Soldes nuls (401 / 408 / 409)"})
             continue
 
         buckets = {k: 0.0 for k in BUCKET_KEYS}
@@ -247,7 +262,16 @@ def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFourni
             "Relancez l'édition Sage avec « Écritures avant période en détail = Oui » pour une balance exacte.")
     avert.append("Les comptes 408 (factures non parvenues) et 409 (avances versées) sont présentés à part : ils ne sont pas compensés dans la balance âgée des dettes (compte 401).")
 
+    controle = construire_controle(
+        [{"code": c, "nom": t["nom"], "compte": cp, "lignes": lg} for c, t in tiers.items() for cp, lg in t["comptes"].items()],
+        meta["totaux_detail"], meta["totaux_compte_detail"], meta["total_general_detail"], meta["ignorees"], exclus,
+        lambda c: CODE_COURT.get(c, c))
+    controle["nb_affiches"] = len(res)
+    if controle["statut"] != "OK":
+        avert.insert(0, f"Contrôle d'extraction : {controle['nb_ecarts']} écart(s), {len(controle['non_reconnus'])} tiers non reconnu(s), "
+                        f"{controle['nb_ignorees']} ligne(s) ignorée(s) – voir le détail du contrôle.")
     return BalanceFournisseurResponse(
+        controle=controle,
         date_reference=date_ref.strftime("%Y-%m-%d"), delai_paiement=delai,
         total_general=total_general, total_dettes=total_dettes,
         total_non_imputes=_r3(sum(f.total_solde for f in res if f.total_solde < 0)),
@@ -265,6 +289,7 @@ def parser_pdf_fournisseur(file_path: str, date_reference: Optional[date] = None
             text = page.extract_text(x_tolerance=3, y_tolerance=3)
             if text:
                 lines.extend(text.split("\n"))
+    exiger_type(lines, "fournisseurs")
     tiers, meta = parser_lignes(lines)
     if date_reference is None:
         try:

@@ -101,3 +101,28 @@
   .ba-import { grid-template-columns: 1fr; }
   .ba-grid { grid-template-columns: 1fr; }
 }
+
+/* ───────── Contrôle d'extraction ───────── */
+.ba-ctrl { background: var(--bg-card); border: 1px solid var(--border-light); border-left: 4px solid var(--b0); border-radius: var(--radius-md); box-shadow: var(--shadow-xs); margin-bottom: 1rem; overflow: hidden; }
+.ba-ctrl.ko { border-left-color: var(--b2); }
+.ba-ctrl-head { width: 100%; display: flex; align-items: center; gap: .85rem; padding: .8rem 1rem; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.ba-ctrl-icon { flex: none; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; color: #fff; font-weight: 800; background: var(--b0); }
+.ba-ctrl.ko .ba-ctrl-icon { background: var(--b2); }
+.ba-ctrl-title { flex: 1; font-weight: 700; color: var(--text-primary); }
+.ba-ctrl-title small { display: block; margin-top: .15rem; font-weight: 500; font-size: .76rem; color: var(--text-muted); }
+.ba-ctrl-toggle { font-size: .78rem; font-weight: 600; color: var(--text-muted); }
+.ba-ctrl-body { padding: 0 1rem 1rem; display: grid; gap: 1rem; border-top: 1px solid var(--border-light); }
+.ba-ctrl-body h4 { display: flex; align-items: center; justify-content: space-between; margin: .9rem 0 .4rem; font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+.ba-ctrl-body ul { margin: 0; padding-left: 1.1rem; display: grid; gap: .3rem; font-size: .83rem; color: var(--text-secondary); }
+.ba-ctrl-body code { font-size: .75rem; word-break: break-all; }
+.ba-ctrl-note { margin: 0 0 .5rem; font-size: .8rem; color: var(--text-muted); }
+.ba-ctrl-totaux { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: .75rem; margin-top: .9rem; }
+.ba-ctrl-totaux > div { padding: .6rem .8rem; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-muted); display: grid; gap: .1rem; }
+.ba-ctrl-totaux span { font-size: .7rem; font-weight: 700; text-transform: uppercase; color: var(--text-muted); }
+.ba-ctrl-totaux strong { font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.ba-ctrl-totaux small { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.ba-ctrl-scroll { max-height: 360px; overflow: auto; border: 1px solid var(--border-light); border-radius: var(--radius-sm); }
+.ba-ctrl-scroll.short { max-height: 220px; }
+.ba-ctrl-filter { display: inline-flex; align-items: center; gap: .35rem; font-size: .78rem; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.ba-ctrl-yes { color: var(--b0); font-weight: 800; }
+.ba-ctrl-no { color: var(--b3); font-weight: 800; }

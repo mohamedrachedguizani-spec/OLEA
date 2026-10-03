@@ -4,6 +4,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import pdfplumber
 
+from .controle import construire_controle, exiger_type
 from .models import BalanceAgeeResponse, ClientBalance, LigneTransaction
 
 EPS = 0.0005          # tolérance d'arrondi (1/2 millime)
@@ -16,10 +17,13 @@ SEUIL_SOLDE = 0.1     # soldes plus petits ignorés (résidus d'arrondi, ex. 0,0
 PAT_CLIENT = re.compile(r"^(TN-\d{6})\s+(.+)$")
 PAT_SUFFIXE_EXACT = re.compile(r"\s*TN-\d{6}$")
 PAT_SUFFIXE_COLLE = re.compile(r"\s*[TSN]{1,3}-\d{6}$")
-PAT_REPORT = re.compile(r"^4110001T\s+(TN-\d{6})\s+TN-\d{6}\s+Report")
+PAT_REPORT = re.compile(r"^(\d{7}T)\s+(TN-\d{6})\s+TN-\d{6}\s+Report")          # compte collectif quelconque
+PAT_COMPTE = re.compile(r"^(\d{7}T)\s+(?!TN-)\S")
+PAT_TOTAL_COMPTE = re.compile(r"^Total\s+compte\s+(\d{7}T)\s+du")
+PAT_BRUIT = re.compile(r"^Total\s+compte")
 PAT_CUMULS = re.compile(r"^Cumuls?\s+avant\s+le\s+(\d{2}/\d{2}/\d{4})")
 PAT_TX = re.compile(r"^(\d{2}/\d{2}/\d{2})\s+(.+)$")
-PAT_TOTAL_CLIENT = re.compile(r"^Total\s+4110001T\s+(TN-\d{6})\s+du")
+PAT_TOTAL_CLIENT = re.compile(r"^Total\s+(\d{7}T)\s+(TN-\d{6})\s+du")
 PAT_TOTAL_GENERAL = re.compile(r"^Total\s+général")
 PAT_PERIODE = re.compile(r"Date, de\s+\d{2}/\d{2}/\d{4}\s+à\s+(\d{2}/\d{2}/\d{4})")
 
@@ -83,7 +87,7 @@ def parse_date_ecr(s: str) -> date:
 
 
 PAT_DEBUT_LOGIQUE = re.compile(
-    r"^(\d{2}/\d{2}/\d{2}\s|TN-\d{6}\s|Cumuls?\s+avant|Total\s|4110001T\s)")
+    r"^(\d{2}/\d{2}/\d{2}\s|TN-\d{6}\s|Cumuls?\s+avant|Total\s|\d{7}T\s)")
 
 
 def fusionner_lignes(lines: Iterable[str]) -> List[str]:
@@ -97,13 +101,13 @@ def fusionner_lignes(lines: Iterable[str]) -> List[str]:
         if attente is not None:
             if line and not PAT_DEBUT_LOGIQUE.match(line):
                 attente = f"{attente} {line}"
-                if len(extract_amounts(attente)) >= 2:
+                if extract_amounts(attente):
                     out.append(attente)
                     attente = None
                 continue
             out.append(attente)          # pas de suite : on garde telle quelle
             attente = None
-        if PAT_TX.match(line) and len(extract_amounts(line)) < 2:
+        if PAT_TX.match(line) and not extract_amounts(line):      # 1 seul montant = valide (solde nul non imprimé)
             attente = line
         else:
             out.append(line)
@@ -116,8 +120,10 @@ def fusionner_lignes(lines: Iterable[str]) -> List[str]:
 def parser_lignes(lines: Iterable[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
     """Transforme les lignes texte du Grand Livre en écritures par client."""
     clients: Dict[str, Dict[str, Any]] = {}
-    meta: Dict[str, Any] = {"periode_fin": None, "total_general": None,
-                            "totaux_pdf": {}, "avertissements": []}
+    meta: Dict[str, Any] = {"periode_fin": None, "total_general": None, "total_general_detail": None,
+                            "totaux_pdf": {}, "totaux_detail": {}, "totaux_compte": {}, "ignorees": [],
+                            "avertissements": []}
+    compte: Optional[str] = None
     current: Optional[str] = None
 
     for raw in fusionner_lignes(lines):
@@ -133,14 +139,20 @@ def parser_lignes(lines: Iterable[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict
         m = PAT_CLIENT.match(line)
         if m:
             current = m.group(1)
-            clients.setdefault(current, {"code": current, "nom": nom_client(m.group(2)), "lignes": []})
+            d = clients.setdefault(current, {"code": current, "nom": nom_client(m.group(2)), "lignes": [],
+                                             "compte": compte or "4110001T", "comptes": set()})
+            d["comptes"].add(compte or "4110001T")
             continue
 
         # Reprise d'un client sur une nouvelle page. NB : les montants de cette ligne
         # sont ceux de la page seulement -> ignorés.
         m = PAT_REPORT.match(line)
         if m:
-            current = m.group(1)
+            compte, current = m.group(1), m.group(2)
+            continue
+        m = PAT_COMPTE.match(line)
+        if m:
+            compte = m.group(1)
             continue
 
         # Total général du PDF (contrôle)
@@ -148,16 +160,24 @@ def parser_lignes(lines: Iterable[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict
             amts = extract_amounts(line)
             if amts:
                 meta["total_general"] = amts[-1][0]
+                meta["total_general_detail"] = [a for a, _ in amts]
+            continue
+
+        m = PAT_TOTAL_COMPTE.match(line)
+        if m:
+            meta["totaux_compte"][m.group(1)] = [a for a, _ in extract_amounts(line)]
             continue
 
         # Total client (contrôle)
         m = PAT_TOTAL_CLIENT.match(line)
         if m:
-            amts = extract_amounts(line)
+            amts = [a for a, _ in extract_amounts(line)]
             if amts:
-                meta["totaux_pdf"][m.group(1)] = amts[-1][0]
-            if m.group(1) not in clients:
-                meta["avertissements"].append(f"{m.group(1)} : en-tête client non reconnu (total PDF {amts[-1][0]:.3f})" if amts else f"{m.group(1)} : en-tête client non reconnu")
+                meta["totaux_pdf"][m.group(2)] = amts[-1]
+                if len(amts) >= 3:
+                    meta["totaux_detail"][(m.group(1), m.group(2))] = tuple(amts[-3:])
+            if m.group(2) not in clients:
+                meta["avertissements"].append(f"{m.group(2)} : en-tête client non reconnu")
             continue
 
         if not current:
@@ -187,19 +207,22 @@ def parser_lignes(lines: Iterable[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict
         m = PAT_TX.match(line)
         if m:
             amts = extract_amounts(line)
-            if len(amts) < 2:
+            if not amts:
+                meta["ignorees"].append({"code": current, "ligne": line[:120], "raison": "aucun montant lisible"})
                 continue
             vals = [a for a, _ in amts]
             try:
                 d = parse_date_ecr(m.group(1))
             except ValueError:
+                meta["ignorees"].append({"code": current, "ligne": line[:120], "raison": "date invalide"})
                 continue
 
             prev = clients[current]["lignes"][-1]["solde"] if clients[current]["lignes"] else 0.0
             if len(vals) >= 3:
                 debit, credit, solde = vals[0], vals[1], vals[2]
             else:
-                montant, solde = vals[0], vals[1]
+                montant = vals[0]
+                solde = vals[1] if len(vals) >= 2 else 0.0      # Sage n'imprime pas un solde nul
                 diff = solde - prev
                 if abs(diff - montant) < 0.01:
                     debit, credit = montant, 0.0
@@ -215,7 +238,12 @@ def parser_lignes(lines: Iterable[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict
                 "date": d, "libelle": libelle,
                 "debit": debit, "credit": credit, "solde": solde, "net": debit - credit,
             })
+        elif extract_amounts(line) and not PAT_BRUIT.match(line):
+            meta["ignorees"].append({"code": current, "ligne": line[:120], "raison": "ligne avec montants non reconnue"})
 
+    for c, d in clients.items():
+        if len(d["comptes"]) > 1:
+            meta["avertissements"].append(f"{c} {d['nom']} : présent dans plusieurs comptes collectifs ({', '.join(sorted(d['comptes']))}) – vérifier le rapprochement")
     return clients, meta
 
 
@@ -277,6 +305,7 @@ def calculer_anciennete(lignes: List[Dict[str, Any]], date_ref: date, delai: int
 def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgeeResponse:
     avert: List[str] = list(meta["avertissements"])
     result: List[ClientBalance] = []
+    exclus: List[Dict[str, Any]] = []
     total_report = 0.0
     totaux_av = {"non_echu": 0.0, "1-30": 0.0, "31-60": 0.0, "61-90": 0.0, "+90": 0.0}
     totaux = {"non_echu": 0.0, "1-30": 0.0, "31-60": 0.0, "61-90": 0.0, "+90": 0.0}
@@ -284,6 +313,7 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
     for code, data in clients.items():
         lignes = data["lignes"]
         if not lignes:
+            exclus.append({"code": code, "nom": data["nom"], "solde": 0.0, "raison": "Aucun mouvement sur la période"})
             continue
         solde_final = lignes[-1]["solde"]
 
@@ -292,6 +322,7 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
         if pdf_solde is not None and abs(pdf_solde - solde_final) > 0.01:
             avert.append(f"{code} {data['nom']} : solde calculé {solde_final:.3f} ≠ total PDF {pdf_solde:.3f}")
         if abs(solde_final) < SEUIL_SOLDE:
+            exclus.append({"code": code, "nom": data["nom"], "solde": round(solde_final, 3), "raison": "Solde nul (|solde| < 0,100)"})
             continue
 
         buckets, avance, reste_ligne, dont_report, buckets_av = calculer_anciennete(lignes, date_ref, delai)
@@ -341,7 +372,15 @@ def construire_balance(clients, meta, date_ref: date, delai: int) -> BalanceAgee
             "leur ancienneté réelle est inconnue (comptée depuis le 31/12 précédent). "
             "Pour une balance exacte, relancez l'édition Sage avec « Écritures avant période en détail = Oui » "
             "ou une date de début plus ancienne.")
+    controle = construire_controle(
+        [{"code": c, "nom": d["nom"], "compte": d["compte"], "lignes": d["lignes"]} for c, d in clients.items()],
+        meta["totaux_detail"], meta["totaux_compte"], meta["total_general_detail"], meta["ignorees"], exclus)
+    controle["nb_affiches"] = len(result)
+    if controle["statut"] != "OK":
+        avert.insert(0, f"Contrôle d'extraction : {controle['nb_ecarts']} écart(s), {len(controle['non_reconnus'])} tiers non reconnu(s), "
+                        f"{controle['nb_ignorees']} ligne(s) ignorée(s) – voir le détail du contrôle.")
     return BalanceAgeeResponse(
+        controle=controle,
         date_reference=date_ref.strftime("%Y-%m-%d"),
         delai_paiement=delai,
         total_general=total_general,
@@ -365,6 +404,7 @@ def parser_pdf_sage(file_path: str, date_reference: Optional[date] = None,
             if text:
                 lines.extend(text.split("\n"))
 
+    exiger_type(lines, "clients")
     clients, meta = parser_lignes(lines)
 
     if date_reference is None:   # défaut : fin de période imprimée sur le PDF, sinon aujourd'hui
