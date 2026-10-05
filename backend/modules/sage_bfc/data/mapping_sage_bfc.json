@@ -391,6 +391,14 @@
       "sous_categorie": "Honoraires",
       "bpc_mapping": "R62200",
       "bfc_mapping": "G622620"
+    },
+    "6220000T": {
+      "code_compte": "6220000T",
+      "libelle_sage": "REMUNERATION D'intermediaire",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "agregat_bfc": "Honoraires & Sous-traitance",
+      "sens": "-"
     }
   },
   "mapping_frais_commerciaux": {
