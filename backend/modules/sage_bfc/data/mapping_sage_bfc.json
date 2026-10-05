@@ -707,6 +707,14 @@
       "sous_categorie": "Services bancaires",
       "bpc_mapping": "R62700",
       "bfc_mapping": "G627800"
+    },
+    "6130006T": {
+      "code_compte": "6130006T",
+      "libelle_sage": "LOYE LICENCE SAGE",
+      "categorie": "COÛTS",
+      "type": "Charge",
+      "agregat_bfc": "Fonctionnement Courant",
+      "sens": "-"
     }
   },
   "mapping_autres_charges": {
