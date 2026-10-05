@@ -2,6 +2,7 @@
 // En-tête + étape d'import communs aux balances âgées (clients / fournisseurs),
 // même charte que SAGE → BFC (classes de ./sage-bfc/SageBfcParser.css).
 import React, { useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import './sage-bfc/SageBfcParser.css';
 
 const MAX_SIZE = 20 * 1024 * 1024; // 20 Mo (limite du backend)
@@ -12,12 +13,14 @@ const TEXTES = {
     sous: "Analyse de l'ancienneté des créances à partir du Grand Livre auxiliaire Sage",
     drop: 'Glissez-déposez le Grand Livre auxiliaire clients',
     bouton: 'Générer la balance âgée clients',
+    chargement: "Extraction des écritures, imputation des règlements et calcul de l'ancienneté des créances.",
   },
   fournisseurs: {
     titre: 'Balance âgée fournisseurs',
     sous: "Analyse de l'ancienneté des dettes à partir du Grand Livre auxiliaire fournisseurs Sage",
     drop: 'Glissez-déposez le Grand Livre auxiliaire fournisseurs',
     bouton: 'Générer la balance âgée fournisseurs',
+    chargement: "Extraction des écritures, imputation des paiements et calcul de l'ancienneté des dettes.",
   },
 };
 
@@ -86,6 +89,16 @@ const BalanceUpload = ({
 
   return (
     <div className="sage-upload-section">
+      {loading && ReactDOM.createPortal(
+        <div className="sage-close-overlay" role="status" aria-live="polite" aria-label="Analyse en cours">
+          <div className="sage-close-overlay-card">
+            <div className="sage-close-spinner" />
+            <h4>Analyse du grand livre en cours...</h4>
+            <p>{t.chargement}</p>
+          </div>
+        </div>,
+        document.body
+      )}
       <div
         className={`sage-dropzone ${drag ? 'drag-active' : ''} ${file ? 'has-file' : ''} ${error ? 'has-error' : ''}`}
         role="button" tabIndex={0}
@@ -101,7 +114,7 @@ const BalanceUpload = ({
         {!file ? (
           <div className="dropzone-content">
             <div className={`dropzone-icon ${drag ? 'bounce' : ''}`}>
-<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
                                 <rect x="8" y="8" width="48" height="48" rx="8" strokeDasharray="6 3" />
                                 <path d="M32 22v20M22 32h20" strokeWidth="3" strokeLinecap="round" />
                             </svg>            </div>

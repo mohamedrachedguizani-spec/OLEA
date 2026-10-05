@@ -126,3 +126,11 @@
 .ba-ctrl-filter { display: inline-flex; align-items: center; gap: .35rem; font-size: .78rem; text-transform: none; letter-spacing: 0; cursor: pointer; }
 .ba-ctrl-yes { color: var(--b0); font-weight: 800; }
 .ba-ctrl-no { color: var(--b3); font-weight: 800; }
+
+/* ───────── Export / impression ───────── */
+.ba-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-bottom: 1rem; }
+
+/* ───────── Prévisualisation (modale partagée avec le Reporting) ───────── */
+.reporting-preview-document .csv-preview-table td.ba-hot { background: #fcebe6; font-weight: 700; }
+.dark-mode .reporting-preview-document .csv-preview-table td.ba-hot { background: rgba(183, 72, 43, .28); }
+.ba-preview-note { margin: -.2rem 0 .6rem; font-size: .75rem; font-style: italic; color: var(--text-muted); }

@@ -6,10 +6,12 @@ from typing import Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from modules.balance.controle import TypeGrandLivreInvalide
+from modules.balance.export import build_pdf, build_print_html, build_sections, rapport_fournisseurs
 from .service import parser_pdf_fournisseur
-from .models import BalanceFournisseurResponse
+from .models import BalanceExportFournisseurs, BalanceFournisseurResponse
 from modules.auth.dependencies import require_permission_code
 
 router = APIRouter(prefix="/balance-fournisseur", tags=["Balance Fournisseur"])
@@ -64,3 +66,41 @@ async def parse_balance_agee_fournisseur(
     finally:
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
+
+@router.post("/agee/export-pdf")
+def export_pdf(
+    payload: BalanceExportFournisseurs,
+    current_user: dict = Depends(require_permission_code("balance_fournisseur.export_pdf")),
+):
+    """PDF de la balance âgée (charte OLEA, comme les exports Reporting / Rapprochement)."""
+    try:
+        output = build_pdf(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du PDF : {str(e)}")
+    filename = f"Balance_Agee_Fournisseurs_{payload.analyse.date_reference}.pdf"
+    return StreamingResponse(output, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.post("/agee/print-html", response_class=HTMLResponse)
+def print_html(
+    payload: BalanceExportFournisseurs,
+    current_user: dict = Depends(require_permission_code("balance_fournisseur.print")),
+):
+    """Version HTML mise en page pour l'impression navigateur (ouverte dans une nouvelle fenêtre)."""
+    try:
+        return HTMLResponse(build_print_html(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail)))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la préparation de l'impression : {str(e)}")
+
+
+@router.post("/agee/preview-sections")
+def preview_sections(
+    payload: BalanceExportFournisseurs,
+    current_user: dict = Depends(require_permission_code("balance_fournisseur.read")),
+):
+    """Contenu du document à imprimer / exporter, pour la prévisualisation avant confirmation."""
+    try:
+        return build_sections(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la prévisualisation : {str(e)}")

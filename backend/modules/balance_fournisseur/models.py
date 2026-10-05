@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class LigneTransaction(BaseModel):
@@ -48,3 +48,9 @@ class BalanceFournisseurResponse(BaseModel):
     fournisseurs: List[FournisseurBalance]
     controle: Dict[str, Any] = {}
     avertissements: List[str] = []
+
+
+class BalanceExportFournisseurs(BaseModel):
+    analyse: BalanceFournisseurResponse
+    fichier: Optional[str] = None
+    inclure_detail: bool = True

@@ -52,7 +52,11 @@ PERMISSIONS = {
     "admin.audit.read": ("Consulter le journal d'audit", "Administration"),
     "admin.audit.delete": ("Purger le journal d'audit", "Administration"),
     "balance_agee.read": ("Analyser la balance âgée clients depuis un PDF Sage", "Balance Âgée"),
+    "balance_agee.export_pdf": ("Exporter la balance âgée clients en PDF", "Balance Âgée"),
+    "balance_agee.print": ("Imprimer la balance âgée clients", "Balance Âgée"),
     "balance_fournisseur.read": ("Analyser la balance âgée fournisseurs depuis un PDF Sage", "Balance Âgée"),
+    "balance_fournisseur.export_pdf": ("Exporter la balance âgée fournisseurs en PDF", "Balance Âgée"),
+    "balance_fournisseur.print": ("Imprimer la balance âgée fournisseurs", "Balance Âgée"),
 }
 
 
@@ -68,7 +72,8 @@ PROFILES = {
             "saisie_bancaire.sage.generate", "saisie_bancaire.sage.export",
             "rapprochement_bancaire.run", "rapprochement_bancaire.export_pdf",
             "sage_bfc.read", "sage_bfc.import",
-            "balance_agee.read", "balance_fournisseur.read",
+            "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
+            "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print",
         },
     ),
     "FINANCIER": (
@@ -82,7 +87,8 @@ PROFILES = {
             "reporting.export_excel", "reporting.export_pdf", "reporting.print",
             "configuration.accounts.read", "configuration.third_parties.read",
             "configuration.mapping.read",
-            "balance_agee.read", "balance_fournisseur.read",
+            "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
+            "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print",
         },
     ),
     "DIRIGEANT": (

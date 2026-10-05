@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import ApiService from '../services/api';
 import BalanceUpload, { BalanceHeader } from './BalanceUpload';
-import BalanceControle from './BalanceControle'; // Ajustez le chemin
+import BalanceControle from './BalanceControle';
+import BalanceActions from './BalanceActions'; // Ajustez le chemin
 import './BalanceAgee.css';
 
 const BUCKETS = [
@@ -111,6 +112,7 @@ const BalanceAgeeFournisseur = () => {
 
       {step === 'results' && data && (
         <>
+          <BalanceActions kind="fournisseurs" data={data} fichier={file ? file.name : null} />
           <BalanceControle controle={data.controle} tiers="fournisseurs" />
 
           {data.avertissements?.length > 0 && (

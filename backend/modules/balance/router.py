@@ -6,10 +6,12 @@ from typing import Optional
 
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import HTMLResponse, StreamingResponse
 
 from .controle import TypeGrandLivreInvalide
+from .export import build_pdf, build_print_html, build_sections, rapport_clients
 from .service import parser_pdf_sage
-from .models import BalanceAgeeResponse
+from .models import BalanceAgeeResponse, BalanceExportClients
 from modules.auth.dependencies import require_permission_code
 
 router = APIRouter(prefix="/balance", tags=["Balance Client"])
@@ -64,3 +66,41 @@ async def parse_balance_agee(
     finally:
         if os.path.exists(temp_filename):
             os.remove(temp_filename)
+
+@router.post("/agee/export-pdf")
+def export_pdf(
+    payload: BalanceExportClients,
+    current_user: dict = Depends(require_permission_code("balance_agee.export_pdf")),
+):
+    """PDF de la balance âgée (charte OLEA, comme les exports Reporting / Rapprochement)."""
+    try:
+        output = build_pdf(rapport_clients(payload.analyse, payload.fichier, payload.inclure_detail))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du PDF : {str(e)}")
+    filename = f"Balance_Agee_Clients_{payload.analyse.date_reference}.pdf"
+    return StreamingResponse(output, media_type="application/pdf",
+                             headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.post("/agee/print-html", response_class=HTMLResponse)
+def print_html(
+    payload: BalanceExportClients,
+    current_user: dict = Depends(require_permission_code("balance_agee.print")),
+):
+    """Version HTML mise en page pour l'impression navigateur (ouverte dans une nouvelle fenêtre)."""
+    try:
+        return HTMLResponse(build_print_html(rapport_clients(payload.analyse, payload.fichier, payload.inclure_detail)))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la préparation de l'impression : {str(e)}")
+
+
+@router.post("/agee/preview-sections")
+def preview_sections(
+    payload: BalanceExportClients,
+    current_user: dict = Depends(require_permission_code("balance_agee.read")),
+):
+    """Contenu du document à imprimer / exporter, pour la prévisualisation avant confirmation."""
+    try:
+        return build_sections(rapport_clients(payload.analyse, payload.fichier, payload.inclure_detail))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la prévisualisation : {str(e)}")

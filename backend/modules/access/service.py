@@ -26,8 +26,10 @@ SAGE_BFC_PERMISSION_REPLACEMENTS = {
 
 # Permissions à propager aux profils existants lors d'une montée de version
 NEW_PROFILE_PERMISSIONS = {
-    "COMPTABLE": {"balance_agee.read", "balance_fournisseur.read"},
-    "FINANCIER": {"balance_agee.read", "balance_fournisseur.read"},
+    "COMPTABLE": {"balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
+                 "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print"},
+    "FINANCIER": {"balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
+                 "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print"},
 }
 
 

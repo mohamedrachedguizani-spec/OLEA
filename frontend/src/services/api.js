@@ -1372,6 +1372,87 @@ class ApiService {
         }
         return response.json();
     }
+
+    // ─── Export PDF / impression de la balance âgée (clients | fournisseurs) ───
+    // L'analyse déjà affichée est renvoyée au backend : pas besoin de renvoyer le PDF Sage.
+    static _balanceBase(kind) {
+        return kind === 'fournisseurs' ? `${API_BASE_URL}/balance-fournisseur` : `${API_BASE_URL}/balance`;
+    }
+
+    // Contenu du document (sections) affiché dans la modale de prévisualisation avant export / impression.
+    static async getBalanceAgeePreview(kind, analyse, fichier = null) {
+        const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/preview-sections`, {
+            method: 'POST',
+            body: JSON.stringify({ analyse, fichier, inclure_detail: true }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la prévisualisation' }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : 'Erreur lors de la prévisualisation');
+        }
+        return response.json();
+    }
+
+    // Génère le PDF côté backend et le renvoie sans le télécharger (utilisé par l'aperçu et par l'export).
+    static async fetchBalanceAgeePdf(kind, analyse, fichier = null) {
+        const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/export-pdf`, {
+            method: 'POST',
+            body: JSON.stringify({ analyse, fichier, inclure_detail: true }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: "Erreur lors de la génération du PDF" }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : "Erreur lors de la génération du PDF");
+        }
+        const blob = await response.blob();
+        const disposition = response.headers.get('content-disposition') || '';
+        const match = disposition.match(/filename="?([^";]+)"?/i);
+        return { blob, filename: match ? match[1] : `Balance_Agee_${kind}_${analyse.date_reference}.pdf` };
+    }
+
+    static downloadBlob(blob, filename) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+    }
+
+    static async exportBalanceAgeePdf(kind, analyse, fichier = null) {
+        const { blob, filename } = await ApiService.fetchBalanceAgeePdf(kind, analyse, fichier);
+        ApiService.downloadBlob(blob, filename);
+    }
+
+    // Ouvre le HTML mis en forme côté backend dans une nouvelle fenêtre puis déclenche l'impression native.
+    static async printBalanceAgee(kind, analyse, fichier = null) {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) throw new Error('Popup bloquée. Autorisez les popups pour imprimer.');
+        const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/print-html`, {
+            method: 'POST',
+            body: JSON.stringify({ analyse, fichier, inclure_detail: true }),
+        });
+        if (!response.ok) {
+            printWindow.close();
+            const err = await response.json().catch(() => ({ detail: "Erreur lors de la préparation de l'impression" }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : "Erreur lors de la préparation de l'impression");
+        }
+        const html = await response.text();
+        printWindow.document.open();
+        printWindow.document.write(html);
+        printWindow.document.close();
+        const triggerPrint = async () => {
+            const images = Array.from(printWindow.document.images || []);
+            await Promise.all(images.map((image) => (image.complete ? Promise.resolve() : new Promise((resolve) => {
+                image.addEventListener('load', resolve, { once: true });
+                image.addEventListener('error', resolve, { once: true });
+            }))));
+            printWindow.focus();
+            printWindow.print();
+        };
+        if (printWindow.document.readyState === 'complete') await triggerPrint();
+        else printWindow.addEventListener('load', triggerPrint, { once: true });
+    }
 }
 
 export default ApiService;

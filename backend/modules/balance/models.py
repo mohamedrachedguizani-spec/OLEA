@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 class LigneTransaction(BaseModel):
@@ -42,3 +42,9 @@ class BalanceAgeeResponse(BaseModel):
     clients: List[ClientBalance]
     controle: Dict[str, Any] = {}
     avertissements: List[str] = []
+
+class BalanceExportClients(BaseModel):
+    """Corps des routes /agee/export-pdf et /agee/print-html : l'analyse déjà calculée est réutilisée."""
+    analyse: BalanceAgeeResponse
+    fichier: Optional[str] = None
+    inclure_detail: bool = True
