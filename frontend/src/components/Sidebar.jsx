@@ -1,9 +1,15 @@
 // src/components/Sidebar.jsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ApiService from '../services/api';
 import oleaLogo from '../assets/olea-logo.svg';
 
+// Groupes de navigation repliables : id du groupe -> onglets qu'il contient
+const MENU_GROUP_TABS = {
+    caisse: ['saisie', 'export'],
+    banque: ['rapprochement', 'rapprochement_bancaire'],
+    balance: ['balance-agee', 'balance-fournisseur'],
+};
 const PASSWORD_POLICY_HINT = '8+ caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial, sans espaces';
 const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}$/;
 
@@ -25,26 +31,74 @@ function Sidebar({
     const [pwdError, setPwdError] = useState('');
     const [pwdSuccess, setPwdSuccess] = useState('');
     const [pwdLoading, setPwdLoading] = useState(false);
+    const [openGroups, setOpenGroups] = useState(() => Object.fromEntries(
+        Object.entries(MENU_GROUP_TABS).map(([groupId, tabs]) => [groupId, tabs.includes(activeTab)])
+    ));
+
+    // Ouvre automatiquement un groupe quand un de ses sous-modules devient actif
+    useEffect(() => {
+        const groupId = Object.keys(MENU_GROUP_TABS).find(id => MENU_GROUP_TABS[id].includes(activeTab));
+        if (groupId) setOpenGroups(prev => (prev[groupId] ? prev : { ...prev, [groupId]: true }));
+    }, [activeTab]);
 
     // Menu items filtrés selon les permissions de l'utilisateur
     const allMenuItems = [
         { id: 'dashboard', label: 'Tableau de Bord', icon: 'dashboard', module: 'dashboard' },
-        { id: 'saisie', label: 'Saisie Caisse', icon: 'edit', module: 'saisie_caisse' },
-        { id: 'export', label: 'Export CSV', icon: 'download', module: 'export_csv' },
-        { id: 'rapprochement', label: 'Saisie Bancaire', icon: 'bank', module: 'saisie_bancaire' },
-        { id: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: 'compare', module: 'rapprochement_bancaire' },
+        {
+            id: 'caisse',
+            label: 'Caisse',
+            icon: 'caisse',
+            children: [
+                { id: 'saisie', label: 'Saisie Caisse', icon: 'edit', module: 'saisie_caisse' },
+                { id: 'export', label: 'Export CSV', icon: 'download', module: 'export_csv' },
+            ],
+        },
+        {
+            id: 'banque',
+            label: 'Banque',
+            icon: 'bank',
+            children: [
+                { id: 'rapprochement', label: 'Saisie Bancaire', icon: 'edit', module: 'saisie_bancaire' },
+                { id: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: 'compare', module: 'rapprochement_bancaire' },
+            ],
+        },
         { id: 'sage-bfc', label: 'SAGE → BFC', icon: 'transform', module: 'sage_bfc' },
         { id: 'reporting', label: 'Reporting', icon: 'reporting', module: 'reporting' },
-        { id: 'balance-agee', label: 'Balance Âgée Clients', icon: 'balance', module: 'balance_agee' },
-        { id: 'balance-fournisseur', label: 'Balance Âgée Fournisseurs', icon: 'balance_frs', module: 'balance_fournisseur' },
+        {
+            id: 'balance',
+            label: 'Balance Âgée',
+            icon: 'balance',
+            children: [
+                { id: 'balance-agee', label: 'Clients', icon: 'balance', module: 'balance_agee' },
+                { id: 'balance-fournisseur', label: 'Fournisseurs', icon: 'balance_frs', module: 'balance_fournisseur' },
+            ],
+        },
         { id: 'configuration', label: 'Configuration', icon: 'settings', module: 'configuration' },
 
     ];
 
     // Filtrer : superadmin ne voit que le tableau de bord, les autres selon permissions
-    const menuItems = allMenuItems.filter(item => {
-        return hasPermission(item.module, 'read');
-    });
+    // Un groupe (ex. Balance) est affiché dès qu'au moins un de ses sous-modules est autorisé
+    const menuItems = allMenuItems
+        .map(item => {
+            if (item.children) {
+                const children = item.children.filter(child => hasPermission(child.module, 'read'));
+                return children.length ? { ...item, children } : null;
+            }
+            return hasPermission(item.module, 'read') ? item : null;
+        })
+        .filter(Boolean);
+
+    const handleGroupToggle = (groupId) => {
+        const isDesktop = typeof window !== 'undefined' && !window.matchMedia('(max-width: 1024px)').matches;
+        if (sidebarCollapsed && isDesktop) {
+            // Sidebar réduite : on la déplie pour afficher les sous-modules
+            setSidebarCollapsed(false);
+            setOpenGroups(prev => ({ ...prev, [groupId]: true }));
+            return;
+        }
+        setOpenGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
+    };
 
     const handleLogoToggle = () => {
         if (typeof window !== 'undefined' && window.matchMedia('(max-width: 1024px)').matches) {
@@ -156,6 +210,13 @@ function Sidebar({
                     <path d="M2 7l10-5 10 5"/>
                 </svg>
             ),
+            caisse: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="6" width="20" height="12" rx="2"/>
+                    <circle cx="12" cy="12" r="2.5"/>
+                    <path d="M6 12h.01M18 12h.01"/>
+                </svg>
+            ),
         };
         return icons[iconName];
     };
@@ -214,21 +275,63 @@ function Sidebar({
                     <div className="menu-section">
                         <span className="menu-title">Espace de gestion</span>
                         <ul className="menu-list">
-                            {menuItems.map(item => (
-                                <li key={item.id}>
-                                    <button
-                                        className={`menu-item ${activeTab === item.id ? 'active' : ''}`}
-                                        onClick={() => {
-                                            setActiveTab(item.id);
-                                            setSidebarOpen(false);
-                                        }}
-                                    >
-                                        <span className="menu-icon">{getIcon(item.icon)}</span>
-                                        <span className="menu-label">{item.label}</span>
-                                        {activeTab === item.id && <span className="menu-active-dot"></span>}
-                                    </button>
-                                </li>
-                            ))}
+                            {menuItems.map(item => {
+                                if (item.children) {
+                                    const hasActiveChild = item.children.some(child => child.id === activeTab);
+                                    const isOpen = Boolean(openGroups[item.id]);
+                                    return (
+                                        <li key={item.id} className={`menu-group ${isOpen ? 'open' : ''}`}>
+                                            <button
+                                                className={`menu-item menu-group-toggle ${hasActiveChild ? 'has-active' : ''}`}
+                                                onClick={() => handleGroupToggle(item.id)}
+                                                aria-expanded={isOpen}
+                                                title={item.label}
+                                            >
+                                                <span className="menu-icon">{getIcon(item.icon)}</span>
+                                                <span className="menu-label">{item.label}</span>
+                                                <span className="menu-chevron" aria-hidden="true">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                                        <polyline points="6 9 12 15 18 9"/>
+                                                    </svg>
+                                                </span>
+                                            </button>
+                                            {isOpen && (
+                                                <ul className="submenu-list">
+                                                    {item.children.map(child => (
+                                                        <li key={child.id}>
+                                                            <button
+                                                                className={`menu-item submenu-item ${activeTab === child.id ? 'active' : ''}`}
+                                                                onClick={() => {
+                                                                    setActiveTab(child.id);
+                                                                    setSidebarOpen(false);
+                                                                }}
+                                                            >
+                                                                <span className="menu-icon">{getIcon(child.icon)}</span>
+                                                                <span className="menu-label">{child.label}</span>
+                                                            </button>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            )}
+                                        </li>
+                                    );
+                                }
+                                return (
+                                    <li key={item.id}>
+                                        <button
+                                            className={`menu-item ${activeTab === item.id ? 'active' : ''}`}
+                                            onClick={() => {
+                                                setActiveTab(item.id);
+                                                setSidebarOpen(false);
+                                            }}
+                                        >
+                                            <span className="menu-icon">{getIcon(item.icon)}</span>
+                                            <span className="menu-label">{item.label}</span>
+                                            {activeTab === item.id && <span className="menu-active-dot"></span>}
+                                        </button>
+                                    </li>
+                                );
+                            })}
                         </ul>
                     </div>
 

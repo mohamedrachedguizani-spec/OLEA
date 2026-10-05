@@ -8072,3 +8072,240 @@ body {
     .access-profile-heading { flex-direction: column; }
 }
 @media (max-width: 900px) { .access-layout { grid-template-columns: 1fr; } .access-groups { grid-template-columns: 1fr; } }
+
+/* ==================== Sidebar — navigation alignée à gauche + groupe Balance ==================== */
+
+/* Alignement à gauche (y compris quand la sidebar est réduite) */
+.sidebar .menu-item,
+.sidebar.collapsed .menu-item {
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.sidebar.collapsed .sidebar-menu {
+    align-items: stretch;
+}
+
+/* Groupe repliable */
+.menu-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.menu-chevron {
+    display: inline-flex;
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    transition: transform .2s ease;
+}
+
+.menu-chevron svg {
+    width: 100%;
+    height: 100%;
+}
+
+.menu-group.open .menu-chevron {
+    transform: rotate(180deg);
+}
+
+.menu-item.has-active {
+    color: #fff;
+}
+
+.sidebar.collapsed .menu-item.has-active {
+    background: linear-gradient(100deg, #b24528, #9a3c23);
+    box-shadow: 0 8px 18px rgba(20, 19, 18, .4);
+}
+
+.submenu-list {
+    list-style: none;
+    margin: 0 0 0 22px;
+    padding: 0 0 0 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    border-left: 1px solid rgba(255, 255, 255, .12);
+}
+
+.menu-item.submenu-item,
+.sidebar.collapsed .menu-item.submenu-item {
+    min-height: 38px;
+    padding: 8px 12px;
+    gap: 11px;
+    font-size: 13px;
+}
+
+.submenu-item .menu-icon {
+    width: 17px;
+    height: 17px;
+}
+
+/* Sidebar réduite (desktop) : seuls les icônes du groupe restent visibles */
+.sidebar.collapsed .menu-chevron,
+.sidebar.collapsed .submenu-list {
+    display: none;
+}
+
+@media (max-width: 1024px) {
+    .sidebar.collapsed .menu-chevron {
+        display: inline-flex;
+    }
+
+    .sidebar.collapsed .submenu-list {
+        display: flex;
+    }
+
+    .sidebar.collapsed .menu-item.has-active {
+        background: transparent;
+        box-shadow: none;
+    }
+}
+
+/* ==================== Sidebar — navigation strictement alignée à gauche, sous « Espace de gestion » ==================== */
+.sidebar .sidebar-menu,
+.sidebar.collapsed .sidebar-menu {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.sidebar .menu-section,
+.sidebar .menu-list,
+.sidebar .menu-list > li {
+    width: 100%;
+    align-items: stretch;
+    text-align: left;
+}
+
+.sidebar .menu-title {
+    text-align: left;
+}
+
+.sidebar .menu-item,
+.sidebar.collapsed .menu-item {
+    width: 100%;
+    justify-content: flex-start;
+    text-align: left;
+}
+
+.sidebar .menu-label {
+    flex: 1;
+    text-align: left;
+}
+
+/* ==================== Sidebar — début de ligne : titre et navigation sur le même bord gauche ==================== */
+.sidebar {
+    --nav-pad-x: 13px;
+}
+
+/* Le conteneur du menu ne décale rien : tout part du même bord gauche */
+.sidebar .sidebar-menu,
+.sidebar.collapsed .sidebar-menu {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    text-align: left !important;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
+}
+
+.sidebar .menu-section,
+.sidebar .menu-list,
+.sidebar .menu-list > li,
+.sidebar .menu-group {
+    width: 100% !important;
+    margin-left: 0 !important;
+    margin-right: 0 !important;
+    padding-left: 0 !important;
+    align-items: stretch !important;
+    text-align: left !important;
+}
+
+/* Titre « Espace de gestion » : même retrait que les entrées */
+.sidebar .menu-title {
+    display: block !important;
+    width: 100% !important;
+    padding-left: var(--nav-pad-x) !important;
+    padding-right: 0 !important;
+    text-align: left !important;
+}
+
+/* Entrées : icône + libellé collés au début de la ligne */
+.sidebar .menu-item,
+.sidebar.collapsed .menu-item {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    justify-content: flex-start !important;
+    align-items: center !important;
+    padding-left: var(--nav-pad-x) !important;
+    text-align: left !important;
+}
+
+.sidebar .menu-label {
+    flex: 1 1 auto !important;
+    text-align: left !important;
+}
+
+/* Sous-modules (Banque, Balance Âgée) : même bord gauche que les autres entrées */
+.sidebar .submenu-list {
+    margin-left: 0 !important;
+    padding-left: 0 !important;
+    border-left: 0 !important;
+}
+
+.sidebar .menu-item.submenu-item,
+.sidebar.collapsed .menu-item.submenu-item {
+    padding-left: var(--nav-pad-x) !important;
+}
+
+/* ==================== Sidebar — sous-modules indentés sous le module parent ==================== */
+.sidebar .menu-item.submenu-item,
+.sidebar.collapsed .menu-item.submenu-item {
+    justify-content: flex-start !important;
+    text-align: left !important;
+    padding-left: calc(var(--nav-pad-x) + 20px) !important;
+    padding-right: var(--nav-pad-x) !important;
+    position: relative !important;
+}
+
+/* Ligne verticale de liaison sous le module parent */
+.sidebar .submenu-list {
+    position: relative !important;
+    margin-left: calc(var(--nav-pad-x) + 9px) !important;
+    padding-left: 0 !important;
+    border-left: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Petite barre horizontale de liaison vers chaque sous-module */
+.sidebar .menu-item.submenu-item::before {
+    content: '' !important;
+    position: absolute !important;
+    left: -1px !important;
+    top: 50% !important;
+    transform: translateY(-50%) !important;
+    width: 12px !important;
+    height: 1px !important;
+    background: rgba(255, 255, 255, 0.12) !important;
+    display: block !important;
+}
+
+.sidebar .submenu-item .menu-label {
+    flex: 1 1 auto !important;
+    text-align: left !important;
+}
+
+/* Chevron du groupe : poussé à droite */
+.sidebar .menu-chevron {
+    margin-left: auto !important;
+}
+
+/* Sous-module actif : la ligne de liaison devient plus visible */
+.sidebar .menu-item.submenu-item.active::before {
+    background: rgba(255, 255, 255, 0.3) !important;
+}
