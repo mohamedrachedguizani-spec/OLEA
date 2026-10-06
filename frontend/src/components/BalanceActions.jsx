@@ -9,7 +9,7 @@ import { useAuth } from '../contexts/AuthContext';
 import oleaLogo from '../assets/olea-logo.svg';
 import '../styles/Reporting.css';   // classes csv-preview-* / reporting-preview-* partagées avec le Reporting
 
-const BalanceActions = ({ kind = 'clients', data, fichier }) => {
+const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
   const { has } = useAuth();
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewAction, setPreviewAction] = useState(null);     // 'pdf' | 'print'
@@ -36,7 +36,7 @@ const BalanceActions = ({ kind = 'clients', data, fichier }) => {
     return () => document.removeEventListener('keydown', onKey);
   }, [showPreviewModal]);
 
-  if (!data || (!canPdf && !canPrint)) return null;
+  if (!data || (!onBack && !canPdf && !canPrint)) return null;
 
   const openPreview = async (action) => {
     setPreviewLoading(true);
@@ -80,6 +80,10 @@ const BalanceActions = ({ kind = 'clients', data, fichier }) => {
   return (
     <>
       <div className="ba-actions">
+        {onBack ? (
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onBack} disabled={busy}>← Retour à la liste</button>
+        ) : <span />}
+        <div className="ba-actions-right">
         {canPrint && (
           <button type="button" className="btn btn-secondary btn-sm" onClick={() => openPreview('print')} disabled={busy}>
             {previewLoading && previewAction === 'print' ? 'Chargement...' : printLoading ? 'Impression...' : 'Imprimer'}
@@ -90,6 +94,7 @@ const BalanceActions = ({ kind = 'clients', data, fichier }) => {
             {previewLoading && previewAction === 'pdf' ? 'Chargement...' : pdfLoading ? 'Génération...' : 'Exporter PDF'}
           </button>
         )}
+        </div>
       </div>
       {error && <div className="dropzone-error" style={{ marginBottom: '1rem' }}><span>{error}</span></div>}
 

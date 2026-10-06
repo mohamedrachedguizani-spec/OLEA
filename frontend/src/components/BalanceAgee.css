@@ -128,9 +128,26 @@
 .ba-ctrl-no { color: var(--b3); font-weight: 800; }
 
 /* ───────── Export / impression ───────── */
-.ba-actions { display: flex; justify-content: flex-end; gap: .6rem; margin-bottom: 1rem; }
+.ba-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
+.ba-actions-right { display: flex; gap: .6rem; margin-left: auto; }
 
 /* ───────── Prévisualisation (modale partagée avec le Reporting) ───────── */
 .reporting-preview-document .csv-preview-table td.ba-hot { background: #fcebe6; font-weight: 700; }
 .dark-mode .reporting-preview-document .csv-preview-table td.ba-hot { background: rgba(183, 72, 43, .28); }
 .ba-preview-note { margin: -.2rem 0 .6rem; font-size: .75rem; font-style: italic; color: var(--text-muted); }
+
+/* ───────── Historique des balances ───────── */
+.ba-hist-title { color: var(--text-primary); }
+.ba-hist-table td:nth-child(5), .ba-hist-table th:nth-child(5) { text-align: right; }
+.ba-hist-actions { display: flex; gap: .4rem; justify-content: flex-end; white-space: nowrap; }
+.ba-hist-del:hover:not(:disabled) { color: var(--b3); border-color: var(--b3); }
+.ba-confirm { text-align: center; }
+.ba-confirm p { margin: .4rem 0; font-size: .88rem; color: var(--text-secondary); }
+.ba-confirm-warn { font-weight: 700; color: var(--b3) !important; }
+.ba-confirm-actions { display: flex; justify-content: center; gap: .75rem; margin-top: 1.1rem; }
+.ba-hist-file { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ba-hist-pill { display: inline-block; padding: .1rem .55rem; border-radius: var(--radius-full); font-size: .72rem; font-weight: 700; background: var(--bg-muted); color: var(--text-muted); white-space: nowrap; }
+.ba-hist-pill.ok { background: rgba(31, 157, 85, .14); color: var(--b0); }
+.ba-hist-pill.ko { background: rgba(224, 123, 46, .16); color: var(--b2); }
+.ba-hist-empty { display: grid; justify-items: center; gap: .75rem; padding: 2.5rem 1rem; color: var(--text-muted); font-size: .9rem; }
+.ba-hist-pager { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: .85rem; border-top: 1px solid var(--border-light); font-size: .82rem; color: var(--text-muted); }

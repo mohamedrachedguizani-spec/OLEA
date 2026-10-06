@@ -4,11 +4,12 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from modules.balance.controle import TypeGrandLivreInvalide
+from modules.balance.historique import charger, enregistrer_resultat, lister, supprimer
 from modules.balance.export import build_pdf, build_print_html, build_sections, rapport_fournisseurs
 from .service import parser_pdf_fournisseur
 from .models import BalanceExportFournisseurs, BalanceFournisseurResponse
@@ -55,6 +56,8 @@ async def parse_balance_agee_fournisseur(
                 status_code=422,
                 detail="Aucun fournisseur avec un solde non nul trouvé. Vérifiez qu'il s'agit bien du Grand Livre auxiliaire fournisseur Sage (comptes 401/408/409).",
             )
+        # Conserve la balance dans l'historique (consultation ultérieure) – hors boucle asyncio (accès DB synchrone)
+        result = await run_in_threadpool(enregistrer_resultat, "fournisseurs", result, file.filename, current_user)
         return result
 
     except HTTPException:
@@ -104,3 +107,36 @@ def preview_sections(
         return build_sections(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la prévisualisation : {str(e)}")
+
+
+@router.get("/agee/historique")
+def liste_historique(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current_user: dict = Depends(require_permission_code("balance_fournisseur.read")),
+):
+    """Balances déjà générées, de la plus récente à la plus ancienne."""
+    return lister("fournisseurs", limit, offset)
+
+
+@router.get("/agee/historique/{rapport_id}", response_model=BalanceFournisseurResponse)
+def detail_historique(
+    rapport_id: int,
+    current_user: dict = Depends(require_permission_code("balance_fournisseur.read")),
+):
+    """Analyse complète d'une balance enregistrée."""
+    data = charger("fournisseurs", rapport_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Balance introuvable.")
+    return data
+
+
+@router.delete("/agee/historique/{rapport_id}")
+def supprimer_historique(
+    rapport_id: int,
+    current_user: dict = Depends(require_permission_code("balance_fournisseur.delete")),
+):
+    """Supprime définitivement une balance enregistrée."""
+    if not supprimer("fournisseurs", rapport_id):
+        raise HTTPException(status_code=404, detail="Balance introuvable.")
+    return {"deleted": True, "id": rapport_id}

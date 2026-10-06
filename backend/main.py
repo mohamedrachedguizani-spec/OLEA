@@ -27,6 +27,8 @@ from modules.notifications import router as notifications_router, init_notificat
 from modules.access import router as access_router, init_access_tables
 from modules.balance import router as balance_router
 from modules.balance_fournisseur import router as balance_fournisseur_router
+from modules.balance import router as balance_router, init_balance_tables
+
 
 IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
 SWAGGER_ENABLED = os.getenv(
@@ -100,6 +102,7 @@ init_configuration_tables()
 init_audit_tables()
 init_saisie_bancaire_tables()
 init_notifications_tables()
+init_balance_tables()   # à côté des autres init_*_tables()
 
 # ─── Enregistrement des routers ───
 app.include_router(auth_router)

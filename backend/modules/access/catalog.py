@@ -57,6 +57,8 @@ PERMISSIONS = {
     "balance_fournisseur.read": ("Analyser la balance âgée fournisseurs depuis un PDF Sage", "Balance Âgée"),
     "balance_fournisseur.export_pdf": ("Exporter la balance âgée fournisseurs en PDF", "Balance Âgée"),
     "balance_fournisseur.print": ("Imprimer la balance âgée fournisseurs", "Balance Âgée"),
+    "balance_agee.delete": ("Supprimer une balance âgée clients de l'historique", "Balance Âgée"),
+    "balance_fournisseur.delete": ("Supprimer une balance âgée fournisseurs de l'historique", "Balance Âgée"),
 }
 
 
@@ -74,6 +76,7 @@ PROFILES = {
             "sage_bfc.read", "sage_bfc.import",
             "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
             "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print",
+            "balance_agee.delete", "balance_fournisseur.delete",
         },
     ),
     "FINANCIER": (
@@ -89,6 +92,7 @@ PROFILES = {
             "configuration.mapping.read",
             "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
             "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print",
+            "balance_agee.delete", "balance_fournisseur.delete",
         },
     ),
     "DIRIGEANT": (

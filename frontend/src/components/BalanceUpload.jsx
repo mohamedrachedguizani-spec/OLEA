@@ -37,7 +37,7 @@ const IconTitre = ({ variant }) => (variant === 'fournisseurs' ? (
 const formatTaille = (n) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} Ko` : `${(n / 1024 / 1024).toFixed(2)} Mo`);
 
 /* ───────── En-tête + navigation Import / Analyse ───────── */
-export const BalanceHeader = ({ variant = 'clients', step, setStep, hasData }) => {
+export const BalanceHeader = ({ variant = 'clients', step, setStep }) => {
   const t = TEXTES[variant];
   return (
     <div className="sage-bfc-header">
@@ -52,9 +52,8 @@ export const BalanceHeader = ({ variant = 'clients', step, setStep, hasData }) =
         <button type="button" className={`sage-nav-btn ${step === 'upload' ? 'active' : ''}`} onClick={() => setStep('upload')}>
           <Svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>
           Import
-          {hasData && <span className="nav-check">✓</span>}
         </button>
-        <button type="button" className={`sage-nav-btn ${step === 'results' ? 'active' : ''}`} onClick={() => setStep('results')} disabled={!hasData}>
+        <button type="button" className={`sage-nav-btn ${step === 'list' || step === 'detail' ? 'active' : ''}`} onClick={() => setStep('list')}>
           <Svg><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></Svg>
           Analyse
         </button>
@@ -66,7 +65,7 @@ export const BalanceHeader = ({ variant = 'clients', step, setStep, hasData }) =
 /* ───────── Étape 1 : import du PDF ───────── */
 const BalanceUpload = ({
   variant = 'clients', file, setFile, dateReference, setDateReference,
-  loading, error, setError, onSubmit, hasData, onShowResults,
+  loading, error, setError, onSubmit, onShowHistory,
 }) => {
   const t = TEXTES[variant];
   const inputRef = useRef(null);
@@ -114,10 +113,8 @@ const BalanceUpload = ({
         {!file ? (
           <div className="dropzone-content">
             <div className={`dropzone-icon ${drag ? 'bounce' : ''}`}>
-              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="8" y="8" width="48" height="48" rx="8" strokeDasharray="6 3" />
-                                <path d="M32 22v20M22 32h20" strokeWidth="3" strokeLinecap="round" />
-                            </svg>            </div>
+              <Svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>
+            </div>
             <p className="dropzone-title">{t.drop}</p>
             <p className="dropzone-hint">ou <span className="dropzone-link">parcourez</span> vos fichiers</p>
             <div className="dropzone-formats">
@@ -164,9 +161,9 @@ const BalanceUpload = ({
         )}
       </button>
 
-      {hasData && !loading && (
-        <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem', width: '100%' }} onClick={onShowResults}>
-          Revoir la dernière analyse
+      {!loading && (
+        <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem', width: '100%' }} onClick={onShowHistory}>
+          Consulter les balances générées
         </button>
       )}
     </div>

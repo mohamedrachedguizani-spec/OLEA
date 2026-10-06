@@ -1379,6 +1379,35 @@ class ApiService {
         return kind === 'fournisseurs' ? `${API_BASE_URL}/balance-fournisseur` : `${API_BASE_URL}/balance`;
     }
 
+    // ─── Historique des balances âgées enregistrées en base ───
+    static async getBalanceAgeeHistorique(kind, limit = 50, offset = 0) {
+        const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+        const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/historique?${params.toString()}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: "Erreur lors du chargement de l'historique" }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : "Erreur lors du chargement de l'historique");
+        }
+        return response.json();
+    }
+
+    static async deleteBalanceAgeeRapport(kind, id) {
+        const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/historique/${id}`, { method: 'DELETE' });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression' }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : 'Erreur lors de la suppression');
+        }
+        return response.json();
+    }
+
+    static async getBalanceAgeeRapport(kind, id) {
+        const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/historique/${id}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement de la balance' }));
+            throw new Error(typeof err.detail === 'string' ? err.detail : 'Erreur lors du chargement de la balance');
+        }
+        return response.json();
+    }
+
     // Contenu du document (sections) affiché dans la modale de prévisualisation avant export / impression.
     static async getBalanceAgeePreview(kind, analyse, fichier = null) {
         const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/preview-sections`, {

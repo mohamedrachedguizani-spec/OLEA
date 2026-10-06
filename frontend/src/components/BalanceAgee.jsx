@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react';
 import ApiService from '../services/api';
 import BalanceUpload, { BalanceHeader } from './BalanceUpload';
 import BalanceControle from './BalanceControle';
-import BalanceActions from './BalanceActions'; // Ajustez le chemin
+import BalanceActions from './BalanceActions';
+import BalanceHistorique from './BalanceHistorique'; // Ajustez le chemin
 import './BalanceAgee.css';
 
 const BUCKETS = [
@@ -32,7 +33,14 @@ const BalanceAgee = () => {
   const [open, setOpen] = useState(null);
   const [showWarn, setShowWarn] = useState(false);
   const [sort, setSort] = useState({ key: 'total_solde', dir: -1 });
-  const [step, setStep] = useState('upload'); // upload | results
+  const [step, setStep] = useState('upload'); // upload | list | detail
+
+  // Ouvre une balance enregistrée (depuis l'historique) : même écran d'analyse que juste après la génération
+  const openRapport = async (id) => {
+    const res = await ApiService.getBalanceAgeeRapport('clients', id);
+    setData(res); setOpen(null); setSearch(''); setVue('debiteurs'); setShowWarn(false);
+    setStep('detail');
+  };
 
   const submit = async (e) => {
     if (e && e.preventDefault) e.preventDefault();
@@ -40,7 +48,7 @@ const BalanceAgee = () => {
     setLoading(true); setError(''); setData(null); setOpen(null);
     try {
       setData(await ApiService.parseBalanceAgee(file, dateReference || null));
-      setStep('results');
+      setStep('detail');   // la balance vient d'être enregistrée : on affiche son analyse
     } catch (err) {
       setError(err.message || 'Erreur lors du traitement.');
     } finally {
@@ -99,7 +107,7 @@ const BalanceAgee = () => {
 
   return (
     <div className="sage-bfc-container ba">
-      <BalanceHeader variant="clients" step={step} setStep={setStep} hasData={Boolean(data)} />
+      <BalanceHeader variant="clients" step={step} setStep={setStep} />
 
       {step === 'upload' && (
         <BalanceUpload
@@ -107,13 +115,17 @@ const BalanceAgee = () => {
           file={file} setFile={setFile}
           dateReference={dateReference} setDateReference={setDateReference}
           loading={loading} error={error} setError={setError} onSubmit={submit}
-          hasData={Boolean(data)} onShowResults={() => setStep('results')}
+          onShowHistory={() => setStep('list')}
         />
       )}
 
-      {step === 'results' && data && (
+      {step === 'list' && (
+        <BalanceHistorique kind="clients" onOpen={openRapport} onImport={() => setStep('upload')} />
+      )}
+
+      {step === 'detail' && data && (
         <>
-          <BalanceActions kind="clients" data={data} fichier={file ? file.name : null} />
+          <BalanceActions kind="clients" data={data} fichier={data.fichier || (file ? file.name : null)} onBack={() => setStep('list')} />
           <BalanceControle controle={data.controle} tiers="clients" />
 
           {data.avertissements?.length > 0 && (

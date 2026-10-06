@@ -41,6 +41,10 @@ class BalanceAgeeResponse(BaseModel):
     nb_clients: int
     clients: List[ClientBalance]
     controle: Dict[str, Any] = {}
+    rapport_id: Optional[int] = None      # id dans l'historique (balance_agee_reports)
+    fichier: Optional[str] = None
+    genere_le: Optional[str] = None
+    genere_par: Optional[str] = None
     avertissements: List[str] = []
 
 class BalanceExportClients(BaseModel):
