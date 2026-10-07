@@ -18,7 +18,7 @@ const LIBELLES = {
   fournisseurs: { tiers: 'Fournisseurs', vide: 'Aucune balance âgée fournisseurs générée pour le moment.' },
 };
 
-const BalanceHistorique = ({ kind = 'clients', onOpen, onImport }) => {
+const BalanceHistorique = ({ kind = 'clients', onOpen, onImport, onTotal }) => {
   const L = LIBELLES[kind];
   const { has } = useAuth();
   const canDelete = has(`${kind === 'fournisseurs' ? 'balance_fournisseur' : 'balance_agee'}.delete`);
@@ -37,7 +37,7 @@ const BalanceHistorique = ({ kind = 'clients', onOpen, onImport }) => {
     setLoading(true);
     setError('');
     ApiService.getBalanceAgeeHistorique(kind, PAGE, page * PAGE)
-      .then((res) => { if (!annule) { setItems(res.items || []); setTotal(res.total || 0); } })
+      .then((res) => { if (!annule) { setItems(res.items || []); setTotal(res.total || 0); if (onTotal) onTotal(res.total || 0); } })
       .catch((e) => { if (!annule) setError(e.message || "Erreur lors du chargement de l'historique"); })
       .finally(() => { if (!annule) setLoading(false); });
     return () => { annule = true; };
@@ -75,7 +75,7 @@ const BalanceHistorique = ({ kind = 'clients', onOpen, onImport }) => {
         <strong className="ba-hist-title">Balances générées</strong>
         <span className="ba-count">{total} balance(s) · de la plus récente à la plus ancienne</span>
         <span className="ba-spacer" />
-        <button type="button" className="btn btn-primary btn-sm" onClick={onImport}>Nouvelle balance</button>
+        {onImport && <button type="button" className="btn btn-primary btn-sm" onClick={onImport}>Nouvelle balance</button>}
       </div>
 
       {error && <div className="dropzone-error" style={{ margin: '1rem' }}><span>{error}</span></div>}
@@ -85,7 +85,7 @@ const BalanceHistorique = ({ kind = 'clients', onOpen, onImport }) => {
       ) : items.length === 0 ? (
         <div className="ba-hist-empty">
           <p>{L.vide}</p>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onImport}>Importer un grand livre</button>
+          {onImport && <button type="button" className="btn btn-secondary btn-sm" onClick={onImport}>Importer un grand livre</button>}
         </div>
       ) : (
         <div className="ba-tablewrap">

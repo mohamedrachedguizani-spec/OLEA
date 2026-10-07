@@ -25,7 +25,7 @@ async def parse_balance_agee_fournisseur(
     file: UploadFile = File(..., description="Grand Livre Auxiliaire Fournisseurs Sage (PDF)"),
     date_reference: Optional[str] = Form(None, description="YYYY-MM-DD (défaut : fin de période du PDF)"),
     delai_paiement: int = Form(0, ge=0, le=365, description="Délai de paiement en jours"),
-    current_user: dict = Depends(require_permission_code("balance_fournisseur.read")),
+    current_user: dict = Depends(require_permission_code("balance_fournisseur.generate")),
 ):
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Seuls les fichiers PDF sont acceptés.")

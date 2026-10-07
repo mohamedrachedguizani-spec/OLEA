@@ -251,8 +251,8 @@ function App() {
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration initialTab={configurationInitialTab} />}
                     {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire navigationTarget={notificationTarget?.tab === 'rapprochement' ? notificationTarget : null} />}
                     {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire navigationTarget={notificationTarget?.tab === 'rapprochement_bancaire' ? notificationTarget : null} />}
-                    {activeTab === 'balance-agee' && hasPermission('balance_agee', 'read') && <BalanceAgee />}
-                    {activeTab === 'balance-fournisseur' && hasPermission('balance_fournisseur', 'read') && <BalanceAgeeFournisseur />}
+                    {activeTab === 'balance-agee' && hasPermission('balance_agee') && <BalanceAgee />}
+                    {activeTab === 'balance-fournisseur' && hasPermission('balance_fournisseur') && <BalanceAgeeFournisseur />}
                     {activeTab === 'users' && has('admin.users.read') && <UserManagement />}
                     {activeTab === 'roles' && has('admin.roles.read') && <RoleManagement />}
                     {activeTab === 'audit' && has('admin.audit.read') && <AuditLogs />}

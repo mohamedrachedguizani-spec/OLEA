@@ -26,12 +26,20 @@ SAGE_BFC_PERMISSION_REPLACEMENTS = {
 
 # Permissions à propager aux profils existants lors d'une montée de version
 NEW_PROFILE_PERMISSIONS = {
-    "COMPTABLE": {"balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
-                 "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print",
-                 "balance_agee.delete", "balance_fournisseur.delete"},
-    "FINANCIER": {"balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
-                 "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print",
-                 "balance_agee.delete", "balance_fournisseur.delete"},
+    "COMPTABLE": {"balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
+                 "balance_fournisseur.generate", "balance_fournisseur.read", "balance_fournisseur.export_pdf",
+                 "balance_fournisseur.print", "balance_agee.delete", "balance_fournisseur.delete"},
+    "FINANCIER": {"balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
+                 "balance_fournisseur.generate", "balance_fournisseur.read", "balance_fournisseur.export_pdf",
+                 "balance_fournisseur.print", "balance_agee.delete", "balance_fournisseur.delete"},
+}
+
+# « balance_*.read » permettait jusqu'ici de GÉNÉRER la balance. Il devient « consultation » et le droit de génération
+# passe dans « balance_*.generate » : à la première création de ce droit, tous les profils qui avaient « read » le reçoivent
+# (comportement inchangé pour eux). Les profils créés ensuite en « consultation seule » ne le reçoivent pas.
+BALANCE_GENERATE_MIGRATION = {
+    "balance_agee.generate": "balance_agee.read",
+    "balance_fournisseur.generate": "balance_fournisseur.read",
 }
 
 
@@ -79,6 +87,9 @@ def init_access_tables():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
+            cursor.execute("SELECT code FROM access_permissions")
+            existing_before = {row["code"] for row in cursor.fetchall()}   # pour ne propager un nouveau droit qu'une seule fois
+
             for code, (name, module) in PERMISSIONS.items():
                 cursor.execute(
                     "INSERT INTO access_permissions (code, name, module) VALUES (%s, %s, %s) "
@@ -88,7 +99,8 @@ def init_access_tables():
 
             _consolidate_caisse_manage_permission(cursor)
             _consolidate_sage_bfc_permissions(cursor)
-            _propagate_new_permissions(cursor)
+            _propagate_new_permissions(cursor, existing_before)
+            _migrate_balance_generate_permissions(cursor, existing_before)
 
             for code, (name, description, permission_codes) in PROFILES.items():
                 cursor.execute(
@@ -118,8 +130,9 @@ def _profile_code_for_user(user_role: str) -> str:
     return DEFAULT_PROFILE_BY_USER_ROLE.get(user_role, "COMPTABLE")
 
 
-def _propagate_new_permissions(cursor):
-    """Ajoute les nouvelles permissions aux profils existants sans écraser les droits personnalisés."""
+def _propagate_new_permissions(cursor, existing_before=frozenset()):
+    """Ajoute les NOUVELLES permissions aux profils existants, une seule fois (au moment où le droit est créé).
+    Un droit déjà présent n'est jamais réattribué : un administrateur peut donc le retirer d'un profil durablement."""
     for profile_code, permission_codes in NEW_PROFILE_PERMISSIONS.items():
         cursor.execute("SELECT id FROM access_roles WHERE code = %s", (profile_code,))
         row = cursor.fetchone()
@@ -127,11 +140,28 @@ def _propagate_new_permissions(cursor):
             continue
         role_id = row["id"]
         for perm_code in permission_codes:
+            if perm_code in existing_before:
+                continue
             cursor.execute(
                 "INSERT IGNORE INTO access_role_permissions (role_id, permission_id) "
                 "SELECT %s, id FROM access_permissions WHERE code = %s",
                 (role_id, perm_code),
             )
+
+
+def _migrate_balance_generate_permissions(cursor, existing_before=frozenset()):
+    """Donne « générer » à tous les profils qui avaient « balance_*.read » (une seule fois, à la création du droit)."""
+    for new_code, old_code in BALANCE_GENERATE_MIGRATION.items():
+        if new_code in existing_before:
+            continue
+        cursor.execute(
+            "INSERT IGNORE INTO access_role_permissions (role_id, permission_id) "
+            "SELECT rp.role_id, target.id FROM access_role_permissions rp "
+            "JOIN access_permissions legacy ON legacy.id = rp.permission_id "
+            "JOIN access_permissions target ON target.code = %s "
+            "WHERE legacy.code = %s",
+            (new_code, old_code),
+        )
 
 
 def _consolidate_caisse_manage_permission(cursor):

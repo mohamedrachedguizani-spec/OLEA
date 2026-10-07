@@ -151,3 +151,8 @@
 .ba-hist-pill.ko { background: rgba(224, 123, 46, .16); color: var(--b2); }
 .ba-hist-empty { display: grid; justify-items: center; gap: .75rem; padding: 2.5rem 1rem; color: var(--text-muted); font-size: .9rem; }
 .ba-hist-pager { display: flex; align-items: center; justify-content: center; gap: 1rem; padding: .85rem; border-top: 1px solid var(--border-light); font-size: .82rem; color: var(--text-muted); }
+
+/* ───────── Petit compteur sur l'onglet « Analyse » ───────── */
+.sage-bfc-nav .sage-nav-btn.ba-nav-has-count { position: relative; }
+.ba-nav-count { position: absolute; top: -7px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box; border-radius: 9px; background: var(--primary-500); color: #fff; font-size: .62rem; font-weight: 700; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--bg-card); }
+.sage-bfc-nav .sage-nav-btn.active .ba-nav-count { background: #fff; color: var(--primary-600); box-shadow: 0 0 0 2px var(--primary-500); }

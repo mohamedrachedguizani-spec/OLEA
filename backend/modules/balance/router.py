@@ -25,7 +25,7 @@ async def parse_balance_agee(
     file: UploadFile = File(..., description="Grand Livre Auxiliaire Sage (PDF)"),
     date_reference: Optional[str] = Form(None, description="YYYY-MM-DD (défaut : fin de période du PDF)"),
     delai_paiement: int = Form(0, ge=0, le=365, description="Délai de paiement en jours"),
-    current_user: dict = Depends(require_permission_code("balance_agee.read")),
+    current_user: dict = Depends(require_permission_code("balance_agee.generate")),
 ):
     if not (file.filename or "").lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Seuls les fichiers PDF sont acceptés.")

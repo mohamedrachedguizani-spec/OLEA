@@ -796,6 +796,17 @@ function SageBfcParser({
                     ) : (
                         <div className="sage-bfc-error"><div><strong>Consultation uniquement</strong><p>Vous n'avez pas l'autorisation d'importer une balance.</p></div></div>
                     )}
+                    {/* Accès direct aux balances déjà importées (même bouton que la balance âgée) */}
+                    {!loading && (sortedMonths.length > 0 || availableYears.length > 0) && (
+                        <button
+                            type="button"
+                            className="btn btn-secondary"
+                            style={{ marginTop: '0.75rem', width: '100%' }}
+                            onClick={handleViewResults}
+                        >
+                            Consulter les balances importées
+                        </button>
+                    )}
                 </div>
             )}
 

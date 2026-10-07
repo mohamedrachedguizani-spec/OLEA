@@ -1,5 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import ApiService from '../services/api';
+import { useAuth } from '../contexts/AuthContext';
 import BalanceUpload, { BalanceHeader } from './BalanceUpload';
 import BalanceControle from './BalanceControle';
 import BalanceActions from './BalanceActions';
@@ -23,6 +24,10 @@ const num = (c, key) => { const b = BUCKETS.find((x) => x.field === key); return
 const echuOf = (c) => ECHUS.reduce((s, b) => s + (c[b.field] || 0), 0);
 
 const BalanceAgee = () => {
+  const { has } = useAuth();
+  const canGenerate = has('balance_agee.generate');   // importer un PDF Sage et générer la balance
+  const canRead = has('balance_agee.read');           // consulter les balances déjà générées
+  const [nbBalances, setNbBalances] = useState(null);
   const [file, setFile] = useState(null);
   const [dateReference, setDateReference] = useState(''); // vide = fin de période du PDF
   const [loading, setLoading] = useState(false);
@@ -33,7 +38,13 @@ const BalanceAgee = () => {
   const [open, setOpen] = useState(null);
   const [showWarn, setShowWarn] = useState(false);
   const [sort, setSort] = useState({ key: 'total_solde', dir: -1 });
-  const [step, setStep] = useState('upload'); // upload | list | detail
+  const [step, setStep] = useState(canGenerate ? 'upload' : 'list'); // upload | list | detail (consultation seule : on arrive sur la liste)
+
+  const refreshCount = () => {
+    if (!canRead) return;
+    ApiService.getBalanceAgeeHistorique('clients', 1, 0).then((r) => setNbBalances(r.total)).catch(() => {});
+  };
+  useEffect(() => { refreshCount(); }, []);
 
   // Ouvre une balance enregistrée (depuis l'historique) : même écran d'analyse que juste après la génération
   const openRapport = async (id) => {
@@ -49,6 +60,7 @@ const BalanceAgee = () => {
     try {
       setData(await ApiService.parseBalanceAgee(file, dateReference || null));
       setStep('detail');   // la balance vient d'être enregistrée : on affiche son analyse
+      refreshCount();
     } catch (err) {
       setError(err.message || 'Erreur lors du traitement.');
     } finally {
@@ -107,7 +119,7 @@ const BalanceAgee = () => {
 
   return (
     <div className="sage-bfc-container ba">
-      <BalanceHeader variant="clients" step={step} setStep={setStep} />
+      <BalanceHeader variant="clients" step={step} setStep={setStep} count={nbBalances} canList={canRead} hasData={Boolean(data)} />
 
       {step === 'upload' && (
         <BalanceUpload
@@ -115,17 +127,19 @@ const BalanceAgee = () => {
           file={file} setFile={setFile}
           dateReference={dateReference} setDateReference={setDateReference}
           loading={loading} error={error} setError={setError} onSubmit={submit}
-          onShowHistory={() => setStep('list')}
+          onShowHistory={canRead ? () => setStep('list') : undefined}
+          canGenerate={canGenerate}
         />
       )}
 
-      {step === 'list' && (
-        <BalanceHistorique kind="clients" onOpen={openRapport} onImport={() => setStep('upload')} />
+      {step === 'list' && canRead && (
+        <BalanceHistorique kind="clients" onOpen={openRapport} onTotal={setNbBalances}
+          onImport={canGenerate ? () => setStep('upload') : undefined} />
       )}
 
       {step === 'detail' && data && (
         <>
-          <BalanceActions kind="clients" data={data} fichier={data.fichier || (file ? file.name : null)} onBack={() => setStep('list')} />
+          <BalanceActions kind="clients" data={data} fichier={data.fichier || (file ? file.name : null)} onBack={canRead ? () => setStep('list') : undefined} />
           <BalanceControle controle={data.controle} tiers="clients" />
 
           {data.avertissements?.length > 0 && (

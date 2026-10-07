@@ -16,16 +16,19 @@ import {
     FiPlay,
     FiRefreshCw,
     FiSave,
-    FiUser,
     FiX,
 } from 'react-icons/fi';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
+import './BalanceAgee.css';   // styles de liste / barre d'actions partagés avec les balances âgées
 
 function SaisieBancaire({ navigationTarget }) {
     const { user: currentUser, has } = useAuth();
     const [step, setStep] = useState(1);
+    // Même organisation que les balances âgées : Import | Analyse (liste des sessions) | saisie d'une session
+    const [showList, setShowList] = useState(() => !has('saisie_bancaire.import') && has('saisie_bancaire.sessions.read'));
+    const [sessionsLoading, setSessionsLoading] = useState(false);
     const [loading, setLoading] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
     const [message, setMessage] = useState('');
@@ -39,7 +42,6 @@ function SaisieBancaire({ navigationTarget }) {
     const [activeTiersInput, setActiveTiersInput] = useState(null);
     const [dragActive, setDragActive] = useState(false);
     const [pendingSessions, setPendingSessions] = useState([]);
-    const [showResumeModal, setShowResumeModal] = useState(false);
     const fileInputRef = useRef(null);
     const saveTimerRef = useRef(null);
 
@@ -70,6 +72,19 @@ function SaisieBancaire({ navigationTarget }) {
     const deviseComptes = { UB2: 'EUR', UB3: 'USD' };
     const needsTaux = !!deviseComptes[formData.compte_banque];
 
+    const refreshPending = useCallback(async () => {
+        if (!has('saisie_bancaire.sessions.read')) return;
+        setSessionsLoading(true);
+        try {
+            const sessions = await ApiService.getPendingSessions();
+            setPendingSessions(Array.isArray(sessions) ? sessions : []);
+        } catch (err) {
+            // silencieux
+        } finally {
+            setSessionsLoading(false);
+        }
+    }, [has]);
+
     useEffect(() => {
         const loadComptes = async () => {
             try {
@@ -91,22 +106,9 @@ function SaisieBancaire({ navigationTarget }) {
         };
         loadTiers();
 
-        // Vérifier les sessions en cours
-        const checkPending = async () => {
-            try {
-                const sessions = await ApiService.getPendingSessions();
-                if (Array.isArray(sessions) && sessions.length > 0) {
-                    setPendingSessions(sessions);
-                    setShowResumeModal(true);
-                }
-            } catch (err) {
-                // silencieux
-            }
-        };
-        if (has('saisie_bancaire.sessions.read')) {
-            checkPending();
-        }
-    }, [has]);
+        // Sessions de saisie en cours (badge de l'onglet Analyse + liste)
+        refreshPending();
+    }, [has, refreshPending]);
 
     useEffect(() => {
         if (message) {
@@ -149,7 +151,6 @@ function SaisieBancaire({ navigationTarget }) {
 
     // --- Reprendre une session ---
     const handleResumeSession = useCallback(async (sessionBatch) => {
-        setShowResumeModal(false);
         setLoading(true);
         try {
             const batchData = await ApiService.getBankReconciliationBatch(sessionBatch.id);
@@ -416,7 +417,11 @@ function SaisieBancaire({ navigationTarget }) {
         }
     };
 
-    const renderStep1 = () => (
+    const renderStep1 = () => (!has('saisie_bancaire.import') ? (
+        <div className="sage-upload-section">
+            <div className="sage-bfc-error"><div><strong>Consultation uniquement</strong><p>Vous n'avez pas l'autorisation d'importer une balance.</p></div></div>
+        </div>
+    ) : (
         <form onSubmit={handleUpload} className="sage-upload-section mb-4" style={{ padding: '2rem 1.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-lg)' }}>
             <div className="form-row mb-4">
                 <div className="form-col">
@@ -602,7 +607,7 @@ function SaisieBancaire({ navigationTarget }) {
                 ))}
             </datalist>
         </form>
-    );
+    ));
 
     const renderStep2 = () => {
         // Pagination logic
@@ -1021,80 +1026,66 @@ function SaisieBancaire({ navigationTarget }) {
         );
     };
 
-    const ResumeSessionModal = () => {
-        if (!showResumeModal || pendingSessions.length === 0) return null;
+    const canSessions = has('saisie_bancaire.sessions.read');
+    const sortedSessions = [...pendingSessions].sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
 
-        return ReactDOM.createPortal(
-            <div className="csv-preview-modal">
-                <div className="csv-preview-backdrop" onClick={() => setShowResumeModal(false)}></div>
-                <div className="csv-preview-container" style={{ maxWidth: '700px' }}>
-                    <div className="csv-preview-header">
-                        <div className="csv-preview-title">
-                            <span className="bank-modal-icon"><FiFolder /></span>
-                            <h3>Sessions de saisie en cours</h3>
-                        </div>
-                        <button className="csv-preview-close" onClick={() => setShowResumeModal(false)} aria-label="Fermer"><FiX /></button>
-                    </div>
-                    <div className="csv-preview-body" style={{ padding: '1.5rem' }}>
-                        <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
-                            Vous avez des sessions de saisie non terminées. Souhaitez-vous reprendre l'une d'entre elles ?
-                        </p>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                            {pendingSessions.map((session) => (
-                                <div
-                                    key={session.id}
-                                    style={{
-                                        display: 'flex',
-                                        alignItems: 'center',
-                                        justifyContent: 'space-between',
-                                        padding: '1rem 1.25rem',
-                                        background: 'var(--bg-muted)',
-                                        borderRadius: 'var(--radius-md)',
-                                        border: '1px solid var(--border-light)',
-                                        transition: 'border-color 0.2s',
-                                    }}
-                                >
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                                        <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                                            {session.file_name}
-                                        </span>
-                                        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                            {session.created_by_username && session.created_by_username !== currentUser?.username && (
-                                                <span className="bank-session-meta"><FiUser /> {session.created_by_username}</span>
-                                            )}
-                                            <span className="bank-session-meta"><FiCreditCard /> {session.compte_banque}</span>
-                                            <span className="bank-session-meta"><FiCalendar /> {new Date(session.created_at).toLocaleDateString('fr-FR')}</span>
-                                            <span className="bank-session-meta"><FiCheckCircle /> {session.completed_movements}/{session.total_movements} saisis</span>
-                                            {session.devise_source && (
-                                                <span className="bank-session-meta"><FiRefreshCw /> {session.devise_source} (taux: {Number(session.taux_conversion).toFixed(3)})</span>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <button
-                                        className="btn btn-primary"
-                                        style={{ padding: '0.4rem 1.25rem', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
-                                        onClick={() => handleResumeSession(session)}
-                                        disabled={loading}
-                                    >
-                                        {loading ? 'Chargement…' : 'Reprendre'}
-                                    </button>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                    <div className="csv-preview-footer">
-                        <button className="btn btn-secondary" onClick={() => setShowResumeModal(false)}>
-                            Ignorer
-                        </button>
-                    </div>
+    const renderSessions = () => (
+        <div className="ba-card ba-hist">
+            <div className="ba-toolbar">
+                <strong className="ba-hist-title">Sessions de saisie</strong>
+                <span className="ba-count">{pendingSessions.length} session(s) en cours · de la plus récente à la plus ancienne</span>
+                <span className="ba-spacer" />
+                {has('saisie_bancaire.import') && (
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => setShowList(false)}>Nouvelle saisie</button>
+                )}
+            </div>
+            {sessionsLoading ? (
+                <div className="ba-hist-empty"><span className="spinner" /> Chargement des sessions…</div>
+            ) : sortedSessions.length === 0 ? (
+                <div className="ba-hist-empty">
+                    <p>Aucune session de saisie en cours.</p>
+                    {has('saisie_bancaire.import') && (
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowList(false)}>Importer un relevé</button>
+                    )}
                 </div>
-            </div>,
-            document.body
-        );
-    };
+            ) : (
+                <div className="ba-tablewrap">
+                    <table className="ba-table ba-hist-table">
+                        <thead>
+                            <tr>
+                                <th>Relevé</th><th>Compte</th><th>Créée le</th><th>Par</th><th>Avancement</th><th>Devise</th><th />
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {sortedSessions.map((session) => (
+                                <tr key={session.id} className="ba-row" onClick={() => !loading && handleResumeSession(session)}>
+                                    <td className="ba-hist-file" title={session.file_name}><strong>{session.file_name}</strong></td>
+                                    <td>{session.compte_banque}</td>
+                                    <td>{new Date(session.created_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' })}</td>
+                                    <td>{session.created_by_username || '—'}</td>
+                                    <td>
+                                        <span className={`ba-hist-pill ${session.total_movements > 0 && session.completed_movements >= session.total_movements ? 'ok' : ''}`}>
+                                            {session.completed_movements}/{session.total_movements} saisis
+                                        </span>
+                                    </td>
+                                    <td>{session.devise_source ? `${session.devise_source} (taux ${Number(session.taux_conversion).toFixed(3)})` : '—'}</td>
+                                    <td className="ba-hist-actions">
+                                        <button type="button" className="btn btn-secondary btn-sm" disabled={loading}>Reprendre</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+        </div>
+    );
+
+    const goImport = () => { setStep(1); setShowList(false); };
+    const goSessions = () => { setStep(1); setShowList(true); refreshPending(); };
 
     return (
-        <div className="olea-card fade-in">
+        <div className="sage-bfc-container fade-in">
             {loading && ReactDOM.createPortal(
                 <div className="sage-close-overlay" role="status" aria-live="polite" aria-label="Analyse en cours">
                     <div className="sage-close-overlay-card">
@@ -1106,10 +1097,32 @@ function SaisieBancaire({ navigationTarget }) {
                 document.body
             )}
             
-            <div className="card-header">
-                <h2 className="card-title">
-                    Saisie Bancaire
-                </h2>
+            <div className="sage-bfc-header">
+                <div>
+                    <h2 className="sage-bfc-title">
+                        <span className="sage-bfc-title-icon"><FiFolder /></span>
+                        Saisie bancaire
+                    </h2>
+                    <p className="sage-bfc-subtitle">Transformation des relevés bancaires en écritures SAGE</p>
+                </div>
+                <div className="sage-bfc-nav">
+                    <button type="button" className={`sage-nav-btn ${step === 1 && !showList ? 'active' : ''}`} onClick={goImport}>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        Import
+                    </button>
+                    {(canSessions || step === 2) && (
+                        <button type="button" className={`sage-nav-btn ba-nav-has-count ${step === 2 || showList ? 'active' : ''}`}
+                            onClick={canSessions ? goSessions : undefined}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+                            </svg>
+                            Analyse
+                            {canSessions && <span className="ba-nav-count" title={`${pendingSessions.length} session(s) en cours`}>{pendingSessions.length}</span>}
+                        </button>
+                    )}
+                </div>
             </div>
 
             {message && (
@@ -1119,18 +1132,28 @@ function SaisieBancaire({ navigationTarget }) {
                 <div className="alert alert-danger slide-down">{error}</div>
             )}
 
-            {step === 1 && renderStep1()}
-            {step === 2 && renderStep2()}
-
+            {step === 1 && !showList && (
+                <div className="sage-upload-step">
+                    {renderStep1()}
+                    {canSessions && !loading && (
+                        <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem', width: '100%' }} onClick={goSessions}>
+                            Consulter les sessions de saisie
+                        </button>
+                    )}
+                </div>
+            )}
+            {step === 1 && showList && canSessions && renderSessions()}
             {step === 2 && (
-                <div className="form-actions">
-                    <button className="btn btn-secondary" onClick={() => setStep(1)}>
-                        Retour à l’import
-                    </button>
+                <div className="olea-card">
+                    <div className="ba-actions">
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={canSessions ? goSessions : goImport}>
+                            {canSessions ? '← Retour aux sessions' : '← Retour à l’import'}
+                        </button>
+                    </div>
+                    {renderStep2()}
                 </div>
             )}
             <PreviewModal />
-            <ResumeSessionModal />
         </div>
     );
 }

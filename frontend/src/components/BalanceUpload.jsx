@@ -37,8 +37,10 @@ const IconTitre = ({ variant }) => (variant === 'fournisseurs' ? (
 const formatTaille = (n) => (n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} Ko` : `${(n / 1024 / 1024).toFixed(2)} Mo`);
 
 /* ───────── En-tête + navigation Import / Analyse ───────── */
-export const BalanceHeader = ({ variant = 'clients', step, setStep }) => {
+// count : nombre de balances générées (petit badge sur « Analyse »). canList : droit de consulter l'historique.
+export const BalanceHeader = ({ variant = 'clients', step, setStep, count = null, canList = true, hasData = false }) => {
   const t = TEXTES[variant];
+  const showAnalyse = canList || hasData;
   return (
     <div className="sage-bfc-header">
       <div>
@@ -53,10 +55,14 @@ export const BalanceHeader = ({ variant = 'clients', step, setStep }) => {
           <Svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>
           Import
         </button>
-        <button type="button" className={`sage-nav-btn ${step === 'list' || step === 'detail' ? 'active' : ''}`} onClick={() => setStep('list')}>
-          <Svg><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></Svg>
-          Analyse
-        </button>
+        {showAnalyse && (
+          <button type="button" className={`sage-nav-btn ba-nav-has-count ${step === 'list' || step === 'detail' ? 'active' : ''}`}
+            onClick={() => setStep(canList ? 'list' : 'detail')}>
+            <Svg><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></Svg>
+            Analyse
+            {canList && count !== null && <span className="ba-nav-count" title={`${count} balance(s) générée(s)`}>{count}</span>}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -65,7 +71,7 @@ export const BalanceHeader = ({ variant = 'clients', step, setStep }) => {
 /* ───────── Étape 1 : import du PDF ───────── */
 const BalanceUpload = ({
   variant = 'clients', file, setFile, dateReference, setDateReference,
-  loading, error, setError, onSubmit, onShowHistory,
+  loading, error, setError, onSubmit, onShowHistory, canGenerate = true,
 }) => {
   const t = TEXTES[variant];
   const inputRef = useRef(null);
@@ -85,6 +91,22 @@ const BalanceUpload = ({
     if (inputRef.current) inputRef.current.value = '';
   };
   const ouvrir = () => { if (!file && inputRef.current) inputRef.current.click(); };
+
+  // Même encart que SAGE → BFC pour un utilisateur qui peut seulement consulter
+  if (!canGenerate) {
+    return (
+      <div className="sage-upload-section">
+        <div className="sage-bfc-error">
+          <div><strong>Consultation uniquement</strong><p>Vous n'avez pas l'autorisation d'importer une balance.</p></div>
+        </div>
+        {onShowHistory && (
+          <button type="button" className="btn btn-primary" style={{ width: '100%' }} onClick={onShowHistory}>
+            Consulter les balances générées
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="sage-upload-section">
@@ -113,10 +135,8 @@ const BalanceUpload = ({
         {!file ? (
           <div className="dropzone-content">
             <div className={`dropzone-icon ${drag ? 'bounce' : ''}`}>
-              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
-                                <rect x="8" y="8" width="48" height="48" rx="8" strokeDasharray="6 3" />
-                                <path d="M32 22v20M22 32h20" strokeWidth="3" strokeLinecap="round" />
-                            </svg>            </div>
+              <Svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>
+            </div>
             <p className="dropzone-title">{t.drop}</p>
             <p className="dropzone-hint">ou <span className="dropzone-link">parcourez</span> vos fichiers</p>
             <div className="dropzone-formats">
@@ -163,7 +183,7 @@ const BalanceUpload = ({
         )}
       </button>
 
-      {!loading && (
+      {!loading && onShowHistory && (
         <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem', width: '100%' }} onClick={onShowHistory}>
           Consulter les balances générées
         </button>
