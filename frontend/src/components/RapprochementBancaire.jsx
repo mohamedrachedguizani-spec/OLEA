@@ -7,11 +7,13 @@ import {
     FiDownload,
     FiEye,
     FiFileText,
+    FiRepeat,
     FiSearch,
     FiTrash2,
     FiX,
 } from 'react-icons/fi';
 import ApiService from '../services/api';
+import './BalanceAgee.css';   // badge de l'onglet, barre d'actions et fenêtre de confirmation partagés avec les balances âgées
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
 
@@ -106,7 +108,10 @@ function OpeningBalanceControl({ context, formatAmount }) {
 
 function RapprochementBancaire({ navigationTarget }) {
     const { has } = useAuth();
-    const [workspaceView, setWorkspaceView] = useState('new');
+    // Sans le droit de lancer un rapprochement (consultation seule), on arrive directement sur l'historique
+    const [workspaceView, setWorkspaceView] = useState(() => (has('rapprochement_bancaire.run') ? 'new' : 'history'));
+    const [totalAll, setTotalAll] = useState(null);      // nombre total de rapprochements (badge de l'onglet Analyse)
+    const [toDelete, setToDelete] = useState(null);      // rapprochement en attente de confirmation de suppression
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [exportingPdf, setExportingPdf] = useState(false);
@@ -130,6 +135,13 @@ function RapprochementBancaire({ navigationTarget }) {
     // Reconciliation results
     const [result, setResult] = useState(null);
     const [activeTab, setActiveTab] = useState('reconciled'); // 'reconciled' | 'discrepancies' | 'bank_only' | 'sage_only'
+    const refreshTotal = () => {
+        ApiService.getReconciliationHistory({ page: 1, pageSize: 1 })
+            .then((data) => setTotalAll(typeof data.total === 'number' ? data.total : null))
+            .catch(() => {});
+    };
+    useEffect(() => { refreshTotal(); }, []);
+
     const [history, setHistory] = useState({ items: [], page: 1, page_size: 10, total: 0, total_pages: 0 });
     const [historyLoading, setHistoryLoading] = useState(false);
     const [historyPage, setHistoryPage] = useState(1);
@@ -305,6 +317,7 @@ function RapprochementBancaire({ navigationTarget }) {
             setSuccess('Rapprochement effectué avec succès.');
             setStep(2);
             setHistoryPage(1);
+            refreshTotal();
         } catch (err) {
             setError(err.message || 'Une erreur est survenue lors du rapprochement.');
         } finally {
@@ -394,14 +407,18 @@ function RapprochementBancaire({ navigationTarget }) {
         }
     };
 
-    const deleteHistoryResult = async (item) => {
-        const label = `${item.bank_journal || 'Compte bancaire'} · ${item.period || 'période non renseignée'}`;
-        if (!window.confirm(`Supprimer définitivement le rapprochement ${label} de l’historique ?`)) return;
+    const deleteHistoryResult = (item) => setToDelete(item);
+
+    const confirmDeleteHistory = async () => {
+        const item = toDelete;
+        if (!item) return;
+        setToDelete(null);
         setDeletingHistoryId(item.id);
         setError('');
         try {
             const response = await ApiService.deleteReconciliationResult(item.id);
             setSuccess(response.message || 'Le rapprochement a été supprimé.');
+            refreshTotal();
             if (history.items.length === 1 && historyPage > 1) {
                 setHistoryPage((value) => value - 1);
             } else {
@@ -452,7 +469,11 @@ function RapprochementBancaire({ navigationTarget }) {
         });
     };
 
-    const renderStep1 = () => (
+    const renderStep1 = () => (!has('rapprochement_bancaire.run') ? (
+        <div className="sage-upload-section">
+            <div className="sage-bfc-error"><div><strong>Consultation uniquement</strong><p>Vous n'avez pas l'autorisation d'importer une balance.</p></div></div>
+        </div>
+    ) : (
         <form onSubmit={handleLaunchReconciliation} className="sage-upload-section mb-4" style={{ padding: '2rem 1.5rem', background: 'var(--bg-card)', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-lg)' }}>
             <div className="reco-context-grid">
                 <div className="form-group">
@@ -658,7 +679,7 @@ function RapprochementBancaire({ navigationTarget }) {
                 </button>
             </div>
         </form>
-    );
+    ));
 
     const renderHistory = () => (
         <section className="reco-history" aria-labelledby="reco-history-title">
@@ -751,9 +772,14 @@ function RapprochementBancaire({ navigationTarget }) {
                     <span>Résultat du rapprochement</span>
                     <strong>{result.context?.bank_journal || '-'} · {result.context?.period || '-'}</strong>
                 </div>
-                <button type="button" className="btn btn-primary" onClick={() => openPdfPreview()} disabled={exportingPdf || !has('rapprochement_bancaire.export_pdf')}>
-                    {exportingPdf ? <><span className="spinner" /> Préparation…</> : <><FiDownload aria-hidden="true" /> EXPORT PDF</>}
-                </button>
+                <div style={{ display: 'flex', gap: '0.6rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <button type="button" className="btn btn-secondary" onClick={() => { handleReset(); setWorkspaceView('history'); }}>
+                        ← Retour à l’historique
+                    </button>
+                    <button type="button" className="btn btn-primary" onClick={() => openPdfPreview()} disabled={exportingPdf || !has('rapprochement_bancaire.export_pdf')}>
+                        {exportingPdf ? <><span className="spinner" /> Préparation…</> : <><FiDownload aria-hidden="true" /> EXPORT PDF</>}
+                    </button>
+                </div>
             </div>
             <OpeningBalanceControl context={result.context} formatAmount={formatAmount} />
 
@@ -968,7 +994,7 @@ function RapprochementBancaire({ navigationTarget }) {
     );
 
     return (
-        <div className="olea-card fade-in">
+        <div className="sage-bfc-container fade-in">
             {loading && ReactDOM.createPortal(
                 <div className="sage-close-overlay" role="status" aria-live="polite" aria-label="Rapprochement en cours">
                     <div className="sage-close-overlay-card">
@@ -1001,38 +1027,76 @@ function RapprochementBancaire({ navigationTarget }) {
                 document.body
             )}
             
-            <div className="card-header">
-                <h2 className="card-title">
-                    Rapprochement Bancaire
-                </h2>
+            {toDelete && ReactDOM.createPortal(
+                <div className="sage-close-overlay" role="alertdialog" aria-modal="true" onClick={() => setToDelete(null)}>
+                    <div className="sage-close-overlay-card ba-confirm" onClick={(event) => event.stopPropagation()}>
+                        <h4>Supprimer ce rapprochement ?</h4>
+                        <p><strong>{toDelete.bank_journal || 'Compte bancaire'} · {toDelete.period || 'période non renseignée'}</strong></p>
+                        <p className="ba-confirm-warn">Cette action est définitive.</p>
+                        <div className="ba-confirm-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setToDelete(null)}>Annuler</button>
+                            <button type="button" className="btn btn-primary" onClick={confirmDeleteHistory}>Supprimer</button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            <div className="sage-bfc-header">
+                <div>
+                    <h2 className="sage-bfc-title">
+                        <span className="sage-bfc-title-icon"><FiRepeat /></span>
+                        Rapprochement bancaire
+                    </h2>
+                    <p className="sage-bfc-subtitle">Concordance entre le relevé bancaire et les écritures comptables SAGE</p>
+                </div>
+                <div className="sage-bfc-nav" aria-label="Vues du rapprochement bancaire">
+                    <button
+                        type="button"
+                        className={`sage-nav-btn ${workspaceView === 'new' && step === 1 ? 'active' : ''}`}
+                        onClick={() => {
+                            handleReset();
+                            setWorkspaceView('new');
+                        }}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" />
+                        </svg>
+                        Import
+                    </button>
+                    <button
+                        type="button"
+                        className={`sage-nav-btn ba-nav-has-count ${workspaceView === 'history' || (workspaceView === 'new' && step === 2) ? 'active' : ''}`}
+                        onClick={() => setWorkspaceView('history')}
+                    >
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
+                        </svg>
+                        Analyse
+                        {totalAll !== null && <span className="ba-nav-count" title={`${totalAll} rapprochement(s) réalisé(s)`}>{totalAll}</span>}
+                    </button>
+                </div>
             </div>
 
-            <nav className="reco-workspace-tabs" aria-label="Vues du rapprochement bancaire">
-                <button
-                    type="button"
-                    className={workspaceView === 'new' ? 'active' : ''}
-                    onClick={() => {
-                        handleReset();
-                        setWorkspaceView('new');
-                    }}
-                >
-                    Nouveau rapprochement
-                </button>
-                <button type="button" className={workspaceView === 'history' ? 'active' : ''} onClick={() => setWorkspaceView('history')}>Historique</button>
-            </nav>
+            {success && (
+                <div className="alert alert-success slide-down" style={{ marginBottom: '1.5rem' }}>{success}</div>
+            )}
+            {error && (
+                <div className="alert alert-danger slide-down" style={{ marginBottom: '1.5rem' }}>{error}</div>
+            )}
 
-            <div style={{ padding: '1.5rem' }}>
-                {success && (
-                    <div className="alert alert-success slide-down" style={{ marginBottom: '1.5rem' }}>{success}</div>
-                )}
-                {error && (
-                    <div className="alert alert-danger slide-down" style={{ marginBottom: '1.5rem' }}>{error}</div>
-                )}
-
-                {workspaceView === 'history' && renderHistory()}
-                {workspaceView === 'new' && step === 1 && renderStep1()}
-                {workspaceView === 'new' && step === 2 && renderStep2()}
-            </div>
+            {workspaceView === 'history' && <div className="ba-card" style={{ padding: '1.25rem' }}>{renderHistory()}</div>}
+            {workspaceView === 'new' && step === 1 && (
+                <div className="sage-upload-step">
+                    {renderStep1()}
+                    {!loading && totalAll !== 0 && (
+                        <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem', width: '100%' }} onClick={() => setWorkspaceView('history')}>
+                            Consulter les rapprochements réalisés
+                        </button>
+                    )}
+                </div>
+            )}
+            {workspaceView === 'new' && step === 2 && <div className="ba-card" style={{ padding: '1.5rem' }}>{renderStep2()}</div>}
         </div>
     );
 }

@@ -135,8 +135,10 @@ const BalanceUpload = ({
         {!file ? (
           <div className="dropzone-content">
             <div className={`dropzone-icon ${drag ? 'bounce' : ''}`}>
-              <Svg><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></Svg>
-            </div>
+ <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" strokeWidth="2">
+                                <rect x="8" y="8" width="48" height="48" rx="8" strokeDasharray="6 3" />
+                                <path d="M32 22v20M22 32h20" strokeWidth="3" strokeLinecap="round" />
+                            </svg>             </div>
             <p className="dropzone-title">{t.drop}</p>
             <p className="dropzone-hint">ou <span className="dropzone-link">parcourez</span> vos fichiers</p>
             <div className="dropzone-formats">
