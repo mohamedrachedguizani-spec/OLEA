@@ -1089,11 +1089,6 @@ function RapprochementBancaire({ navigationTarget }) {
             {workspaceView === 'new' && step === 1 && (
                 <div className="sage-upload-step">
                     {renderStep1()}
-                    {!loading && totalAll !== 0 && (
-                        <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem', width: '100%' }} onClick={() => setWorkspaceView('history')}>
-                            Consulter les rapprochements réalisés
-                        </button>
-                    )}
                 </div>
             )}
             {workspaceView === 'new' && step === 2 && <div className="ba-card" style={{ padding: '1.5rem' }}>{renderStep2()}</div>}

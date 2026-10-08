@@ -2,6 +2,7 @@
 // Liste des balances âgées déjà générées (plus récentes d'abord) : un clic ouvre l'analyse complète.
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom';
+import { FiEye, FiTrash2 } from 'react-icons/fi';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -98,7 +99,7 @@ const BalanceHistorique = ({ kind = 'clients', onOpen, onImport, onTotal }) => {
                 <th>Par</th>
                 <th>{L.tiers}</th>
                 <th>Contrôle</th>
-                <th />
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -114,16 +115,19 @@ const BalanceHistorique = ({ kind = 'clients', onOpen, onImport, onTotal }) => {
                       {r.controle_statut === 'OK' ? '✓ Conforme' : r.controle_statut ? '! Anomalies' : '—'}
                     </span>
                   </td>
-                  <td className="ba-hist-actions">
-                    <button type="button" className="btn btn-secondary btn-sm" disabled={Boolean(openingId)}>
-                      {openingId === r.id ? 'Ouverture…' : 'Consulter'}
-                    </button>
-                    {canDelete && (
-                      <button type="button" className="btn btn-secondary btn-sm ba-hist-del" disabled={Boolean(openingId)}
-                        title="Supprimer cette balance" onClick={(e) => { e.stopPropagation(); setToDelete(r); }}>
-                        Supprimer
+                  <td>
+                    <div className="reco-history-actions">
+                      <button type="button" className="reco-icon-button" title="Consulter" aria-label="Consulter la balance"
+                        disabled={Boolean(openingId)} onClick={(e) => { e.stopPropagation(); ouvrir(r.id); }}>
+                        {openingId === r.id ? <span className="spinner" /> : <FiEye />}
                       </button>
-                    )}
+                      {canDelete && (
+                        <button type="button" className="reco-icon-button reco-icon-button-danger" title="Supprimer" aria-label="Supprimer la balance"
+                          disabled={Boolean(openingId)} onClick={(e) => { e.stopPropagation(); setToDelete(r); }}>
+                          <FiTrash2 />
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

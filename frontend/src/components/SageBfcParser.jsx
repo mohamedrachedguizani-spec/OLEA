@@ -800,11 +800,11 @@ function SageBfcParser({
                     {!loading && (sortedMonths.length > 0 || availableYears.length > 0) && (
                         <button
                             type="button"
-                            className="btn btn-secondary"
+                            className={has('sage_bfc.import') ? 'btn btn-secondary' : 'btn btn-primary'}
                             style={{ marginTop: '0.75rem', width: '100%' }}
                             onClick={handleViewResults}
                         >
-                            Consulter les balances importées
+                            Consulter les états 
                         </button>
                     )}
                 </div>

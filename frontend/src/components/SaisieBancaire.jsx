@@ -16,6 +16,7 @@ import {
     FiPlay,
     FiRefreshCw,
     FiSave,
+    FiUser,
     FiX,
 } from 'react-icons/fi';
 import ApiService from '../services/api';
@@ -29,6 +30,7 @@ function SaisieBancaire({ navigationTarget }) {
     // Même organisation que les balances âgées : Import | Analyse (liste des sessions) | saisie d'une session
     const [showList, setShowList] = useState(() => !has('saisie_bancaire.import') && has('saisie_bancaire.sessions.read'));
     const [sessionsLoading, setSessionsLoading] = useState(false);
+    const [showResumeModal, setShowResumeModal] = useState(false);
     const [loading, setLoading] = useState(false);
     const [exportLoading, setExportLoading] = useState(false);
     const [message, setMessage] = useState('');
@@ -72,12 +74,14 @@ function SaisieBancaire({ navigationTarget }) {
     const deviseComptes = { UB2: 'EUR', UB3: 'USD' };
     const needsTaux = !!deviseComptes[formData.compte_banque];
 
-    const refreshPending = useCallback(async () => {
+    const refreshPending = useCallback(async (openModal = false) => {
         if (!has('saisie_bancaire.sessions.read')) return;
         setSessionsLoading(true);
         try {
             const sessions = await ApiService.getPendingSessions();
-            setPendingSessions(Array.isArray(sessions) ? sessions : []);
+            const list = Array.isArray(sessions) ? sessions : [];
+            setPendingSessions(list);
+            if (openModal && list.length > 0) setShowResumeModal(true);
         } catch (err) {
             // silencieux
         } finally {
@@ -106,8 +110,8 @@ function SaisieBancaire({ navigationTarget }) {
         };
         loadTiers();
 
-        // Sessions de saisie en cours (badge de l'onglet Analyse + liste)
-        refreshPending();
+        // Sessions de saisie en cours : badge de l'onglet Analyse + fenêtre de reprise à l'ouverture de la page
+        refreshPending(true);
     }, [has, refreshPending]);
 
     useEffect(() => {
@@ -151,6 +155,7 @@ function SaisieBancaire({ navigationTarget }) {
 
     // --- Reprendre une session ---
     const handleResumeSession = useCallback(async (sessionBatch) => {
+        setShowResumeModal(false);
         setLoading(true);
         try {
             const batchData = await ApiService.getBankReconciliationBatch(sessionBatch.id);
@@ -1026,6 +1031,78 @@ function SaisieBancaire({ navigationTarget }) {
         );
     };
 
+    const ResumeSessionModal = () => {
+        if (!showResumeModal || pendingSessions.length === 0) return null;
+
+        return ReactDOM.createPortal(
+            <div className="csv-preview-modal">
+                <div className="csv-preview-backdrop" onClick={() => setShowResumeModal(false)}></div>
+                <div className="csv-preview-container" style={{ maxWidth: '700px' }}>
+                    <div className="csv-preview-header">
+                        <div className="csv-preview-title">
+                            <span className="bank-modal-icon"><FiFolder /></span>
+                            <h3>Sessions de saisie en cours</h3>
+                        </div>
+                        <button className="csv-preview-close" onClick={() => setShowResumeModal(false)} aria-label="Fermer"><FiX /></button>
+                    </div>
+                    <div className="csv-preview-body" style={{ padding: '1.5rem' }}>
+                        <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                            Vous avez des sessions de saisie non terminées. Souhaitez-vous reprendre l'une d'entre elles ?
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                            {pendingSessions.map((session) => (
+                                <div
+                                    key={session.id}
+                                    style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: '1rem 1.25rem',
+                                        background: 'var(--bg-muted)',
+                                        borderRadius: 'var(--radius-md)',
+                                        border: '1px solid var(--border-light)',
+                                        transition: 'border-color 0.2s',
+                                    }}
+                                >
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                                        <span style={{ fontWeight: 600, fontSize: '0.95rem', color: 'var(--text-primary)' }}>
+                                            {session.file_name}
+                                        </span>
+                                        <div style={{ display: 'flex', gap: '0.75rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                                            {session.created_by_username && session.created_by_username !== currentUser?.username && (
+                                                <span className="bank-session-meta"><FiUser /> {session.created_by_username}</span>
+                                            )}
+                                            <span className="bank-session-meta"><FiCreditCard /> {session.compte_banque}</span>
+                                            <span className="bank-session-meta"><FiCalendar /> {new Date(session.created_at).toLocaleDateString('fr-FR')}</span>
+                                            <span className="bank-session-meta"><FiCheckCircle /> {session.completed_movements}/{session.total_movements} saisis</span>
+                                            {session.devise_source && (
+                                                <span className="bank-session-meta"><FiRefreshCw /> {session.devise_source} (taux: {Number(session.taux_conversion).toFixed(3)})</span>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <button
+                                        className="btn btn-primary"
+                                        style={{ padding: '0.4rem 1.25rem', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                                        onClick={() => handleResumeSession(session)}
+                                        disabled={loading}
+                                    >
+                                        {loading ? 'Chargement…' : 'Reprendre'}
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="csv-preview-footer">
+                        <button className="btn btn-secondary" onClick={() => setShowResumeModal(false)}>
+                            Ignorer
+                        </button>
+                    </div>
+                </div>
+            </div>,
+            document.body
+        );
+    };
+
     const canSessions = has('saisie_bancaire.sessions.read');
     const sortedSessions = [...pendingSessions].sort((x, y) => new Date(y.created_at) - new Date(x.created_at));
 
@@ -1135,11 +1212,6 @@ function SaisieBancaire({ navigationTarget }) {
             {step === 1 && !showList && (
                 <div className="sage-upload-step">
                     {renderStep1()}
-                    {canSessions && !loading && (
-                        <button type="button" className="btn btn-secondary" style={{ marginTop: '0.75rem', width: '100%' }} onClick={goSessions}>
-                            Consulter les sessions de saisie
-                        </button>
-                    )}
                 </div>
             )}
             {step === 1 && showList && canSessions && renderSessions()}
@@ -1154,6 +1226,7 @@ function SaisieBancaire({ navigationTarget }) {
                 </div>
             )}
             <PreviewModal />
+            <ResumeSessionModal />
         </div>
     );
 }
