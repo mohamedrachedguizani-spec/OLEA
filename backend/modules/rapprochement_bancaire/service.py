@@ -37,6 +37,14 @@ BANK_OPENING_LABELS = (
     "solde de depart",
     "solde debut de periode",
     "opening balance",
+    "solde initial",
+    "solde initiale",
+    "solde ouverture",
+    "solde d ouverture",
+    "report a nouveau",
+    "ancien solde",
+    "solde reporte",
+    "solde anterieur",
 )
 
 FRENCH_DATE_PATTERN = re.compile(
@@ -299,7 +307,12 @@ def extract_sage_opening_balance(
 
 def _extract_opening_amount_from_line(line: str) -> float:
     """Isole le montant final sans concaténer l'année courte qui le précède."""
-    without_dates = FRENCH_DATE_PATTERN.sub(" ", line)
+    # Les mois accentués (« déc. », « févr. ») doivent être reconnus, sinon l'année
+    # à 2 chiffres (« 25 ») se colle au montant (« 25 103 402,005 »).
+    no_accents = "".join(
+        ch for ch in unicodedata.normalize("NFKD", line) if not unicodedata.combining(ch)
+    )
+    without_dates = FRENCH_DATE_PATTERN.sub(" ", no_accents)
     without_dates = NUMERIC_DATE_PATTERN.sub(" ", without_dates)
     amounts = MONEY_PATTERN.findall(without_dates)
     return _parse_amount(amounts[-1]) if amounts else 0.0
@@ -370,6 +383,237 @@ def _extract_biat_positioned_opening(pdf) -> OpeningBalanceInfo:
     return OpeningBalanceInfo()
 
 
+BIAT_RELEVE_OPENING_RE = re.compile(
+    r"^SOLDE\s+AU\s+(\d{2})\s+(\d{2})\s+(\d{4})\s+(\d{1,3}(?:\.\d{3})*,\d{3})$",
+    re.IGNORECASE,
+)
+
+
+def _extract_biat_releve_opening(pdf) -> OpeningBalanceInfo:
+    """
+    Solde initial du « Relevé de compte mensuel » BIAT :
+        SOLDE AU 30 11 2025      107.863,605
+    Les en-têtes Débit/Crédit sont des images : le signe est déduit de la position
+    horizontale du montant (colonne Crédit à droite = solde créditeur, +;
+    colonne Débit à gauche = solde débiteur, -).
+    """
+    for page in pdf.pages:
+        words = page.extract_words() or []
+        split_x = page.width * 0.84  # frontière colonne Débit | Crédit
+        for anchor in words:
+            if _normalize_text(anchor.get("text")) != "solde":
+                continue
+            line_words = sorted(
+                (w for w in words if abs(float(w["top"]) - float(anchor["top"])) <= 3),
+                key=lambda w: float(w["x0"]),
+            )
+            line = " ".join(str(w.get("text") or "") for w in line_words)
+            match = BIAT_RELEVE_OPENING_RE.match(line.strip())
+            if not match:
+                continue
+            day, month, year, raw_amount = match.groups()
+            amount = abs(_parse_amount(raw_amount))
+            if float(line_words[-1]["x1"]) <= split_x:
+                amount = -amount
+            try:
+                balance_date = date(int(year), int(month), int(day))
+            except ValueError:
+                balance_date = None
+            return OpeningBalanceInfo(
+                amount=round(amount, 3),
+                label=line.strip(),
+                balance_date=balance_date,
+            )
+    return OpeningBalanceInfo()
+
+
+BIAT_MENSUEL_OPENING_RE = re.compile(
+    r"^Solde\s+au\s+(\d{2})/(\d{2})/(\d{4})\s+(\d{1,3}(?:\s\d{3})*,\d{3})$",
+    re.IGNORECASE,
+)
+
+
+def _extract_biat_mensuel_opening(pdf) -> OpeningBalanceInfo:
+    """
+    Solde initial du relevé mensuel BIAT 2026 :  « Solde au 30/04/2026     606 817,304 ».
+    Montant dans la colonne Débit (à gauche) = solde débiteur (négatif),
+    dans la colonne Crédit (à droite) = solde créditeur (positif).
+    """
+    for page in pdf.pages:
+        words = page.extract_words() or []
+        split_x = page.width * 0.89
+        for anchor in words:
+            if str(anchor.get("text") or "").lower() != "solde":
+                continue
+            line_words = sorted(
+                (w for w in words if abs(float(w["top"]) - float(anchor["top"])) <= 6),
+                key=lambda w: float(w["x0"]),
+            )
+            line = " ".join(str(w.get("text") or "") for w in line_words)
+            match = BIAT_MENSUEL_OPENING_RE.match(line.strip())
+            if not match:
+                continue
+            day, month, year, raw_amount = match.groups()
+            amount = abs(_parse_amount(raw_amount))
+            if float(line_words[-1]["x1"]) <= split_x:
+                amount = -amount
+            try:
+                balance_date = date(int(year), int(month), int(day))
+            except ValueError:
+                balance_date = None
+            return OpeningBalanceInfo(amount=round(amount, 3), label=line.strip(), balance_date=balance_date)
+    return OpeningBalanceInfo()
+
+
+UBCI_OPENING_RE = re.compile(
+    r"SOLDE\s+(D[EÉ]BITEUR|CR[EÉ]DITEUR)\s+AU\s+(\d{2})/(\d{2})/(\d{4})\s+(-?\d{1,3}(?:\.\d{3})*,\d{3})",
+    re.IGNORECASE,
+)
+
+
+def _extract_ubci_opening(pdf_text: str) -> OpeningBalanceInfo:
+    """UBCI : « SOLDE DEBITEUR AU 01/09/2026   -239.894,105 » (débiteur = négatif)."""
+    match = UBCI_OPENING_RE.search(pdf_text or "")
+    if not match:
+        return OpeningBalanceInfo()
+    kind, day, month, year, raw = match.groups()
+    amount = abs(float(raw.replace(".", "").replace(",", ".")))
+    if _normalize_text(kind) == "debiteur":
+        amount = -amount
+    try:
+        balance_date = date(int(year), int(month), int(day))
+    except ValueError:
+        balance_date = None
+    return OpeningBalanceInfo(amount=round(amount, 3), label=match.group(0), balance_date=balance_date)
+
+
+GENERIC_OPENING_LABEL_RE = re.compile(
+    r"^(?:solde\s+(?:initial|initiale|depart|de\s+depart|d\s+ouverture|ouverture|"
+    r"debut\s+de\s+periode|debut\s+periode|reporte|precedent|anterieur|a\s+nouveau|"
+    r"crediteur|debiteur|au)\b|report\s+a\s+nouveau|ancien\s+solde|opening\s+balance|"
+    r"balance\s+brought\s+forward|cumul\s+avant)"
+)
+# Libellés qui ne valent que s'ils précèdent les mouvements (ex. « SOLDE AU 01/09/2026 »)
+GENERIC_OPENING_POSITIONAL = ("solde au", "solde crediteur", "solde debiteur")
+SPACED_DATE_PATTERN = re.compile(r"\b\d{1,2}\s\d{1,2}\s\d{4}\b")
+ISO_DATE_PATTERN = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
+LINE_START_DATE_RE = re.compile(
+    r"^(?:\d{1,2}[/.\-\s]\d{1,2}[/.\-\s]\d{2,4}|\d{4}-\d{2}-\d{2}|\d{1,2}\s+[a-z]{3,9}\.?\s+\d{2,4})\b"
+)
+
+
+def _generic_opening_date(line: str):
+    iso = ISO_DATE_PATTERN.search(line)
+    if iso:
+        y, m, d = iso.group(0).split("-")
+        try:
+            return date(int(y), int(m), int(d))
+        except ValueError:
+            return None
+    for pattern in (NUMERIC_DATE_PATTERN, SPACED_DATE_PATTERN):
+        match = pattern.search(line)
+        if match:
+            parts = re.split(r"[/.\-\s]+", match.group(0))
+            try:
+                day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
+                return date(year + 2000 if year < 100 else year, month, day)
+            except ValueError:
+                return None
+    return _extract_opening_date_from_line(line)
+
+
+def _extract_generic_opening(pdf) -> OpeningBalanceInfo:
+    """
+    Détecteur générique du solde initial dans un PDF, indépendant de la banque :
+      - libellés : solde initial / de départ / d'ouverture / au <date> / créditeur / débiteur /
+        report à nouveau / ancien solde …  (casse, accents et ponctuation indifférents) ;
+      - date : JJ/MM/AAAA, JJ-MM-AAAA, JJ.MM.AAAA, JJ MM AAAA, AAAA-MM-JJ, « 01 déc. 25 » ;
+      - signe : « débiteur » → négatif, « créditeur » → positif ; sinon signe explicite
+        (-, parenthèses, suffixe D/C), sinon colonne Débit/Crédit la plus proche, sinon positif.
+    « SOLDE AU … », « SOLDE CRÉDITEUR/DÉBITEUR … » ne sont acceptés qu'AVANT le premier mouvement
+    (pour ne pas confondre avec un solde de clôture).
+    """
+    for page in pdf.pages:
+        words = page.extract_words() or []
+        if not words:
+            continue
+        # colonnes Débit / Crédit éventuelles (centres horizontaux)
+        debit_cx = credit_cx = None
+        for w in words:
+            token = _normalize_text(w.get("text"))
+            cx = (float(w["x0"]) + float(w["x1"])) / 2
+            if token in ("debit", "debits") and debit_cx is None:
+                debit_cx = cx
+            elif token in ("credit", "credits") and credit_cx is None:
+                credit_cx = cx
+
+        words = sorted(words, key=lambda w: (float(w["top"]), float(w["x0"])))
+        lines, cur, cur_top = [], [], None
+        for w in words:
+            if cur_top is None or abs(float(w["top"]) - cur_top) <= 6:
+                cur.append(w)
+                cur_top = float(w["top"]) if cur_top is None else cur_top
+            else:
+                lines.append(sorted(cur, key=lambda x: float(x["x0"])))
+                cur, cur_top = [w], float(w["top"])
+        if cur:
+            lines.append(sorted(cur, key=lambda x: float(x["x0"])))
+
+        seen_movement = False
+        for ln in lines:
+            raw = " ".join(str(w["text"]) for w in ln).strip()
+            norm = _normalize_text(raw)
+            if not GENERIC_OPENING_LABEL_RE.match(norm):
+                if LINE_START_DATE_RE.match(norm) and MONEY_PATTERN.search(raw):
+                    seen_movement = True
+                continue
+            if any(k in norm for k in ("cloture", "final", "closing", "nouveau solde")):
+                continue
+            if seen_movement and norm.startswith(GENERIC_OPENING_POSITIONAL):
+                continue
+
+            stripped = ISO_DATE_PATTERN.sub(" ", raw)
+            stripped = FRENCH_DATE_PATTERN.sub(" ", "".join(
+                ch for ch in unicodedata.normalize("NFKD", stripped) if not unicodedata.combining(ch)
+            ))
+            stripped = NUMERIC_DATE_PATTERN.sub(" ", stripped)
+            stripped = SPACED_DATE_PATTERN.sub(" ", stripped)
+            matches = list(MONEY_PATTERN.finditer(stripped))
+            if not matches:
+                continue
+            last = matches[-1]
+            amount = abs(_parse_amount(last.group(0)))
+            if amount == 0:
+                continue
+
+            before = stripped[:last.start()].rstrip()
+            after = stripped[last.end():].strip()
+            negative = None
+            if "debiteur" in norm:
+                negative = True
+            elif "crediteur" in norm:
+                negative = False
+            elif last.group(0).startswith("-") or (before.endswith("(") and after.startswith(")")):
+                negative = True
+            elif re.match(r"^(?:d|db|dr|debit)\b", after.lower()):
+                negative = True
+            elif re.match(r"^(?:c|cr|credit)\b", after.lower()):
+                negative = False
+            elif debit_cx is not None and credit_cx is not None:
+                amount_words = [w for w in ln if MONEY_PATTERN.search(str(w["text"])) or re.fullmatch(r"\d{1,3}", str(w["text"]))]
+                if amount_words:
+                    cx = (float(amount_words[-1]["x0"]) + float(amount_words[-1]["x1"])) / 2
+                    negative = abs(cx - debit_cx) < abs(cx - credit_cx)
+            if negative:
+                amount = -amount
+            return OpeningBalanceInfo(
+                amount=round(amount, 3),
+                label=raw,
+                balance_date=_generic_opening_date(raw),
+            )
+    return OpeningBalanceInfo()
+
+
 def extract_bank_opening_balance(
     file_bytes: bytes,
     filename: str,
@@ -412,10 +656,30 @@ def extract_bank_opening_balance(
     if is_pdf:
         with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
             pdf_text = "\n".join((page.extract_text() or "") for page in pdf.pages)
-            if "biat" in _normalize_text(pdf_text):
+            # Relevé mensuel BIAT (logo en image : le mot « BIAT » n'est pas dans le texte)
+            ubci_opening = _extract_ubci_opening(pdf_text)
+            if ubci_opening.amount is not None:
+                return ubci_opening
+            releve_opening = _extract_biat_releve_opening(pdf)
+            if releve_opening.amount is not None:
+                return releve_opening
+            mensuel_opening = _extract_biat_mensuel_opening(pdf)
+            if mensuel_opening.amount is not None:
+                return mensuel_opening
+            normalized_pdf_text = _normalize_text(pdf_text)
+            # « Extrait de compte » BIAT (logo en image : « BIAT » absent du texte)
+            is_biat_extrait = (
+                "extrait de compte" in normalized_pdf_text
+                and "categorie compte" in normalized_pdf_text
+                and "solde depart au" in normalized_pdf_text
+            )
+            if "biat" in normalized_pdf_text or is_biat_extrait:
                 positioned = _extract_biat_positioned_opening(pdf)
                 if positioned.amount is not None:
                     return positioned
+            generic_opening = _extract_generic_opening(pdf)
+            if generic_opening.amount is not None:
+                return generic_opening
             for page in pdf.pages:
                 for line in (page.extract_text() or "").splitlines():
                     normalized = _normalize_text(line)
