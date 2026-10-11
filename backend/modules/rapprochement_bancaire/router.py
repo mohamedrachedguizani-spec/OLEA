@@ -230,7 +230,7 @@ def list_reconciliation_results(
     journal: str | None = Query(None),
     period: str | None = Query(None),
     search: str | None = Query(None),
-    _user: dict = Depends(require_permission_code("rapprochement_bancaire.run")),
+    _user: dict = Depends(require_permission_code("rapprochement_bancaire.read")),
 ):
     """Liste paginée des rapprochements réalisés, avec synthèse et auteur."""
     clauses = []
@@ -309,7 +309,7 @@ def list_reconciliation_results(
 @router.get("/rapprochement/results/{result_id}", response_model=ReconciliationResult)
 def get_reconciliation_result(
     result_id: int,
-    _user: dict = Depends(require_permission_code("rapprochement_bancaire.run")),
+    _user: dict = Depends(require_permission_code("rapprochement_bancaire.read")),
 ):
     """Recharge un rapprochement ciblé depuis une notification."""
     with db.get_cursor() as cursor:

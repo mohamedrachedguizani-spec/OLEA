@@ -26,7 +26,7 @@ SAGE_BFC_PERMISSION_REPLACEMENTS = {
 
 # Permissions à propager aux profils existants lors d'une montée de version
 NEW_PROFILE_PERMISSIONS = {
-    "COMPTABLE": {"balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
+    "COMPTABLE": {"rapprochement_bancaire.read", "balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
                  "balance_fournisseur.generate", "balance_fournisseur.read", "balance_fournisseur.export_pdf",
                  "balance_fournisseur.print", "balance_agee.delete", "balance_fournisseur.delete"},
     "FINANCIER": {"balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
@@ -40,6 +40,8 @@ NEW_PROFILE_PERMISSIONS = {
 BALANCE_GENERATE_MIGRATION = {
     "balance_agee.generate": "balance_agee.read",
     "balance_fournisseur.generate": "balance_fournisseur.read",
+    # « rapprochement_bancaire.read » : consultation de l'historique, donnée à tous les profils qui pouvaient lancer un rapprochement
+    "rapprochement_bancaire.read": "rapprochement_bancaire.run",
 }
 
 

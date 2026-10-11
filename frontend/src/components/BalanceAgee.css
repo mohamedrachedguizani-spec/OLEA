@@ -156,3 +156,14 @@
 .sage-bfc-nav .sage-nav-btn.ba-nav-has-count { position: relative; }
 .ba-nav-count { position: absolute; top: -7px; right: -6px; min-width: 17px; height: 17px; padding: 0 4px; box-sizing: border-box; border-radius: 9px; background: var(--primary-500); color: #fff; font-size: .62rem; font-weight: 700; line-height: 17px; text-align: center; box-shadow: 0 0 0 2px var(--bg-card); }
 .sage-bfc-nav .sage-nav-btn.active .ba-nav-count { background: #fff; color: var(--primary-600); box-shadow: 0 0 0 2px var(--primary-500); }
+
+/* Saisie bancaire : formulaire d'import et barre d'actions alignés sur les autres modules */
+.sb-params { display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 1rem 1.25rem; margin-top:0; }
+.sb-params .periode-input { max-width:100%; width:100%; box-sizing:border-box; }
+.sb-drop { margin-top:1.25rem; }
+.sb-badges { display:flex; align-items:center; gap:.6rem; flex-wrap:wrap; }
+.sb-actionbar { margin-bottom:1rem; }
+.sb-actionbar-row { display:flex; align-items:center; gap:1.25rem; flex-wrap:wrap; }
+.sb-actionbar-btns { display:flex; gap:.75rem; flex-wrap:wrap; }
+.reco-history-table tbody tr.ba-row { cursor:pointer; transition: background var(--transition-fast); }
+.reco-history-table tbody tr.ba-row:hover { background: var(--bg-hover); }
