@@ -2,7 +2,11 @@
 import ApiService from '../services/api';
 import LibelleAutocomplete from './LibelleAutocomplete';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import ReactDOM from 'react-dom';
+import { FiCheck, FiEdit2, FiTrash2, FiX, FiInbox, FiList, FiPlusCircle, FiDollarSign } from 'react-icons/fi';
 import { useAuth } from '../contexts/AuthContext';
+import './sage-bfc/SageBfcParser.css';
+import './BalanceAgee.css';   // cartes / actions partagées avec les autres modules
 
 
 function SaisieCaisse({ refreshTrigger }) {
@@ -26,6 +30,8 @@ function SaisieCaisse({ refreshTrigger }) {
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState('');
     const [editingId, setEditingId] = useState(null);
+    const [toDelete, setToDelete] = useState(null);
+    const [deleting, setDeleting] = useState(false);
     const [editForm, setEditForm] = useState({});
     const debitInputRef = useRef(null);
     const creditInputRef = useRef(null);
@@ -303,15 +309,18 @@ function SaisieCaisse({ refreshTrigger }) {
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm('Voulez-vous vraiment supprimer cette écriture?')) {
-            try {
-                await ApiService.deleteEcritureCaisse(id);
-                setMessage('Écriture supprimée avec succès!');
-                loadEcritures();
-            } catch (error) {
-                setMessage('Erreur lors de la suppression: ' + error.message);
-            }
+    const confirmDelete = async () => {
+        if (!toDelete) return;
+        setDeleting(true);
+        try {
+            await ApiService.deleteEcritureCaisse(toDelete.id);
+            setMessage('Écriture supprimée avec succès!');
+            loadEcritures();
+        } catch (error) {
+            setMessage('Erreur lors de la suppression: ' + error.message);
+        } finally {
+            setDeleting(false);
+            setToDelete(null);
         }
     };
 
@@ -383,11 +392,15 @@ function SaisieCaisse({ refreshTrigger }) {
     };
 
     return (
-        <div className="olea-card fade-in">
-            <div className="card-header">
-                <h2 className="card-title">
-                    Saisie des Écritures de Caisse
-                </h2>
+        <div className="sage-bfc-container fade-in">
+            <div className="sage-bfc-header">
+                <div>
+                    <h2 className="sage-bfc-title">
+                        <span className="sage-bfc-title-icon"><FiDollarSign /></span>
+                        Saisie caisse
+                    </h2>
+                    <p className="sage-bfc-subtitle">Saisie des écritures de caisse en attente de migration vers SAGE</p>
+                </div>
             </div>
 
             {message && (
@@ -396,7 +409,9 @@ function SaisieCaisse({ refreshTrigger }) {
                 </div>
             )}
 
-            <form onSubmit={handleSubmit} className="olea-form mb-4">
+            <div className="ba-card">
+            <h3 className="ba-card-title"><FiPlusCircle /> Nouvelle écriture</h3>
+            <form onSubmit={handleSubmit} className="olea-form">
                 {/* Première ligne du formulaire : Informations de caisse */}
                 <div className="form-row" style={{ marginBottom: '1rem' }}>
                     <div className="form-col">
@@ -573,14 +588,13 @@ function SaisieCaisse({ refreshTrigger }) {
                     </div>
                 </div>
             </form>
-
-            <div className="section-header">
-                <h3>
-                    <span className="icon">📋</span>
-                    Écritures en Attente de Migration
-                </h3>
-                <span className="badge badge-warning">{totalEcritures} en attente</span>
             </div>
+
+            <div className="ba-card">
+            <h3 className="ba-card-title">
+                <FiList /> Écritures en attente de migration
+                <small>{totalEcritures} en attente</small>
+            </h3>
             
             <div className="table-responsive">
                 <table className="olea-table">
@@ -599,7 +613,7 @@ function SaisieCaisse({ refreshTrigger }) {
                             <tr>
                                 <td colSpan="6" style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)' }}>
                                     <div className="empty-state-inline">
-                                        <span>✅</span>
+                                        <FiInbox style={{ fontSize: '1.6rem' }} />
                                         <p>Toutes les écritures ont été migrées</p>
                                     </div>
                                 </td>
@@ -752,21 +766,23 @@ function SaisieCaisse({ refreshTrigger }) {
                                         </td>
                                         <td className="text-right">{ecriture.solde.toFixed(3)}</td>
                                         <td className="text-center">
-                                            <div className="btn-group">
+                                            <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                 {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
-                                                    className="btn btn-sm btn-success"
+                                                    className="reco-icon-button"
+                                                    title="Enregistrer"
+                                                    aria-label="Enregistrer"
                                                     onClick={() => handleSaveEdit(ecriture.id)}
                                                     disabled={loading}
-                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
-                                                    ✓
+                                                    <FiCheck />
                                                 </button>}
                                                 {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
-                                                    className="btn btn-sm btn-secondary"
+                                                    className="reco-icon-button"
+                                                    title="Annuler"
+                                                    aria-label="Annuler"
                                                     onClick={handleCancelEdit}
-                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
                                                 >
-                                                    ✕
+                                                    <FiX />
                                                 </button>}
                                             </div>
                                         </td>
@@ -800,31 +816,31 @@ function SaisieCaisse({ refreshTrigger }) {
                                         <td className="text-right">{ecriture.credit.toFixed(3)}</td>
                                         <td className="text-right font-bold">{ecriture.solde.toFixed(3)}</td>
                                         <td className="text-center">
-                                            <div className="btn-group">
+                                            <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                 {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
-                                                    className="btn btn-sm btn-primary"
+                                                    className="reco-icon-button"
                                                     onClick={() => handleMigrateDirect(ecriture)}
                                                     title="Migrer vers Sage"
+                                                    aria-label="Migrer vers Sage"
                                                     disabled={loading}
-                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1, marginRight: '0.2rem' }}
                                                 >
-                                                    ✓
+                                                    <FiCheck />
                                                 </button>}
                                                 {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
-                                                    className="btn btn-sm btn-secondary"
+                                                    className="reco-icon-button"
                                                     onClick={() => handleEdit(ecriture)}
                                                     title="Modifier"
-                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1 }}
+                                                    aria-label="Modifier"
                                                 >
-                                                    ✏️
+                                                    <FiEdit2 />
                                                 </button>}
                                                 {has('saisie_caisse.crud_ecriture_caisse_manage') && <button
-                                                    className="btn btn-sm btn-danger"
-                                                    onClick={() => handleDelete(ecriture.id)}
+                                                    className="reco-icon-button reco-icon-button-danger"
+                                                    onClick={() => setToDelete(ecriture)}
                                                     title="Supprimer"
-                                                    style={{ fontSize: '0.7rem', padding: '0.25rem 0.45rem', lineHeight: 1, marginLeft: '0.2rem' }}
+                                                    aria-label="Supprimer"
                                                 >
-                                                    🗑️
+                                                    <FiTrash2 />
                                                 </button>}
                                             </div>
                                         </td>
@@ -908,6 +924,29 @@ function SaisieCaisse({ refreshTrigger }) {
                         </svg>
                     </button>
                 </div>
+            )}
+            </div>
+
+            {toDelete && ReactDOM.createPortal(
+                <div className="sage-close-overlay" role="alertdialog" aria-modal="true"
+                    onClick={() => !deleting && setToDelete(null)}>
+                    <div className="sage-close-overlay-card ba-confirm" onClick={(e) => e.stopPropagation()}>
+                        <h4>Supprimer cette écriture ?</h4>
+                        <p>
+                            <strong>{toDelete.libelle_ecriture}</strong>
+                            {toDelete.date_ecriture ? <> du {new Date(toDelete.date_ecriture).toLocaleDateString('fr-FR')}</> : null}
+                            {' '}sera supprimée.
+                        </p>
+                        <p className="ba-confirm-warn">Cette action est définitive.</p>
+                        <div className="ba-confirm-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setToDelete(null)} disabled={deleting}>Annuler</button>
+                            <button type="button" className="btn btn-primary" onClick={confirmDelete} disabled={deleting}>
+                                {deleting ? 'Suppression…' : 'Supprimer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );

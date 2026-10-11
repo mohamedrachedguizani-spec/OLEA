@@ -11,6 +11,7 @@ import SageBfcForecast from './sage-bfc/SageBfcForecast';
 import SageBfcMappingAlert from './sage-bfc/SageBfcMappingAlert';
 import SageBfcSuccessModal from './sage-bfc/SageBfcSuccessModal';
 import './sage-bfc/SageBfcParser.css';
+import './BalanceAgee.css';
 
 const ALL_PERIODS_KEY = '__all_periods__';
 
@@ -122,6 +123,8 @@ function SageBfcParser({
     const [mappingStats, setMappingStats] = useState(null);
     const [fileName, setFileName] = useState('');
     const [closingYear, setClosingYear] = useState(false);
+    const [monthToDelete, setMonthToDelete] = useState(null);
+    const [deletingMonth, setDeletingMonth] = useState(false);
     const [closedYears, setClosedYears] = useState([]);
 
     // Données mensuelles chargées depuis le backend
@@ -571,6 +574,17 @@ function SageBfcParser({
         }
     };
 
+    const confirmDeleteMonth = async () => {
+        if (!monthToDelete) return;
+        setDeletingMonth(true);
+        try {
+            await handleDeleteMonth(monthToDelete);
+        } finally {
+            setDeletingMonth(false);
+            setMonthToDelete(null);
+        }
+    };
+
     const formatMonthShort = (periode) => {
         try {
             const d = new Date(periode);
@@ -924,7 +938,7 @@ function SageBfcParser({
                                 {!!selectedMonth && selectedMonth !== ALL_PERIODS_KEY && has('sage_bfc.month.delete') && (
                                     <button
                                         className="btn-delete-month danger-soft"
-                                        onClick={() => handleDeleteMonth(selectedMonth)}
+                                        onClick={() => setMonthToDelete(selectedMonth)}
                                         title="Supprimer la période sélectionnée"
                                     >
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -981,6 +995,32 @@ function SageBfcParser({
                         )}
                     </div>
                 </div>
+            )}
+
+            {monthToDelete && ReactDOM.createPortal(
+                <div
+                    className="sage-close-overlay"
+                    role="alertdialog"
+                    aria-modal="true"
+                    onClick={() => !deletingMonth && setMonthToDelete(null)}
+                >
+                    <div className="sage-close-overlay-card ba-confirm" onClick={(e) => e.stopPropagation()}>
+                        <h4>Supprimer cette période ?</h4>
+                        <p>
+                            Période <strong>{formatMonthLabel(monthToDelete)}</strong>
+                            {monthlyData[monthToDelete]?.fileName ? <> ({monthlyData[monthToDelete].fileName})</> : null}
+                            {' '}: toutes les données importées pour cette période seront supprimées.
+                        </p>
+                        <p className="ba-confirm-warn">Cette action est définitive.</p>
+                        <div className="ba-confirm-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setMonthToDelete(null)} disabled={deletingMonth}>Annuler</button>
+                            <button type="button" className="btn btn-primary" onClick={confirmDeleteMonth} disabled={deletingMonth}>
+                                {deletingMonth ? 'Suppression…' : 'Supprimer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );

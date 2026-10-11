@@ -1,6 +1,10 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import ReactDOM from 'react-dom';
+import { FiCheck, FiEdit2, FiTrash2, FiX, FiSettings, FiTag, FiUsers, FiShuffle } from 'react-icons/fi';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import './sage-bfc/SageBfcParser.css';
+import './BalanceAgee.css';   // cartes, icônes d'action et fenêtre de confirmation partagées
 
 const CONFIG_TAB_PERMISSIONS = {
     comptes: 'configuration.accounts.read',
@@ -22,6 +26,9 @@ function Configuration({ initialTab = 'comptes' }) {
     const canManageMapping = has('configuration.mapping.manage');
     const canDeleteMapping = has('configuration.mapping.delete');
     
+    const [toDelete, setToDelete] = useState(null);   // { kind, code, section, label }
+    const [deleting, setDeleting] = useState(false);
+
     // Comptes
     const [form, setForm] = useState({ code_compte: '', libelle_compte: '' });
     const [search, setSearch] = useState('');
@@ -257,7 +264,6 @@ function Configuration({ initialTab = 'comptes' }) {
     };
 
     const handleDelete = async (codeCompte) => {
-        if (!window.confirm(`Supprimer le compte "${codeCompte}" ?`)) return;
         setSaving(true);
         setMessage('');
         try {
@@ -354,7 +360,6 @@ function Configuration({ initialTab = 'comptes' }) {
     };
 
     const handleTiersDelete = async (code) => {
-        if (!window.confirm(`Supprimer le tiers "${code}" ?`)) return;
         setTiersSaving(true);
         setTiersMessage('');
         try {
@@ -502,7 +507,6 @@ function Configuration({ initialTab = 'comptes' }) {
     };
 
     const handleMappingDelete = async (codeCompte, mappingSection) => {
-        if (!window.confirm(`Supprimer le mapping "${codeCompte}" ?`)) return;
         setMappingSaving(true);
         setMappingMessage('');
         try {
@@ -519,44 +523,53 @@ function Configuration({ initialTab = 'comptes' }) {
         }
     };
 
+    const confirmDelete = async () => {
+        if (!toDelete) return;
+        setDeleting(true);
+        try {
+            if (toDelete.kind === 'compte') await handleDelete(toDelete.code);
+            else if (toDelete.kind === 'tiers') await handleTiersDelete(toDelete.code);
+            else if (toDelete.kind === 'mapping') await handleMappingDelete(toDelete.code, toDelete.section);
+        } finally {
+            setDeleting(false);
+            setToDelete(null);
+        }
+    };
+
+    const deleteTitle = { compte: 'Supprimer ce compte ?', tiers: 'Supprimer ce tiers ?', mapping: 'Supprimer ce mapping ?' };
 
     return (
-        <div className="olea-card fade-in">
-            <div className="card-header">
-                <div className="config-header">
-                    <h2 className="card-title">
-                        {/* <span className="icon">⚙️</span> */}
+        <div className="sage-bfc-container fade-in">
+            <div className="sage-bfc-header">
+                <div>
+                    <h2 className="sage-bfc-title">
+                        <span className="sage-bfc-title-icon"><FiSettings /></span>
                         Configuration
                     </h2>
-                    <div className="config-tabs" role="tablist" aria-label="Configuration tabs">
-                        {has(CONFIG_TAB_PERMISSIONS.comptes) && <button
-                            type="button"
-                            className={`config-tab ${activeTab === 'comptes' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('comptes')}
-                            role="tab"
-                            aria-selected={activeTab === 'comptes'}
-                        >
-                            Comptes
-                        </button>}
-                        {has(CONFIG_TAB_PERMISSIONS.tiers) && <button
-                            type="button"
-                            className={`config-tab ${activeTab === 'tiers' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('tiers')}
-                            role="tab"
-                            aria-selected={activeTab === 'tiers'}
-                        >
-                            Plan Tiers
-                        </button>}
-                        {has(CONFIG_TAB_PERMISSIONS.mapping) && <button
-                            type="button"
-                            className={`config-tab ${activeTab === 'mapping' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('mapping')}
-                            role="tab"
-                            aria-selected={activeTab === 'mapping'}
-                        >
-                            Mapping SAGE → BFC
-                        </button>}
-                    </div>
+                    <p className="sage-bfc-subtitle">Plan comptable, plan tiers et mapping SAGE → BFC</p>
+                </div>
+                <div className="sage-bfc-nav" role="tablist" aria-label="Configuration tabs">
+                    {has(CONFIG_TAB_PERMISSIONS.comptes) && (
+                        <button type="button" role="tab" aria-selected={activeTab === 'comptes'}
+                            className={`sage-nav-btn ${activeTab === 'comptes' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('comptes')}>
+                            <FiTag /> Comptes
+                        </button>
+                    )}
+                    {has(CONFIG_TAB_PERMISSIONS.tiers) && (
+                        <button type="button" role="tab" aria-selected={activeTab === 'tiers'}
+                            className={`sage-nav-btn ${activeTab === 'tiers' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('tiers')}>
+                            <FiUsers /> Plan Tiers
+                        </button>
+                    )}
+                    {has(CONFIG_TAB_PERMISSIONS.mapping) && (
+                        <button type="button" role="tab" aria-selected={activeTab === 'mapping'}
+                            className={`sage-nav-btn ${activeTab === 'mapping' ? 'active' : ''}`}
+                            onClick={() => setActiveTab('mapping')}>
+                            <FiShuffle /> Mapping SAGE → BFC
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -578,14 +591,8 @@ function Configuration({ initialTab = 'comptes' }) {
                 </div>
             )}
             {activeTab === 'comptes' && (
-                <>
-                    <div className="section-header" style={{ marginBottom: '1rem' }}>
-                        <h3>
-                            <span className="icon">🏷️</span>
-                            Comptes comptables
-                        </h3>
-                        <span className="badge badge-primary">{total}</span>
-                    </div>
+                <div className="ba-card">
+                    <h3 className="ba-card-title">Comptes comptables <small>{total} enregistrement(s)</small></h3>
 
                     <form className="olea-form mb-4" onSubmit={handleSubmit}>
                         <div className="form-row">
@@ -683,21 +690,21 @@ function Configuration({ initialTab = 'comptes' }) {
                                                         />
                                                     </td>
                                                     <td className="text-center">
-                                                        <div className="btn-group">
+                                                        <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                             <button
-                                                                className="btn btn-sm btn-success"
+                                                                className="reco-icon-button"
                                                                 onClick={() => handleSaveEdit(compte.code_compte)}
                                                                 disabled={saving || !canManageAccounts}
                                                                 title="Enregistrer"
                                                             >
-                                                                ✓ 
+                                                                <FiCheck />
                                                             </button>
                                                             <button
-                                                                className="btn btn-sm btn-secondary"
+                                                                className="reco-icon-button"
                                                                 onClick={handleCancelEdit}
                                                                 title="Annuler"
                                                             >
-                                                                ✕ 
+                                                                <FiX />
                                                             </button>
                                                         </div>
                                                     </td>
@@ -707,22 +714,22 @@ function Configuration({ initialTab = 'comptes' }) {
                                                     <td>{compte.code_compte}</td>
                                                     <td>{compte.libelle_compte}</td>
                                                     <td className="text-center">
-                                                        <div className="btn-group">
+                                                        <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                             <button
-                                                                className="btn btn-sm btn-secondary"
+                                                                className="reco-icon-button"
                                                                 onClick={() => handleEdit(compte)}
                                                                 title="Modifier"
                                                                 disabled={!canManageAccounts}
                                                             >
-                                                                ✏️ 
+                                                                <FiEdit2 />
                                                             </button>
                                                             <button
-                                                                className="btn btn-sm btn-danger"
-                                                                onClick={() => handleDelete(compte.code_compte)}
+                                                                className="reco-icon-button reco-icon-button-danger"
+                                                                onClick={() => setToDelete({ kind: 'compte', code: compte.code_compte, label: `${compte.code_compte} — ${compte.libelle_compte}` })}
                                                                 title="Supprimer"
                                                                 disabled={saving || !canDeleteAccounts}
                                                             >
-                                                                🗑️ 
+                                                                <FiTrash2 />
                                                             </button>
                                                         </div>
                                                     </td>
@@ -807,18 +814,12 @@ function Configuration({ initialTab = 'comptes' }) {
                             </button>
                         </div>
                     )}
-                </>
+                </div>
             )}
 
             {activeTab === 'tiers' && (
-                <>
-                    <div className="section-header" style={{ marginBottom: '1rem' }}>
-                        <h3>
-                            <span className="icon">🏷️</span>
-                            Plan Tiers
-                        </h3>
-                        <span className="badge badge-primary">{tiersTotal}</span>
-                    </div>
+                <div className="ba-card">
+                    <h3 className="ba-card-title">Plan Tiers <small>{tiersTotal} enregistrement(s)</small></h3>
 
                     <form className="olea-form mb-4" onSubmit={handleTiersSubmit}>
                         <div className="form-row">
@@ -916,21 +917,21 @@ function Configuration({ initialTab = 'comptes' }) {
                                                         />
                                                     </td>
                                                     <td className="text-center">
-                                                        <div className="btn-group">
+                                                        <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                             <button
-                                                                className="btn btn-sm btn-success"
+                                                                className="reco-icon-button"
                                                                 onClick={() => handleTiersSaveEdit(t.code)}
                                                                 disabled={tiersSaving || !canManageThirdParties}
                                                                 title="Enregistrer"
                                                             >
-                                                                ✓ 
+                                                                <FiCheck />
                                                             </button>
                                                             <button
-                                                                className="btn btn-sm btn-secondary"
+                                                                className="reco-icon-button"
                                                                 onClick={handleTiersCancelEdit}
                                                                 title="Annuler"
                                                             >
-                                                                ✕ 
+                                                                <FiX />
                                                             </button>
                                                         </div>
                                                     </td>
@@ -940,22 +941,22 @@ function Configuration({ initialTab = 'comptes' }) {
                                                     <td>{t.code}</td>
                                                     <td>{t.libelle}</td>
                                                     <td className="text-center">
-                                                        <div className="btn-group">
+                                                        <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                             <button
-                                                                className="btn btn-sm btn-secondary"
+                                                                className="reco-icon-button"
                                                                 onClick={() => handleTiersEdit(t)}
                                                                 title="Modifier"
                                                                 disabled={!canManageThirdParties}
                                                             >
-                                                                ✏️ 
+                                                                <FiEdit2 />
                                                             </button>
                                                             <button
-                                                                className="btn btn-sm btn-danger"
-                                                                onClick={() => handleTiersDelete(t.code)}
+                                                                className="reco-icon-button reco-icon-button-danger"
+                                                                onClick={() => setToDelete({ kind: 'tiers', code: t.code, label: `${t.code} — ${t.libelle}` })}
                                                                 title="Supprimer"
                                                                 disabled={tiersSaving || !canDeleteThirdParties}
                                                             >
-                                                                🗑️ 
+                                                                <FiTrash2 />
                                                             </button>
                                                         </div>
                                                     </td>
@@ -1040,18 +1041,12 @@ function Configuration({ initialTab = 'comptes' }) {
                             </button>
                         </div>
                     )}
-                </>
+                </div>
             )}
 
             {activeTab === 'mapping' && (
-                <>
-                    <div className="section-header" style={{ marginBottom: '1rem' }}>
-                        <h3>
-                            <span className="icon">🧩</span>
-                            Mapping SAGE → BFC
-                        </h3>
-                        <span className="badge badge-primary">{mappingTotal}</span>
-                    </div>
+                <div className="ba-card">
+                    <h3 className="ba-card-title">Mapping SAGE → BFC <small>{mappingTotal} enregistrement(s)</small></h3>
 
                     <form className="olea-form mb-4" onSubmit={handleMappingSubmit}>
                         <div className="form-row">
@@ -1328,21 +1323,21 @@ function Configuration({ initialTab = 'comptes' }) {
                                                             </select>
                                                         </td>
                                                         <td className="text-center">
-                                                            <div className="btn-group">
+                                                            <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                                 <button
-                                                                    className="btn btn-sm btn-success"
+                                                                    className="reco-icon-button"
                                                                     onClick={() => handleMappingSaveEdit(entry.code_compte)}
                                                                     disabled={mappingSaving || !canManageMapping}
                                                                     title="Enregistrer"
                                                                 >
-                                                                    ✓ 
+                                                                    <FiCheck />
                                                                 </button>
                                                                 <button
-                                                                    className="btn btn-sm btn-secondary"
+                                                                    className="reco-icon-button"
                                                                     onClick={handleMappingCancelEdit}
                                                                     title="Annuler"
                                                                 >
-                                                                    ✕ 
+                                                                    <FiX />
                                                                 </button>
                                                             </div>
                                                         </td>
@@ -1357,22 +1352,22 @@ function Configuration({ initialTab = 'comptes' }) {
                                                         <td>{entry.type || entry.type_ligne || '-'}</td>
                                                         <td>{entry.sens || '-'}</td>
                                                         <td className="text-center">
-                                                            <div className="btn-group">
+                                                            <div className="reco-history-actions" style={{ justifyContent: 'center' }}>
                                                                 <button
-                                                                    className="btn btn-sm btn-secondary"
+                                                                    className="reco-icon-button"
                                                                     onClick={() => handleMappingEdit(entry)}
                                                                     title="Modifier"
                                                                     disabled={!canManageMapping}
                                                                 >
-                                                                    ✏️ 
+                                                                    <FiEdit2 />
                                                                 </button>
                                                                 <button
-                                                                    className="btn btn-sm btn-danger"
-                                                                    onClick={() => handleMappingDelete(entry.code_compte, entry.mapping_section)}
+                                                                    className="reco-icon-button reco-icon-button-danger"
+                                                                    onClick={() => setToDelete({ kind: 'mapping', code: entry.code_compte, section: entry.mapping_section, label: `${entry.code_compte} — ${entry.libelle_sage || ''} (${entry.mapping_section})` })}
                                                                     title="Supprimer"
                                                                     disabled={mappingSaving || !canDeleteMapping}
                                                                 >
-                                                                    🗑️ 
+                                                                    <FiTrash2 />
                                                                 </button>
                                                             </div>
                                                         </td>
@@ -1459,7 +1454,25 @@ function Configuration({ initialTab = 'comptes' }) {
                         </div>
                     )}
 
-                </>
+                </div>
+            )}
+
+            {toDelete && ReactDOM.createPortal(
+                <div className="sage-close-overlay" role="alertdialog" aria-modal="true"
+                    onClick={() => !deleting && setToDelete(null)}>
+                    <div className="sage-close-overlay-card ba-confirm" onClick={(e) => e.stopPropagation()}>
+                        <h4>{deleteTitle[toDelete.kind]}</h4>
+                        <p><strong>{toDelete.label}</strong> sera supprimé.</p>
+                        <p className="ba-confirm-warn">Cette action est définitive.</p>
+                        <div className="ba-confirm-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setToDelete(null)} disabled={deleting}>Annuler</button>
+                            <button type="button" className="btn btn-primary" onClick={confirmDelete} disabled={deleting}>
+                                {deleting ? 'Suppression…' : 'Supprimer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );
