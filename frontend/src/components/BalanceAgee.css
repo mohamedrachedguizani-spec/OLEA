@@ -167,3 +167,5 @@
 .sb-actionbar-btns { display:flex; gap:.75rem; flex-wrap:wrap; }
 .reco-history-table tbody tr.ba-row { cursor:pointer; transition: background var(--transition-fast); }
 .reco-history-table tbody tr.ba-row:hover { background: var(--bg-hover); }
+.olea-table tbody tr.ba-row { cursor:pointer; }
+.olea-table tbody tr.ba-row:hover { background: var(--bg-hover); }

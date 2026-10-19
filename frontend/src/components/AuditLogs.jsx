@@ -1,6 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
+import { FiShield, FiEye, FiTrash2 } from 'react-icons/fi';
 import ApiService, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
+import './sage-bfc/SageBfcParser.css';
+import './BalanceAgee.css';   // cartes, icônes d'action et fenêtre de confirmation partagées
 
 const WS_URL = API_BASE_URL.replace(/^http/i, 'ws') + '/ws/live';
 const WS_RECONNECT_DELAY = 3000;
@@ -23,6 +27,7 @@ function AuditLogs() {
     const [pages, setPages] = useState(1);
 
     const [selectedLog, setSelectedLog] = useState(null);
+    const [confirmDelete, setConfirmDelete] = useState(false);
     const [selectedIds, setSelectedIds] = useState([]);
     const [moduleOptions, setModuleOptions] = useState([]);
 
@@ -145,7 +150,6 @@ function AuditLogs() {
 
     const handleDeleteSelected = async () => {
         if (!selectedIds.length) return;
-        if (!window.confirm(`Supprimer ${selectedIds.length} log(s) sélectionné(s) ?`)) return;
         setLoading(true);
         setMessage('');
         try {
@@ -157,34 +161,41 @@ function AuditLogs() {
             setMessage(`Erreur lors de la suppression: ${error.message}`);
         } finally {
             setLoading(false);
+            setConfirmDelete(false);
         }
     };
 
     if (!isSuperAdmin) {
         return (
-            <div className="olea-card fade-in">
-                <div className="card-header">
-                    <h2 className="card-title">
-                        <span className="icon">🛡️</span>
-                        Audit
-                    </h2>
+            <div className="sage-bfc-container fade-in">
+                <div className="sage-bfc-header">
+                    <div>
+                        <h2 className="sage-bfc-title">
+                            <span className="sage-bfc-title-icon"><FiShield /></span>
+                            Audit des actions
+                        </h2>
+                    </div>
                 </div>
-                <div className="alert alert-danger slide-down">
-                    Accès réservé au superadmin.
-                </div>
+                <div className="sage-bfc-error"><div><strong>Accès refusé</strong><p>Accès réservé au superadmin.</p></div></div>
             </div>
         );
     }
 
     return (
-        <div className="olea-card fade-in">
-            <div className="card-header">
-                <div className="config-header">
-                    <h2 className="card-title">
-                        <span className="icon">🛡️</span>
+        <div className="sage-bfc-container fade-in">
+            <div className="sage-bfc-header">
+                <div>
+                    <h2 className="sage-bfc-title">
+                        <span className="sage-bfc-title-icon"><FiShield /></span>
                         Audit des actions
                     </h2>
-                    <span className="badge badge-primary">{total}</span>
+                    <p className="sage-bfc-subtitle">Journal des actions effectuées par les utilisateurs</p>
+                </div>
+                <div className="sage-bfc-nav">
+                    <span className="sage-nav-btn active" style={{ cursor: 'default' }}>
+                        Journal
+                        <span className="ba-nav-count" title={`${total} log(s)`}>{total}</span>
+                    </span>
                 </div>
             </div>
 
@@ -194,6 +205,7 @@ function AuditLogs() {
                 </div>
             )}
 
+            <div className="ba-card">
             <div className="olea-form mb-4">
                 <div className="form-row">
                     <div className="form-col form-col-lg">
@@ -234,13 +246,14 @@ function AuditLogs() {
                     </div>
                     <div className="form-col form-col-btn" style={{ display: 'flex', alignItems: 'flex-end' }}>
                         <button
-                            className="btn btn-danger"
+                            className="reco-icon-button reco-icon-button-danger"
                             type="button"
                             title="Supprimer la sélection"
-                            onClick={handleDeleteSelected}
+                            aria-label="Supprimer la sélection"
+                            onClick={() => setConfirmDelete(true)}
                             disabled={loading || selectedIds.length === 0}
                         >
-                            🗑️
+                            <FiTrash2 />
                         </button>
                     </div>
                 </div>
@@ -266,6 +279,9 @@ function AuditLogs() {
                 </div>
             </div>
 
+            </div>
+
+            <div className="ba-card">
             <div className="table-responsive">
                 <table className="olea-table">
                     <thead>
@@ -300,8 +316,8 @@ function AuditLogs() {
                             </tr>
                         ) : (
                             logs.map((log) => (
-                                <tr key={log.id}>
-                                    <td className="text-center">
+                                <tr key={log.id} className="ba-row" onClick={() => setSelectedLog(log)}>
+                                    <td className="text-center" onClick={(e) => e.stopPropagation()}>
                                         <input
                                             type="checkbox"
                                             checked={selectedIds.includes(log.id)}
@@ -315,10 +331,13 @@ function AuditLogs() {
                                     <td>{[log.entity_type, log.entity_id].filter(Boolean).join(' / ') || '-'}</td>
                                     <td className="text-center">
                                         <button
-                                            className="btn btn-sm btn-secondary"
-                                            onClick={() => setSelectedLog(log)}
+                                            type="button"
+                                            className="reco-icon-button"
+                                            title="Voir les détails"
+                                            aria-label="Voir les détails"
+                                            onClick={(e) => { e.stopPropagation(); setSelectedLog(log); }}
                                         >
-                                            Voir
+                                            <FiEye />
                                         </button>
                                     </td>
                                 </tr>
@@ -400,6 +419,7 @@ function AuditLogs() {
                     </button>
                 </div>
             )}
+            </div>
 
             {selectedLog && (
                 <div className="um-modal-overlay" onClick={() => setSelectedLog(null)}>
@@ -418,6 +438,24 @@ function AuditLogs() {
                         </div>
                     </div>
                 </div>
+            )}
+
+            {confirmDelete && ReactDOM.createPortal(
+                <div className="sage-close-overlay" role="alertdialog" aria-modal="true"
+                    onClick={() => !loading && setConfirmDelete(false)}>
+                    <div className="sage-close-overlay-card ba-confirm" onClick={(e) => e.stopPropagation()}>
+                        <h4>Supprimer les logs sélectionnés ?</h4>
+                        <p><strong>{selectedIds.length}</strong> log(s) seront supprimés du journal d'audit.</p>
+                        <p className="ba-confirm-warn">Cette action est définitive.</p>
+                        <div className="ba-confirm-actions">
+                            <button type="button" className="btn btn-secondary" onClick={() => setConfirmDelete(false)} disabled={loading}>Annuler</button>
+                            <button type="button" className="btn btn-primary" onClick={handleDeleteSelected} disabled={loading}>
+                                {loading ? 'Suppression…' : 'Supprimer'}
+                            </button>
+                        </div>
+                    </div>
+                </div>,
+                document.body
             )}
         </div>
     );
