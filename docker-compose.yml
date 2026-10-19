@@ -1,15 +1,13 @@
-version: '3.8'
-
 services:
   db:
     image: mysql:8.0
     container_name: olea_db
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: gestion_caisse
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD is required}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-gestion_caisse}
     ports:
-      - "3306:3306"
+      - "127.0.0.1:3306:3306"
     volumes:
       - mysql_data:/var/lib/mysql
 
@@ -18,10 +16,10 @@ services:
     container_name: olea_phpmyadmin
     restart: always
     environment:
-      PMA_HOST: db
-      PMA_PORT: 3306
+      PMA_HOST: ${PMA_HOST:-db}
+      PMA_PORT: ${PMA_PORT:-3306}
     ports:
-      - "8081:80"
+      - "127.0.0.1:8081:80"
     depends_on:
       - db
 
@@ -32,19 +30,19 @@ services:
     container_name: olea_backend
     restart: always
     environment:
-      - DB_HOST=db
-      - DB_PORT=3306
-      - DB_USER=root
-      - DB_PASSWORD=rootpassword
-      - DB_NAME=gestion_caisse
-      - SECRET_KEY=olea-secret-key-change-in-production-2026
-      - REFRESH_SECRET_KEY=olea-refresh-secret-key-change-in-production-2026
-      - ALGORITHM=HS256
-      - ACCESS_TOKEN_EXPIRE_MINUTES=15
-      - REFRESH_TOKEN_EXPIRE_DAYS=7
-      - ENVIRONMENT=development
-      - SWAGGER_ENABLED=true
-      - SWAGGER_LOCAL_ONLY=true
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-3306}
+      DB_USER: ${DB_USER:-root}
+      DB_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      DB_NAME: ${DB_NAME:-gestion_caisse}
+      SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+      REFRESH_SECRET_KEY: ${REFRESH_SECRET_KEY:?REFRESH_SECRET_KEY is required}
+      ALGORITHM: ${ALGORITHM:-HS256}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-15}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      SWAGGER_ENABLED: ${SWAGGER_ENABLED:-false}
+      SWAGGER_LOCAL_ONLY: ${SWAGGER_LOCAL_ONLY:-true}
     ports:
       - "8000:8000"
     depends_on:
