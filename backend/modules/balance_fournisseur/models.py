@@ -18,7 +18,12 @@ class LigneTransaction(BaseModel):
 class FournisseurBalance(BaseModel):
     code: str
     nom: str
-    total_solde: float = 0.0           # solde dû compte 401 (+ = nous devons, – = paiements en excès)
+    total_solde: float = 0.0           # reste à payer NET d'avances 409 imputées (+ = nous devons, – = paiements en excès)
+    dette_401: float = 0.0             # solde 401 brut, avant imputation des avances
+    avance_imputee: float = 0.0        # part de l'avance 409 imputée sur la dette 401 (plus anciennes tranches d'abord)
+    avance_restante: float = 0.0       # avance 409 non consommée (à récupérer / imputer sur futures factures)
+    a_recuperer: float = 0.0           # total à récupérer auprès du fournisseur : paiements 401 non imputés + avance 409 restante
+    double_position: bool = False      # 401 débiteur ET avance 409 : à régulariser (reclassement probable 401 -> 409)
     non_echu: float = 0.0
     echu_30: float = 0.0
     echu_60: float = 0.0
@@ -35,12 +40,17 @@ class FournisseurBalance(BaseModel):
 class BalanceFournisseurResponse(BaseModel):
     date_reference: str
     delai_paiement: int = 0
-    total_general: float               # net 401 (dettes – paiements non imputés)
+    total_general: float               # net 401 après imputation des avances (dettes nettes – paiements non imputés)
+    total_401: float = 0.0             # 401 brut, avant imputation des avances
+    total_avance_imputee: float = 0.0
+    total_avance_restante: float = 0.0
+    total_a_recuperer: float = 0.0     # paiements non imputés + avances non consommées
+    nb_double_position: int = 0
     total_dettes: float = 0.0
     total_non_imputes: float = 0.0     # ≤ 0
     total_fnp: float = 0.0
     total_avances: float = 0.0         # 409
-    total_net: float = 0.0             # 401 + 408 – 409 (= – total général Sage)
+    total_net: float = 0.0             # 401 + 408 – 409 (= – total général Sage, inchangé par l'imputation)
     total_report: float = 0.0
     totaux_buckets: Dict[str, float] = {}
     totaux_avances: Dict[str, float] = {}

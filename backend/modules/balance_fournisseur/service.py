@@ -170,6 +170,27 @@ def _r3(v: float) -> float:
     return round(v, 3) + 0.0        # évite -0.0
 
 
+# du plus ancien au plus récent : l'avance 409 s'impute d'abord sur les retards les plus anciens
+ORDRE_IMPUTATION = ("+90", "61-90", "31-60", "1-30", "non_echu")
+
+
+def imputer_avance(buckets: Dict[str, float], avance: float):
+    """Impute une avance (409 > 0) sur les tranches de dettes, des plus anciennes aux plus récentes.
+    Retourne (tranches nettes, montant imputé, avance restante)."""
+    nets = dict(buckets)
+    restant = max(avance, 0.0)
+    imputee = 0.0
+    for k in ORDRE_IMPUTATION:
+        if restant <= EPS:
+            break
+        pris = min(nets.get(k, 0.0), restant)
+        if pris > 0:
+            nets[k] -= pris
+            restant -= pris
+            imputee += pris
+    return nets, imputee, avance - imputee
+
+
 def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFournisseurResponse:
     avert: List[str] = list(meta["avertissements"])
     res: List[FournisseurBalance] = []
@@ -215,6 +236,13 @@ def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFourni
             if abs(sum(buckets_av.values()) - max(-dette, 0.0)) > 0.01:
                 avert.append(f"{code} {t['nom']} : ventilation non imputés ({sum(buckets_av.values()):.3f}) ≠ solde ({-dette:.3f})")
 
+        # --- Avances 409 imputées sur le 401 : tranches nettes (FNP 408 jamais mêlées) ---
+        dette_brute = dette
+        buckets, avance_imputee, avance_restante = imputer_avance(buckets, avance)
+        if avance_imputee > 0:
+            dont_report = max(dont_report - avance_imputee, 0.0)   # le report à nouveau est la dette la plus ancienne
+        total_solde = dette - avance_imputee                        # dette<0 : paiements en excès, aucune imputation
+
         details: List[LigneTransaction] = []
         for compte in ORDRE:
             for i, l in enumerate(t["comptes"].get(compte) or []):
@@ -233,7 +261,10 @@ def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFourni
             totaux_av[k] += buckets_av[k]
         total_report += dont_report
         res.append(FournisseurBalance(
-            code=code, nom=t["nom"], total_solde=_r3(dette),
+            code=code, nom=t["nom"], total_solde=_r3(total_solde), dette_401=_r3(dette_brute),
+            avance_imputee=_r3(avance_imputee), avance_restante=_r3(avance_restante),
+            a_recuperer=_r3(max(-total_solde, 0.0) + max(avance_restante, 0.0)),
+            double_position=(total_solde < -SEUIL_SOLDE and avance_restante > SEUIL_SOLDE),
             non_echu=_r3(buckets["non_echu"]), echu_30=_r3(buckets["1-30"]), echu_60=_r3(buckets["31-60"]),
             echu_90=_r3(buckets["61-90"]), echu_plus=_r3(buckets["+90"]),
             credit_non_affecte=_r3(non_impute), avance_buckets={k: _r3(v) for k, v in buckets_av.items()},
@@ -247,10 +278,15 @@ def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFourni
             avert.append(f"Compte {CODE_COURT[compte]} : total calculé {somme:.3f} ≠ total PDF {pdf:.3f}")
 
     total_general = _r3(sum(f.total_solde for f in res))
+    total_401 = _r3(sum(f.dette_401 for f in res))
+    total_av_imputee = _r3(sum(f.avance_imputee for f in res))
+    total_av_restante = _r3(sum(f.avance_restante for f in res))
+    total_a_recuperer = _r3(sum(f.a_recuperer for f in res))
+    doubles = [f for f in res if f.double_position]
     total_dettes = _r3(sum(f.total_solde for f in res if f.total_solde > 0))
     total_fnp = _r3(sum(f.fnp for f in res))
     total_avances = _r3(sum(f.avance_409 for f in res))
-    total_net = _r3(total_general + total_fnp - total_avances)
+    total_net = _r3(total_401 + total_fnp - total_avances)      # invariant : indépendant de l'imputation
     tg = meta["total_general"]
     if tg is not None and abs(-tg - total_net) > 1:
         avert.append(f"Total net calculé {total_net:.3f} ≠ total général PDF {-tg:.3f}")
@@ -260,7 +296,18 @@ def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFourni
             f"{total_report:,.3f} TND".replace(",", " ") + f" ({total_report / total_dettes:.0%} des dettes) proviennent du « report à nouveau » agrégé : "
             "leur ancienneté réelle est inconnue (comptée depuis le 31/12 précédent). "
             "Relancez l'édition Sage avec « Écritures avant période en détail = Oui » pour une balance exacte.")
-    avert.append("Les comptes 408 (factures non parvenues) et 409 (avances versées) sont présentés à part : ils ne sont pas compensés dans la balance âgée des dettes (compte 401).")
+    if total_av_imputee > 0:
+        avert.append(f"Avances 409 imputées sur les dettes 401 : {total_av_imputee:,.3f} TND".replace(",", " ")
+                     + " (tranches nettes, imputation sur les plus anciennes d'abord).")
+    if total_av_restante > 0:
+        avert.append(f"Avances 409 non consommées : {total_av_restante:,.3f} TND".replace(",", " ")
+                     + " – à récupérer ou à imputer sur de futures factures (bloc « Avances versées »).")
+    if doubles:
+        noms = ", ".join(f.nom for f in sorted(doubles, key=lambda f: f.a_recuperer, reverse=True)[:5])
+        avert.append(f"{len(doubles)} fournisseur(s) cumulent un 401 débiteur (paiements non imputés) ET une avance 409 non consommée "
+                     f"({noms}{'…' if len(doubles) > 5 else ''}) : total à récupérer {sum(f.a_recuperer for f in doubles):,.3f} TND".replace(",", " ")
+                     + ". Régularisation probable : reclasser le 401 débiteur en 409 ou lettrer avec les factures à venir.")
+    avert.append("Les factures non parvenues (408) restent dans un bloc séparé : elles ne sont jamais intégrées aux tranches ni au net des factures comptabilisées.")
 
     controle = construire_controle(
         [{"code": c, "nom": t["nom"], "compte": cp, "lignes": lg} for c, t in tiers.items() for cp, lg in t["comptes"].items()],
@@ -273,7 +320,9 @@ def construire_balance(tiers, meta, date_ref: date, delai: int) -> BalanceFourni
     return BalanceFournisseurResponse(
         controle=controle,
         date_reference=date_ref.strftime("%Y-%m-%d"), delai_paiement=delai,
-        total_general=total_general, total_dettes=total_dettes,
+        total_general=total_general, total_401=total_401,
+        total_avance_imputee=total_av_imputee, total_avance_restante=total_av_restante,
+        total_a_recuperer=total_a_recuperer, nb_double_position=len(doubles), total_dettes=total_dettes,
         total_non_imputes=_r3(sum(f.total_solde for f in res if f.total_solde < 0)),
         total_fnp=total_fnp, total_avances=total_avances, total_net=total_net, total_report=_r3(total_report),
         totaux_buckets={k: _r3(v) for k, v in totaux.items()},

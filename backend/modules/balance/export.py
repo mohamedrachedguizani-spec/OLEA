@@ -124,34 +124,46 @@ def rapport_clients(d, fichier: Optional[str] = None, detail: bool = True) -> Di
 
 
 def rapport_fournisseurs(d, fichier: Optional[str] = None, detail: bool = True) -> Dict[str, Any]:
+    """Tranches NETTES des avances 409 imputées (plus anciennes d'abord). 408 en bloc séparé."""
     deb = [f for f in d.fournisseurs if f.total_solde > 0]
     cre = sorted([f for f in d.fournisseurs if f.total_solde < 0], key=lambda f: f.total_solde)
-    zero = [f for f in d.fournisseurs if f.total_solde == 0 and (abs(f.fnp) > 0.0005 or abs(f.avance_409) > 0.0005)]
+    zero = [f for f in d.fournisseurs if f.total_solde == 0 and
+            (abs(f.fnp) > 0.0005 or abs(f.avance_restante) > 0.0005 or abs(f.avance_imputee) > 0.0005)]
     p90 = d.totaux_buckets.get("+90", 0.0)
+    double = sorted([f for f in d.fournisseurs if f.double_position], key=lambda f: f.a_recuperer, reverse=True)
+    nb_av = len([f for f in d.fournisseurs if f.avance_restante > 0.0005])
 
     def ligne(f, bucket_fn):
-        return {"nom": f.nom, "code": f.code, "solde": f.total_solde, "b": bucket_fn(f), "x": [f.fnp, f.avance_409]}
+        return {"nom": f.nom, "code": f.code, "solde": f.total_solde, "b": bucket_fn(f),
+                "x": [f.avance_imputee, f.fnp, f.avance_restante]}
 
     return {
         "titre": "Balance âgée fournisseurs", "entete": "BALANCE ÂGÉE FOURNISSEURS", "tiers": "Fournisseur",
         "tiers_pl": "fournisseurs", "date_reference": d.date_reference, "fichier": fichier, "nb": d.nb_fournisseurs,
         "kpis": [
-            ("Dettes fournisseurs (401)", d.total_dettes, f"{len(deb)} fournisseur(s)"),
-            ("Dont > 90 jours", p90, f"{_pct(p90, d.total_dettes)} des dettes"),
+            ("Dettes 401 brutes", d.total_401, "Avant imputation des avances"),
+            ("Avances imputées (409)", -d.total_avance_imputee, "Déduites des plus anciennes dettes"),
+            ("Reste à payer (401 net d'avances)", d.total_dettes, f"{len(deb)} fournisseur(s)"),
+            ("Dont > 90 jours", p90, f"{_pct(p90, d.total_dettes)} du reste à payer"),
             ("Paiements non imputés", d.total_non_imputes, f"{len(cre)} fournisseur(s) nous doivent"),
-            ("Factures non parvenues (408)", d.total_fnp, "À recevoir, hors balance âgée"),
-            ("Avances versées (409)", d.total_avances, "Acomptes à imputer sur factures"),
+            ("Avances non consommées (409)", d.total_avance_restante, f"{nb_av} fournisseur(s) : à récupérer / imputer sur futures factures"),
+            ("Total à récupérer (paiements non imputés + avances)", d.total_a_recuperer, f"{d.nb_double_position} fournisseur(s) en double position 401 débiteur + 409"),
+            ("Factures non parvenues (408)", d.total_fnp, "Bloc séparé, hors tranches"),
             ("Net tous comptes", d.total_net, "401 + 408 - 409"),
         ],
-        "aging": {"titre": "Ancienneté des dettes", "total": d.total_dettes, "buckets": d.totaux_buckets},
+        "aging": {"titre": "Ancienneté du reste à payer (net d'avances)", "total": d.total_dettes, "buckets": d.totaux_buckets},
         "aging_contre": {"titre": "Ancienneté des paiements non imputés (depuis le paiement)",
                          "total": -d.total_non_imputes, "buckets": d.totaux_avances},
-        "principal": {"titre": "Détail des dettes par fournisseur", "extra": ["FNP (408)", "Avances (409)"],
+        "principal": {"titre": "Reste à payer par fournisseur (net d'avances)", "extra": ["Avance imputée", "FNP (408)", "Avance restante"],
                       "rows": [ligne(f, _b5) for f in deb]},
-        "contre": {"titre": "Fournisseurs débiteurs : paiements non imputés", "extra": ["FNP (408)", "Avances (409)"],
+        "contre": {"titre": "Fournisseurs débiteurs : paiements non imputés", "extra": ["Avance imputée", "FNP (408)", "Avance restante"],
                    "rows": [ligne(f, _b5_contre) for f in cre]},
-        "autres": {"titre": "Autres comptes : factures non parvenues (408) et avances versées (409)",
-                   "rows": [{"nom": f.nom, "code": f.code, "x": [f.fnp, f.avance_409]} for f in zero]} if zero else None,
+        "autres": {"titre": "Avances versées (409) et factures non parvenues (408) sans reste à payer",
+                   "heads": ["Avance imputée", "FNP (408)", "Avance restante"],
+                   "rows": [{"nom": f.nom, "code": f.code, "x": [f.avance_imputee, f.fnp, f.avance_restante]} for f in zero]} if zero else None,
+        "double": {"titre": "Double position : 401 débiteur et avance 409 (à régulariser)",
+                   "heads": ["Paiements non imputés (401)", "Avance restante (409)", "Total à récupérer"],
+                   "rows": [{"nom": f.nom, "code": f.code, "x": [-f.total_solde, f.avance_restante, f.a_recuperer]} for f in double]} if double else None,
         "ecritures": _ecritures(deb + cre, {"D": "Dette", "C": "Non imputé"}) if detail else [],
     }
 
@@ -304,10 +316,13 @@ def build_pdf(r: Dict[str, Any]) -> BytesIO:
         story += [Paragraph(_esc(r["principal"]["titre"]), st["section"]), Paragraph("Aucune donnée dans cette catégorie.", st["note"])]
     if r["contre"]["rows"]:
         story += _tiers_table(r["contre"], r["tiers"], st)
-    if r["autres"]:
-        rows = [[_nom(x["nom"], x["code"], st), _z(x["x"][0]), _z(x["x"][1])] for x in r["autres"]["rows"]]
-        story += [Paragraph(_esc(f"{r['autres']['titre']} ({len(rows)})"), st["section"]),
-                  _grid([r["tiers"], "FNP (408)", "Avances (409)"], rows, [120 * mm, 55 * mm, 55 * mm], st, long=True), Spacer(1, 5 * mm)]
+    for blk_k in ("double", "autres"):
+      if r.get(blk_k):
+        rows = [[_nom(x["nom"], x["code"], st), *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
+        a_heads = r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])
+        a_w = [120 * mm] + [(175 * mm) / len(a_heads)] * len(a_heads)
+        story += [Paragraph(_esc(f"{r[blk_k]['titre']} ({len(rows)})"), st["section"]),
+                  _grid([r["tiers"], *a_heads], rows, a_w, st, long=True), Spacer(1, 5 * mm)]
 
     if r["ecritures"]:
         rows, spans = [], []
@@ -430,9 +445,10 @@ def build_print_html(r: Dict[str, Any]) -> str:
     tiers_html = _h_tiers(r["principal"], r["tiers"]) if r["principal"]["rows"] else f"<h2>{_esc(r['principal']['titre'])}</h2><p class='note'>Aucune donnée dans cette catégorie.</p>"
     if r["contre"]["rows"]:
         tiers_html += _h_tiers(r["contre"], r["tiers"])
-    if r["autres"]:
-        rows = [[f'<b>{_esc(x["nom"])}</b><div class="code">{_esc(x["code"])}</div>', _z(x["x"][0]), _z(x["x"][1])] for x in r["autres"]["rows"]]
-        tiers_html += f"<h2>{_esc(r['autres']['titre'])} ({len(rows)})</h2>" + _h_table([r["tiers"], "FNP (408)", "Avances (409)"], rows)
+    for blk_k in ("double", "autres"):
+      if r.get(blk_k):
+        rows = [[f'<b>{_esc(x["nom"])}</b><div class="code">{_esc(x["code"])}</div>', *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
+        tiers_html += f"<h2>{_esc(r[blk_k]['titre'])} ({len(rows)})</h2>" + _h_table([r["tiers"], *r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])], rows)
     sheets.append(sheet(tiers_html))
 
     if r["ecritures"]:
@@ -487,9 +503,11 @@ def build_sections(r: Dict[str, Any]) -> Dict[str, Any]:
         sections.append(sec(r["principal"]["titre"], [], [], []))
     if r["contre"]["rows"]:
         sections.append(tiers(r["contre"]))
-    if r["autres"]:
-        rows = [[f'{x["nom"]} · {x["code"]}', _z(x["x"][0]), _z(x["x"][1])] for x in r["autres"]["rows"]]
-        sections.append(sec(f"{r['autres']['titre']} ({len(rows)})", [r["tiers"], "FNP (408)", "Avances (409)"], rows, ["l", "r", "r"]))
+    for blk_k in ("double", "autres"):
+      if r.get(blk_k):
+        a_heads = r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])
+        rows = [[f'{x["nom"]} · {x["code"]}', *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
+        sections.append(sec(f"{r[blk_k]['titre']} ({len(rows)})", [r["tiers"], *a_heads], rows, ["l"] + ["r"] * len(a_heads)))
     if r["ecritures"]:
         rows, classes, spans = [], [], []
         for g in r["ecritures"]:

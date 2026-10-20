@@ -169,3 +169,10 @@
 .reco-history-table tbody tr.ba-row:hover { background: var(--bg-hover); }
 .olea-table tbody tr.ba-row { cursor:pointer; }
 .olea-table tbody tr.ba-row:hover { background: var(--bg-hover); }
+
+/* Cartes KPI compactes, toutes de même taille (balance fournisseurs : 7 cartes) */
+.ba-kpis--compact { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:.6rem; }
+.ba-kpis--compact .ba-kpi { padding:.55rem .75rem; min-height:92px; display:flex; flex-direction:column; justify-content:space-between; }
+.ba-kpis--compact .ba-kpi-label { font-size:.66rem; line-height:1.2; }
+.ba-kpis--compact .ba-kpi-value { font-size:1.05rem; margin:.15rem 0 .05rem; white-space:nowrap; }
+.ba-kpis--compact .ba-kpi-sub { font-size:.7rem; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
