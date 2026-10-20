@@ -396,7 +396,11 @@ def build_pdf(r: Dict[str, Any]) -> BytesIO:
             if r.get(blk_k):
                 rows = [[_nom(x["nom"], x["code"], st), *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
                 a_heads = r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])
-                a_w = [120 * mm] + [(175 * mm) / len(a_heads)] * len(a_heads)
+                # La largeur utile est de 277 mm (A4 paysage, marges de 10 mm).
+                # L'ancienne répartition (120 + 175 mm) dépassait cette largeur
+                # et tronquait les dernières colonnes des tableaux 409/408.
+                label_w = 90 * mm
+                a_w = [label_w] + [(WIDTH - label_w) / len(a_heads)] * len(a_heads)
                 story += [Paragraph(_esc(f"{r[blk_k]['titre']} ({len(rows)})"), st["section"]),
                           _grid([r["tiers"], *a_heads], rows, a_w, st, long=True), Spacer(1, 5 * mm)]
 
