@@ -1409,10 +1409,10 @@ class ApiService {
     }
 
     // Contenu du document (sections) affiché dans la modale de prévisualisation avant export / impression.
-    static async getBalanceAgeePreview(kind, analyse, fichier = null) {
+    static async getBalanceAgeePreview(kind, analyse, fichier = null, sections = null) {
         const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/preview-sections`, {
             method: 'POST',
-            body: JSON.stringify({ analyse, fichier, inclure_detail: true }),
+            body: JSON.stringify({ analyse, fichier, inclure_detail: true, ...(sections ? { sections } : {}) }),
         });
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: 'Erreur lors de la prévisualisation' }));
@@ -1422,10 +1422,10 @@ class ApiService {
     }
 
     // Génère le PDF côté backend et le renvoie sans le télécharger (utilisé par l'aperçu et par l'export).
-    static async fetchBalanceAgeePdf(kind, analyse, fichier = null) {
+    static async fetchBalanceAgeePdf(kind, analyse, fichier = null, sections = null) {
         const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/export-pdf`, {
             method: 'POST',
-            body: JSON.stringify({ analyse, fichier, inclure_detail: true }),
+            body: JSON.stringify({ analyse, fichier, inclure_detail: true, ...(sections ? { sections } : {}) }),
         });
         if (!response.ok) {
             const err = await response.json().catch(() => ({ detail: "Erreur lors de la génération du PDF" }));
@@ -1448,18 +1448,18 @@ class ApiService {
         window.URL.revokeObjectURL(url);
     }
 
-    static async exportBalanceAgeePdf(kind, analyse, fichier = null) {
-        const { blob, filename } = await ApiService.fetchBalanceAgeePdf(kind, analyse, fichier);
+    static async exportBalanceAgeePdf(kind, analyse, fichier = null, sections = null) {
+        const { blob, filename } = await ApiService.fetchBalanceAgeePdf(kind, analyse, fichier, sections);
         ApiService.downloadBlob(blob, filename);
     }
 
     // Ouvre le HTML mis en forme côté backend dans une nouvelle fenêtre puis déclenche l'impression native.
-    static async printBalanceAgee(kind, analyse, fichier = null) {
+    static async printBalanceAgee(kind, analyse, fichier = null, sections = null) {
         const printWindow = window.open('', '_blank');
         if (!printWindow) throw new Error('Popup bloquée. Autorisez les popups pour imprimer.');
         const response = await ApiService._fetch(`${ApiService._balanceBase(kind)}/agee/print-html`, {
             method: 'POST',
-            body: JSON.stringify({ analyse, fichier, inclure_detail: true }),
+            body: JSON.stringify({ analyse, fichier, inclure_detail: true, ...(sections ? { sections } : {}) }),
         });
         if (!response.ok) {
             printWindow.close();

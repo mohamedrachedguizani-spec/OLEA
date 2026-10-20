@@ -77,7 +77,9 @@ def export_pdf(
 ):
     """PDF de la balance âgée (charte OLEA, comme les exports Reporting / Rapprochement)."""
     try:
-        output = build_pdf(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail))
+        output = build_pdf(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail, payload.sections))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du PDF : {str(e)}")
     filename = f"Balance_Agee_Fournisseurs_{payload.analyse.date_reference}.pdf"
@@ -92,7 +94,9 @@ def print_html(
 ):
     """Version HTML mise en page pour l'impression navigateur (ouverte dans une nouvelle fenêtre)."""
     try:
-        return HTMLResponse(build_print_html(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail)))
+        return HTMLResponse(build_print_html(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail, payload.sections)))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la préparation de l'impression : {str(e)}")
 
@@ -104,7 +108,9 @@ def preview_sections(
 ):
     """Contenu du document à imprimer / exporter, pour la prévisualisation avant confirmation."""
     try:
-        return build_sections(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail))
+        return build_sections(rapport_fournisseurs(payload.analyse, payload.fichier, payload.inclure_detail, payload.sections))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la prévisualisation : {str(e)}")
 

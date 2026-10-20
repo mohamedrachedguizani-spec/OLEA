@@ -68,3 +68,4 @@ class BalanceExportFournisseurs(BaseModel):
     analyse: BalanceFournisseurResponse
     fichier: Optional[str] = None
     inclure_detail: bool = True
+    sections: Optional[List[str]] = None     # None = tout ; sinon clés : synthese, anciennete, detail, avances_fnp, ecritures

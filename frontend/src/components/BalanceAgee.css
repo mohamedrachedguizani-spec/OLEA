@@ -176,3 +176,8 @@
 .ba-kpis--compact .ba-kpi-label { font-size:.66rem; line-height:1.2; }
 .ba-kpis--compact .ba-kpi-value { font-size:1.05rem; margin:.15rem 0 .05rem; white-space:nowrap; }
 .ba-kpis--compact .ba-kpi-sub { font-size:.7rem; line-height:1.25; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+
+/* Sélection des sections à exporter / imprimer (modale de prévisualisation) */
+.ba-sel { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem 1.1rem; padding:.6rem 1.25rem; border-bottom:1px solid var(--border-light); background: var(--bg-card); font-size:.85rem; }
+.ba-sel label { display:inline-flex; align-items:center; gap:.35rem; cursor:pointer; }
+.ba-sel-warn { color: var(--danger, #b42318); font-size:.8rem; }

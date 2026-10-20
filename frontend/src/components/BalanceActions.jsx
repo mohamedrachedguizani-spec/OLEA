@@ -9,6 +9,15 @@ import { useAuth } from '../contexts/AuthContext';
 import oleaLogo from '../assets/olea-logo.svg';
 import '../styles/Reporting.css';   // classes csv-preview-* / reporting-preview-* partagées avec le Reporting
 
+const SECTIONS = [
+  { key: 'synthese', label: 'Synthèse' },
+  { key: 'anciennete', label: 'Ancienneté (tranches)' },
+  { key: 'detail', label: 'Détail par tiers' },
+  { key: 'avances_fnp', label: 'Avances (409) et FNP (408)', only: 'fournisseurs' },
+  { key: 'ecritures', label: 'Écritures ouvertes' },
+];
+const SELECTION_KINDS = ['fournisseurs'];   // ajouter 'clients' quand le router clients transmet `sections`
+
 const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
   const { has } = useAuth();
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -18,6 +27,10 @@ const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
   const [pdfLoading, setPdfLoading] = useState(false);
   const [printLoading, setPrintLoading] = useState(false);
   const [error, setError] = useState('');
+  const selectable = SELECTION_KINDS.includes(kind);
+  const choix = SECTIONS.filter((x) => !x.only || x.only === kind);
+  const [selected, setSelected] = useState(() => choix.map((x) => x.key));
+  const sectionsParam = selectable ? selected : null;
   const module = kind === 'fournisseurs' ? 'balance_fournisseur' : 'balance_agee';
   const canPdf = has(`${module}.export_pdf`);
   const canPrint = has(`${module}.print`);
@@ -28,6 +41,16 @@ const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
     setPreviewSections(null);
     setPreviewAction(null);
   };
+
+  // Recharge l'aperçu quand on coche / décoche une section
+  useEffect(() => {
+    if (!showPreviewModal || !selectable || selected.length === 0) return undefined;
+    let annule = false;
+    ApiService.getBalanceAgeePreview(kind, data, fichier || null, selected)
+      .then((res) => { if (!annule) setPreviewSections(res); })
+      .catch((e) => { if (!annule) setError(e.message || 'Erreur chargement prévisualisation'); });
+    return () => { annule = true; };
+  }, [selected]);
 
   useEffect(() => {
     if (!showPreviewModal) return undefined;
@@ -43,7 +66,7 @@ const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
     setPreviewAction(action);
     setError('');
     try {
-      setPreviewSections(await ApiService.getBalanceAgeePreview(kind, data, fichier || null));
+      setPreviewSections(await ApiService.getBalanceAgeePreview(kind, data, fichier || null, sectionsParam));
       setShowPreviewModal(true);
     } catch (e) {
       setError(e.message || 'Erreur chargement prévisualisation');
@@ -55,7 +78,7 @@ const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
   const handlePdf = async () => {
     setPdfLoading(true);
     setError('');
-    try { await ApiService.exportBalanceAgeePdf(kind, data, fichier || null); }
+    try { await ApiService.exportBalanceAgeePdf(kind, data, fichier || null, sectionsParam); }
     catch (e) { setError(e.message || 'Erreur export PDF'); }
     finally { setPdfLoading(false); }
   };
@@ -63,7 +86,7 @@ const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
   const handlePrint = async () => {
     setPrintLoading(true);
     setError('');
-    try { await ApiService.printBalanceAgee(kind, data, fichier || null); }
+    try { await ApiService.printBalanceAgee(kind, data, fichier || null, sectionsParam); }
     catch (e) { setError(e.message || 'Erreur impression'); }
     finally { setPrintLoading(false); }
   };
@@ -113,6 +136,20 @@ const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
               </div>
               <button className="csv-preview-close" onClick={handleCancelPreview}><FiX /></button>
             </div>
+
+            {selectable && (
+              <div className="ba-sel" role="group" aria-label="Sections à inclure">
+                <strong>Sections à inclure</strong>
+                {choix.map((x) => (
+                  <label key={x.key}>
+                    <input type="checkbox" checked={selected.includes(x.key)}
+                      onChange={() => setSelected((cur) => (cur.includes(x.key) ? cur.filter((k) => k !== x.key) : choix.map((y) => y.key).filter((k) => k === x.key || cur.includes(k))))} />
+                    {x.label}
+                  </label>
+                ))}
+                {selected.length === 0 && <span className="ba-sel-warn">Cochez au moins une section.</span>}
+              </div>
+            )}
 
             <div className="csv-preview-body reporting-preview-body">
               <article className="reporting-preview-document">
@@ -182,7 +219,7 @@ const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
               <button className="btn btn-secondary" onClick={handleCancelPreview}>
                 <FiX /> Annuler
               </button>
-              <button className="btn btn-primary" onClick={handleConfirmPreview} disabled={busy}>
+              <button className="btn btn-primary" onClick={handleConfirmPreview} disabled={busy || (selectable && selected.length === 0)}>
                 {previewAction === 'print'
                   ? <><FiPrinter /> Confirmer et Imprimer</>
                   : <><FiFileText /> Confirmer et télécharger le PDF</>}

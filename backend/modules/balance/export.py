@@ -85,6 +85,65 @@ def _b5_contre(t) -> List[float]:
     return [av.get(k, 0.0) for k in BUCKET_KEYS]
 
 
+SECTIONS = [("synthese", "Synthèse"), ("anciennete", "Ancienneté (tranches)"), ("detail", "Détail par tiers"),
+            ("avances_fnp", "Avances (409) et factures non parvenues (408)"), ("ecritures", "Écritures ouvertes")]
+SECTION_KEYS = [k for k, _ in SECTIONS]
+
+
+def normaliser_sections(sections: Optional[List[str]]) -> List[str]:
+    """None = tout. Liste vide ou sans clé valide = ValueError (l'API répond 400)."""
+    if sections is None:
+        return list(SECTION_KEYS)
+    sel = [k for k in SECTION_KEYS if k in sections]
+    if not sel:
+        raise ValueError("Sélectionnez au moins une section à exporter.")
+    return sel
+
+
+def _on(r: Dict[str, Any], key: str) -> bool:
+    return key in r.get("inclure", SECTION_KEYS)
+
+
+def _parse_fr(d: str):
+    try:
+        return datetime.strptime(d, "%d/%m/%y")
+    except ValueError:
+        return datetime.min
+
+
+def _ecritures_frs(tiers: List[Any]) -> List[Dict[str, Any]]:
+    """Écritures ouvertes du 401, NETTES de l'avance 409 imputée : l'avance est déduite des dettes les plus anciennes,
+    comme dans les tranches (sinon le détail afficherait la dette brute alors que la balance est nette)."""
+    out = []
+    for t in tiers:
+        d_rows = [(i, l) for i, l in enumerate(t.lignes) if l.reste_du > 0.0005 and l.sens == "D"]
+        c_rows = [(i, l) for i, l in enumerate(t.lignes) if l.reste_du > 0.0005 and l.sens == "C"]
+        brut = sum(l.reste_du for _, l in d_rows)
+        restant = max(getattr(t, "avance_imputee", 0.0), 0.0)
+        net_par_ligne: Dict[int, float] = {}
+        for i, l in sorted(d_rows, key=lambda x: (_parse_fr(x[1].date), x[0])):   # plus ancienne d'abord
+            pris = min(l.reste_du, restant)
+            restant -= pris
+            net_par_ligne[i] = l.reste_du - pris
+        rows = []
+        for i, l in sorted(d_rows + c_rows, key=lambda x: x[0]):
+            reste = net_par_ligne.get(i, l.reste_du)
+            if reste <= 0.0005:
+                continue                                  # pièce entièrement couverte par l'avance
+            nat = "Dette" if l.sens == "D" else "Non imputé"
+            lab = BUCKET_LABELS[BUCKET_KEYS.index(l.bucket)] if l.bucket in BUCKET_KEYS else "-"
+            rows.append([l.date, l.libelle, nat, l.debit, l.credit, reste, max(l.jours_retard, 0), lab])
+        if rows:
+            out.append({"nom": t.nom, "code": t.code, "rows": rows,
+                        "resume": (f"dette ouverte {_m(brut)} - avance 409 imputée {_m(t.avance_imputee)} = {_m(brut - t.avance_imputee)}"
+                                   if getattr(t, "avance_imputee", 0.0) > 0.0005 else None)})
+    return out
+
+
+def _grp_nom(g: Dict[str, Any]) -> str:
+    return f'{g["nom"]} · {g["code"]}' + (f' — {g["resume"]}' if g.get("resume") else "")
+
+
 def _ecritures(tiers: List[Any], natures: Dict[str, str]) -> List[Dict[str, Any]]:
     out = []
     for t in tiers:
@@ -98,11 +157,12 @@ def _ecritures(tiers: List[Any], natures: Dict[str, str]) -> List[Dict[str, Any]
     return out
 
 
-def rapport_clients(d, fichier: Optional[str] = None, detail: bool = True) -> Dict[str, Any]:
+def rapport_clients(d, fichier: Optional[str] = None, detail: bool = True, sections: Optional[List[str]] = None) -> Dict[str, Any]:
     deb = [c for c in d.clients if c.total_solde > 0]
     cre = sorted([c for c in d.clients if c.total_solde < 0], key=lambda c: c.total_solde)
     tot_echu = sum(d.totaux_buckets.get(k, 0.0) for k in BUCKET_KEYS[1:])
     return {
+        "inclure": normaliser_sections(sections),
         "titre": "Balance âgée clients", "entete": "BALANCE ÂGÉE CLIENTS", "tiers": "Client", "tiers_pl": "clients",
         "date_reference": d.date_reference, "fichier": fichier, "nb": d.nb_clients,
         "kpis": [
@@ -123,7 +183,7 @@ def rapport_clients(d, fichier: Optional[str] = None, detail: bool = True) -> Di
     }
 
 
-def rapport_fournisseurs(d, fichier: Optional[str] = None, detail: bool = True) -> Dict[str, Any]:
+def rapport_fournisseurs(d, fichier: Optional[str] = None, detail: bool = True, sections: Optional[List[str]] = None) -> Dict[str, Any]:
     """Tranches NETTES des avances 409 imputées (plus anciennes d'abord). 408 en bloc séparé."""
     deb = [f for f in d.fournisseurs if f.total_solde > 0]
     cre = sorted([f for f in d.fournisseurs if f.total_solde < 0], key=lambda f: f.total_solde)
@@ -137,7 +197,9 @@ def rapport_fournisseurs(d, fichier: Optional[str] = None, detail: bool = True) 
         return {"nom": f.nom, "code": f.code, "solde": f.total_solde, "b": bucket_fn(f),
                 "x": [f.avance_imputee, f.fnp, f.avance_restante]}
 
+    inclure = normaliser_sections(sections)
     return {
+        "inclure": inclure,
         "titre": "Balance âgée fournisseurs", "entete": "BALANCE ÂGÉE FOURNISSEURS", "tiers": "Fournisseur",
         "tiers_pl": "fournisseurs", "date_reference": d.date_reference, "fichier": fichier, "nb": d.nb_fournisseurs,
         "kpis": [
@@ -164,8 +226,18 @@ def rapport_fournisseurs(d, fichier: Optional[str] = None, detail: bool = True) 
         "double": {"titre": "Double position : 401 débiteur et avance 409 (à régulariser)",
                    "heads": ["Paiements non imputés (401)", "Avance restante (409)", "Total à récupérer"],
                    "rows": [{"nom": f.nom, "code": f.code, "x": [-f.total_solde, f.avance_restante, f.a_recuperer]} for f in double]} if double else None,
-        "ecritures": _ecritures(deb + cre, {"D": "Dette", "C": "Non imputé"}) if detail else [],
+        "ecritures": _ecritures_frs(deb + cre) if detail and "ecritures" in inclure else [],
+        "nb_couverts": len([f for f in d.fournisseurs if f.total_solde == 0 and f.avance_imputee > 0.0005]),
     }
+
+
+def _note_ecritures(r: Dict[str, Any]) -> str:
+    n = "Écritures non soldées après imputation des règlements sur les pièces les plus anciennes (FIFO)."
+    if r.get("tiers_pl") == "fournisseurs":
+        n += " Les avances 409 sont déduites des dettes les plus anciennes ; les lignes « Report à nouveau » ont une ancienneté estimée (comptée depuis le 31/12)."
+        if r.get("nb_couverts"):
+            n += f" {r['nb_couverts']} fournisseur(s) dont la dette est entièrement couverte par une avance ne figurent pas ici."
+    return n
 
 
 # ───────────────────────── PDF (ReportLab) ─────────────────────────
@@ -300,39 +372,46 @@ def build_pdf(r: Dict[str, Any]) -> BytesIO:
         ("TOPPADDING", (0, 1), (-1, 1), 1), ("BOTTOMPADDING", (0, 1), (-1, 1), 6),
     ]))
 
-    kpi_rows = [[k, _m(v), c] for k, v, c in r["kpis"]]
-    story: List[Any] = [Paragraph(_esc(r["titre"]), st["title"]), meta, Spacer(1, 6 * mm),
-                        Paragraph("Synthèse", st["section"]),
-                        _grid(["Indicateur", "Montant (TND)", "Détail"], kpi_rows, [90 * mm, 60 * mm, 110 * mm], st, num_from=1, num_to=2),
-                        Spacer(1, 5 * mm)]
-    story += _aging_block(r["aging"], st)
-    if r["aging_contre"]["total"] > 0.0005:
-        story += _aging_block(r["aging_contre"], st)
+    story: List[Any] = [Paragraph(_esc(r["titre"]), st["title"]), meta, Spacer(1, 6 * mm)]
+    if _on(r, "synthese"):
+        kpi_rows = [[k, _m(v), c] for k, v, c in r["kpis"]]
+        story += [Paragraph("Synthèse", st["section"]),
+                  _grid(["Indicateur", "Montant (TND)", "Détail"], kpi_rows, [90 * mm, 60 * mm, 110 * mm], st, num_from=1, num_to=2),
+                  Spacer(1, 5 * mm)]
+    if _on(r, "anciennete"):
+        story += _aging_block(r["aging"], st)
+        if r["aging_contre"]["total"] > 0.0005:
+            story += _aging_block(r["aging_contre"], st)
 
-    story.append(CondPageBreak(75 * mm))
-    if r["principal"]["rows"]:
-        story += _tiers_table(r["principal"], r["tiers"], st)
-    else:
-        story += [Paragraph(_esc(r["principal"]["titre"]), st["section"]), Paragraph("Aucune donnée dans cette catégorie.", st["note"])]
-    if r["contre"]["rows"]:
-        story += _tiers_table(r["contre"], r["tiers"], st)
-    for blk_k in ("double", "autres"):
-      if r.get(blk_k):
-        rows = [[_nom(x["nom"], x["code"], st), *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
-        a_heads = r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])
-        a_w = [120 * mm] + [(175 * mm) / len(a_heads)] * len(a_heads)
-        story += [Paragraph(_esc(f"{r[blk_k]['titre']} ({len(rows)})"), st["section"]),
-                  _grid([r["tiers"], *a_heads], rows, a_w, st, long=True), Spacer(1, 5 * mm)]
+    if _on(r, "detail"):
+        story.append(CondPageBreak(75 * mm))
+        if r["principal"]["rows"]:
+            story += _tiers_table(r["principal"], r["tiers"], st)
+        else:
+            story += [Paragraph(_esc(r["principal"]["titre"]), st["section"]), Paragraph("Aucune donnée dans cette catégorie.", st["note"])]
+        if r["contre"]["rows"]:
+            story += _tiers_table(r["contre"], r["tiers"], st)
+    if _on(r, "avances_fnp"):
+        for blk_k in ("double", "autres"):
+            if r.get(blk_k):
+                rows = [[_nom(x["nom"], x["code"], st), *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
+                a_heads = r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])
+                a_w = [120 * mm] + [(175 * mm) / len(a_heads)] * len(a_heads)
+                story += [Paragraph(_esc(f"{r[blk_k]['titre']} ({len(rows)})"), st["section"]),
+                          _grid([r["tiers"], *a_heads], rows, a_w, st, long=True), Spacer(1, 5 * mm)]
 
-    if r["ecritures"]:
+    if _on(r, "ecritures") and r["ecritures"]:
         rows, spans = [], []
         for g in r["ecritures"]:
             spans.append(len(rows))
-            rows.append([Paragraph(f'<b>{_esc(g["nom"])}</b> &nbsp;<font color="#667085">{_esc(g["code"])}</font>', st["cell"])] + [""] * 7)
+            rows.append([Paragraph(f'<b>{_esc(g["nom"])}</b> &nbsp;<font color="#667085">{_esc(g["code"])}</font>'
+                                   + (f' &nbsp;<font color="#667085">- {_esc(g["resume"])}</font>' if g.get("resume") else ""), st["cell"])] + [""] * 7)
             for d_, lib, nat, deb, cre, reste, jours, lab in g["rows"]:
                 rows.append([d_, _p(lib, st["cell"]), nat, _z(deb), _z(cre), _m(reste), f"{jours} j", lab])
-        story += [PageBreak(), Paragraph(_esc(f"Écritures ouvertes par {r['tiers'].lower()}"), st["section"]),
-                  Paragraph("Écritures non soldées après imputation des règlements sur les pièces les plus anciennes (FIFO).", st["note"]),
+        if len(story) > 3:
+            story.append(PageBreak())
+        story += [Paragraph(_esc(f"Écritures ouvertes par {r['tiers'].lower()}"), st["section"]),
+                  Paragraph(_esc(_note_ecritures(r)), st["note"]),
                   _grid(["Date", "Libellé", "Nature", "Débit", "Crédit", "Reste", "Ancienneté", "Tranche"], rows,
                         [17 * mm, 106 * mm, 22 * mm, 27 * mm, 27 * mm, 30 * mm, 22 * mm, 26 * mm], st, num_from=3, num_to=7, long=True, spans=spans),
                   Spacer(1, 5 * mm)]
@@ -436,30 +515,38 @@ def build_print_html(r: Dict[str, Any]) -> str:
             f'<td><small>SOURCE</small><strong>{_esc(_short(r["fichier"]))}</strong></td>'
             f'<td><small>DATE D\'ÉDITION</small><strong>{generated}</strong></td>'
             f'<td><small>{_esc(r["tiers_pl"].upper())}</small><strong>{r["nb"]}</strong></td></tr></table>')
-    kpis = _h_table(["Indicateur", "Montant (TND)", "Détail"], [[_esc(k), _m(v), _esc(c)] for k, v, c in r["kpis"]], num_to=2)
-    first = [f'<div class="eyebrow">RAPPORT DE PILOTAGE</div><h1>{_esc(r["titre"])}</h1>', meta, "<h2>Synthèse</h2>", kpis, _h_aging(r["aging"])]
-    if r["aging_contre"]["total"] > 0.0005:
-        first.append(_h_aging(r["aging_contre"]))
+    first = [f'<div class="eyebrow">RAPPORT DE PILOTAGE</div><h1>{_esc(r["titre"])}</h1>', meta]
+    if _on(r, "synthese"):
+        first += ["<h2>Synthèse</h2>", _h_table(["Indicateur", "Montant (TND)", "Détail"], [[_esc(k), _m(v), _esc(c)] for k, v, c in r["kpis"]], num_to=2)]
+    if _on(r, "anciennete"):
+        first.append(_h_aging(r["aging"]))
+        if r["aging_contre"]["total"] > 0.0005:
+            first.append(_h_aging(r["aging_contre"]))
     sheets = [sheet(*first)]
 
-    tiers_html = _h_tiers(r["principal"], r["tiers"]) if r["principal"]["rows"] else f"<h2>{_esc(r['principal']['titre'])}</h2><p class='note'>Aucune donnée dans cette catégorie.</p>"
-    if r["contre"]["rows"]:
-        tiers_html += _h_tiers(r["contre"], r["tiers"])
-    for blk_k in ("double", "autres"):
-      if r.get(blk_k):
-        rows = [[f'<b>{_esc(x["nom"])}</b><div class="code">{_esc(x["code"])}</div>', *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
-        tiers_html += f"<h2>{_esc(r[blk_k]['titre'])} ({len(rows)})</h2>" + _h_table([r["tiers"], *r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])], rows)
-    sheets.append(sheet(tiers_html))
+    tiers_html = ""
+    if _on(r, "detail"):
+        tiers_html = _h_tiers(r["principal"], r["tiers"]) if r["principal"]["rows"] else f"<h2>{_esc(r['principal']['titre'])}</h2><p class='note'>Aucune donnée dans cette catégorie.</p>"
+        if r["contre"]["rows"]:
+            tiers_html += _h_tiers(r["contre"], r["tiers"])
+    if _on(r, "avances_fnp"):
+        for blk_k in ("double", "autres"):
+            if r.get(blk_k):
+                rows = [[f'<b>{_esc(x["nom"])}</b><div class="code">{_esc(x["code"])}</div>', *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
+                tiers_html += f"<h2>{_esc(r[blk_k]['titre'])} ({len(rows)})</h2>" + _h_table([r["tiers"], *r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])], rows)
+    if tiers_html:
+        sheets.append(sheet(tiers_html))
 
-    if r["ecritures"]:
+    if _on(r, "ecritures") and r["ecritures"]:
         rows, bands = [], []
         for g in r["ecritures"]:
             bands.append(len(rows))
-            rows.append([f'<b>{_esc(g["nom"])}</b> <span class="code">{_esc(g["code"])}</span>'])
+            rows.append([f'<b>{_esc(g["nom"])}</b> <span class="code">{_esc(g["code"])}</span>'
+                         + (f' <span class="code">- {_esc(g["resume"])}</span>' if g.get("resume") else "")])
             for d_, lib, nat, deb, cre, reste, jours, lab in g["rows"]:
                 rows.append([d_, _esc(lib), _esc(nat), _z(deb), _z(cre), _m(reste), f"{jours} j", lab])
         sheets.append(sheet(f"<h2>Écritures ouvertes par {_esc(r['tiers'].lower())}</h2>",
-                            "<p class='note'>Écritures non soldées après imputation des règlements sur les pièces les plus anciennes (FIFO).</p>",
+                            f"<p class='note'>{_esc(_note_ecritures(r))}</p>",
                             _h_table(["Date", "Libellé", "Nature", "Débit", "Crédit", "Reste", "Ancienneté", "Tranche"], rows, num_from=3, num_to=7, bands=set(bands))))
 
     return (f'<!doctype html><html lang="fr"><head><meta charset="utf-8" /><title>Impression {_esc(r["titre"])}</title>'
@@ -493,34 +580,38 @@ def build_sections(r: Dict[str, Any]) -> Dict[str, Any]:
         return sec(f"{blk['titre']} ({len(blk['rows'])})", heads, rows, ["l"] + ["r"] * (len(heads) - 1),
                    [""] * (len(rows) - 1) + ["row-result"], cells)
 
-    sections = [sec("Synthèse", ["Indicateur", "Montant (TND)", "Détail"], [[k, _m(v), c] for k, v, c in r["kpis"]], ["l", "r", "l"]),
-                aging(r["aging"])]
-    if r["aging_contre"]["total"] > 0.0005:
-        sections.append(aging(r["aging_contre"]))
-    if r["principal"]["rows"]:
-        sections.append(tiers(r["principal"]))
-    else:
-        sections.append(sec(r["principal"]["titre"], [], [], []))
-    if r["contre"]["rows"]:
-        sections.append(tiers(r["contre"]))
-    for blk_k in ("double", "autres"):
-      if r.get(blk_k):
-        a_heads = r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])
-        rows = [[f'{x["nom"]} · {x["code"]}', *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
-        sections.append(sec(f"{r[blk_k]['titre']} ({len(rows)})", [r["tiers"], *a_heads], rows, ["l"] + ["r"] * len(a_heads)))
-    if r["ecritures"]:
+    sections = []
+    if _on(r, "synthese"):
+        sections.append(sec("Synthèse", ["Indicateur", "Montant (TND)", "Détail"], [[k, _m(v), c] for k, v, c in r["kpis"]], ["l", "r", "l"]))
+    if _on(r, "anciennete"):
+        sections.append(aging(r["aging"]))
+        if r["aging_contre"]["total"] > 0.0005:
+            sections.append(aging(r["aging_contre"]))
+    if _on(r, "detail"):
+        if r["principal"]["rows"]:
+            sections.append(tiers(r["principal"]))
+        else:
+            sections.append(sec(r["principal"]["titre"], [], [], []))
+        if r["contre"]["rows"]:
+            sections.append(tiers(r["contre"]))
+    if _on(r, "avances_fnp"):
+        for blk_k in ("double", "autres"):
+            if r.get(blk_k):
+                a_heads = r[blk_k].get("heads", ["FNP (408)", "Avances (409)"])
+                rows = [[f'{x["nom"]} · {x["code"]}', *[_z(v) for v in x["x"]]] for x in r[blk_k]["rows"]]
+                sections.append(sec(f"{r[blk_k]['titre']} ({len(rows)})", [r["tiers"], *a_heads], rows, ["l"] + ["r"] * len(a_heads)))
+    if _on(r, "ecritures") and r["ecritures"]:
         rows, classes, spans = [], [], []
         for g in r["ecritures"]:
             spans.append(len(rows))
-            rows.append([f'{g["nom"]} · {g["code"]}'] + [""] * 7)
+            rows.append([_grp_nom(g)] + [""] * 7)
             classes.append("row-agg")
             for d_, lib, nat, deb, cre, reste, jours, lab in g["rows"]:
                 rows.append([d_, lib, nat, _z(deb), _z(cre), _m(reste), f"{jours} j", lab])
                 classes.append("")
         sections.append(sec(f"Écritures ouvertes par {r['tiers'].lower()}",
                             ["Date", "Libellé", "Nature", "Débit", "Crédit", "Reste", "Ancienneté", "Tranche"], rows,
-                            ["l", "l", "l", "r", "r", "r", "r", "l"], classes, spans=spans,
-                            note="Écritures non soldées après imputation des règlements sur les pièces les plus anciennes (FIFO)."))
+                            ["l", "l", "l", "r", "r", "r", "r", "l"], classes, spans=spans, note=_note_ecritures(r)))
     return {"titre": r["titre"], "entete": r["entete"], "date_reference": _d(r["date_reference"]),
             "fichier": _short(r["fichier"], 34), "generated_at": datetime.now().strftime("%d/%m/%Y à %H:%M"),
             "tiers_pl": r["tiers_pl"], "nb": r["nb"], "sections": sections}

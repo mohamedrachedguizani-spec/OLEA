@@ -89,9 +89,9 @@ const BalanceAgeeFournisseur = () => {
     : []), [data, isCred]);
 
   const totals = useMemo(() => {
-    const t = { total_solde: 0, fnp: 0, avance_409: 0, avance_restante: 0, a_recuperer: 0 };
+    const t = { total_solde: 0, fnp: 0, avance_409: 0, avance_imputee: 0, avance_restante: 0, a_recuperer: 0 };
     BUCKETS.forEach((b) => { t[b.field] = 0; });
-    clients.forEach((c) => { t.total_solde += c.total_solde; t.fnp += c.fnp || 0; t.avance_409 += c.avance_409 || 0; t.avance_restante += c.avance_restante || 0; t.a_recuperer += c.a_recuperer || 0; BUCKETS.forEach((b) => { t[b.field] += val(c, b); }); });
+    clients.forEach((c) => { t.total_solde += c.total_solde; t.fnp += c.fnp || 0; t.avance_409 += c.avance_409 || 0; t.avance_imputee += c.avance_imputee || 0; t.avance_restante += c.avance_restante || 0; t.a_recuperer += c.a_recuperer || 0; BUCKETS.forEach((b) => { t[b.field] += val(c, b); }); });
     return t;
   }, [clients]);
 
@@ -105,8 +105,8 @@ const BalanceAgeeFournisseur = () => {
   const arrow = (key) => (sort.key === key ? (sort.dir > 0 ? ' ▲' : ' ▼') : '');
 
   const exportCsv = () => {
-    const head = ['Code', 'Fournisseur', 'Reste à payer (401 net d\'avances)', ...BUCKETS.map((b) => b.label), 'FNP 408', 'Avances 409', 'Avance restante 409', 'À récupérer'];
-    const rows = clients.map((c) => [c.code, c.nom, c.total_solde, ...BUCKETS.map((b) => val(c, b)), c.fnp, c.avance_409, c.avance_restante, c.a_recuperer]);
+    const head = ['Code', 'Fournisseur', 'Reste à payer (401 net d\'avances)', ...BUCKETS.map((b) => b.label), 'FNP 408', 'Avances 409', 'Avance imputée 409', 'Avance restante 409', 'À récupérer'];
+    const rows = clients.map((c) => [c.code, c.nom, c.total_solde, ...BUCKETS.map((b) => val(c, b)), c.fnp, c.avance_409, c.avance_imputee, c.avance_restante, c.a_recuperer]);
     const csv = [head, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(';')).join('\n');
     const a = document.createElement('a');
     a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
@@ -261,6 +261,7 @@ const BalanceAgeeFournisseur = () => {
                     ))}
                     <th>FNP (408)</th>
                     <th>Avances (409)</th>
+                    <th>Avance imputée</th>
                     <th>Avance restante</th>
                     <th>À récupérer</th>
                     <th />
@@ -275,13 +276,14 @@ const BalanceAgeeFournisseur = () => {
                         {BUCKETS.map((b) => <td key={b.key} className="td-c" style={{ '--c': b.c }}>{cell(val(c, b))}</td>)}
                         <td>{cell(c.fnp)}</td>
                         <td>{cell(c.avance_409)}</td>
+                        <td>{cell(c.avance_imputee)}</td>
                         <td>{cell(c.avance_restante)}</td>
                         <td className={c.double_position ? 'ba-neg' : ''} title={c.double_position ? '401 débiteur + avance 409 : à régulariser' : undefined}>{c.double_position ? '⚠ ' : ''}{cell(c.a_recuperer)}</td>
                         <td className="ba-chev">{open === c.code ? '▲' : '▼'}</td>
                       </tr>
                       {open === c.code && (
                         <tr>
-                          <td className="ba-detail-cell" colSpan={BUCKETS.length + 7}>
+                          <td className="ba-detail-cell" colSpan={BUCKETS.length + 8}>
                             <div className="ba-detail">
                               <table className="ba-table">
                                 <thead>
@@ -316,7 +318,7 @@ const BalanceAgeeFournisseur = () => {
                     </React.Fragment>
                   ))}
                   {clients.length === 0 && (
-                    <tr><td colSpan={BUCKETS.length + 7} style={{ textAlign: 'center', padding: '2rem' }} className="ba-empty">Aucun fournisseur.</td></tr>
+                    <tr><td colSpan={BUCKETS.length + 8} style={{ textAlign: 'center', padding: '2rem' }} className="ba-empty">Aucun fournisseur.</td></tr>
                   )}
                 </tbody>
                 {clients.length > 0 && (
@@ -327,6 +329,7 @@ const BalanceAgeeFournisseur = () => {
                       {BUCKETS.map((b) => <td key={b.key}>{vue === 'tous' ? '' : fmt(totals[b.field])}</td>)}
                       <td>{fmt(totals.fnp)}</td>
                       <td>{fmt(totals.avance_409)}</td>
+                      <td>{fmt(totals.avance_imputee)}</td>
                       <td>{fmt(totals.avance_restante)}</td>
                       <td>{fmt(totals.a_recuperer)}</td>
                       <td />
