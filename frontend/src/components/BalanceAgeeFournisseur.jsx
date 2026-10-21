@@ -23,7 +23,7 @@ const val = (c, b) => (c.total_solde < 0 ? (c.avance_buckets?.[b.key] || 0) : (c
 const num = (c, key) => { const b = BUCKETS.find((x) => x.field === key); return b ? val(c, b) : c[key]; };
 const echuOf = (c) => ECHUS.reduce((s, b) => s + (c[b.field] || 0), 0);
 
-const BalanceAgeeFournisseur = () => {
+const BalanceAgeeFournisseur = ({ navigationTarget, onNavigationConsumed }) => {
   const { has } = useAuth();
   const canGenerate = has('balance_fournisseur.generate');   // importer un PDF Sage et générer la balance
   const canRead = has('balance_fournisseur.read');           // consulter les balances déjà générées
@@ -45,6 +45,20 @@ const BalanceAgeeFournisseur = () => {
     ApiService.getBalanceAgeeHistorique('fournisseurs', 1, 0).then((r) => setNbBalances(r.total)).catch(() => {});
   };
   useEffect(() => { refreshCount(); }, []);
+
+  useEffect(() => {
+    const rapportId = navigationTarget?.params?.rapportId;
+    if (!rapportId || !canRead) return undefined;
+    let cancelled = false;
+    ApiService.getBalanceAgeeRapport('fournisseurs', rapportId).then((res) => {
+      if (cancelled) return;
+      setData(res); setOpen(navigationTarget.params.open || null);
+      setSearch(navigationTarget.params.search || ''); setVue(navigationTarget.params.vue || 'tous');
+      setShowWarn(false); setStep('detail');
+      onNavigationConsumed?.(navigationTarget.key);
+    }).catch(() => onNavigationConsumed?.(navigationTarget.key));
+    return () => { cancelled = true; };
+  }, [navigationTarget?.key, canRead, onNavigationConsumed]);
 
   // Ouvre une balance enregistrée (depuis l'historique) : même écran d'analyse que juste après la génération
   const openRapport = async (id) => {

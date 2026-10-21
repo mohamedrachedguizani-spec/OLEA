@@ -14,6 +14,7 @@ from .export import build_pdf, build_print_html, build_sections, rapport_clients
 from .service import parser_pdf_sage
 from .models import BalanceAgeeResponse, BalanceExportClients
 from modules.auth.dependencies import require_permission_code
+from ws_manager import manager as ws_manager
 
 router = APIRouter(prefix="/balance", tags=["Balance Client"])
 
@@ -58,6 +59,7 @@ async def parse_balance_agee(
             )
         # Conserve la balance dans l'historique (consultation ultérieure) – hors boucle asyncio (accès DB synchrone)
         result = await run_in_threadpool(enregistrer_resultat, "clients", result, file.filename, current_user)
+        ws_manager.broadcast("balance_agee", "generated", {"id": result.rapport_id, "date_reference": result.date_reference})
         return result
 
     except HTTPException:

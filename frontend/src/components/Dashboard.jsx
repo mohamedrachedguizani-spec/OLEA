@@ -47,8 +47,8 @@ const WS_RECONNECT_DELAY = 3000;
 // ─── Section definitions ───
 const SECTIONS = [
     { id: 'overview',   label: 'Vue d\'ensemble', icon: <FiHome />,       desc: 'Résumé global',       badgeKey: null,        accent: '#d4a528' },
-    { id: 'tresorerie', label: 'Trésorerie',      icon: <FiDollarSign />, desc: 'Flux & solde caisse', badgeKey: 'ecritures', accent: '#b7482b' },
-    { id: 'bfc',        label: 'Analyse BFC',      icon: <FiBarChart2 />,  desc: 'Résultat financier', badgeKey: 'periodes',   accent: '#2f343a' },
+    { id: 'tresorerie', label: 'Balances âgées', icon: <FiUsers />, desc: 'Clients & fournisseurs', badgeKey: null, accent: '#b7482b' },
+    { id: 'bfc',        label: 'Analyse financière',      icon: <FiBarChart2 />,  desc: 'Résultat financier', badgeKey: 'periodes',   accent: '#2f343a' },
 ];
 
 const ADMIN_SECTIONS = [
@@ -186,8 +186,9 @@ function Section({ title, subtitle, icon, children, className = '' }) {
 // ═══════════════════════════════════════════════════════════
 
 function Dashboard({ refreshTrigger, onNavigate }) {
-    const { isSuperAdmin } = useAuth();
+    const { isSuperAdmin, has } = useAuth();
     const [data, setData] = useState(null);
+    const [balancesAgees, setBalancesAgees] = useState({ clients: null, fournisseurs: null });
     const [loading, setLoading] = useState(true);
     const [filterType, setFilterType] = useState('month');
     const [dateDebut, setDateDebut] = useState('');
@@ -253,17 +254,34 @@ function Dashboard({ refreshTrigger, onNavigate }) {
         setLoading(true);
         try {
             const { debut, fin } = getDateRange();
-            const res = isSuperAdmin
-                ? await ApiService.getAdminDashboard(debut, fin)
-                : await ApiService.getGlobalDashboard(debut, fin);
+            const dashboardPromise = isSuperAdmin
+                ? ApiService.getAdminDashboard(debut, fin)
+                : ApiService.getGlobalDashboard(debut, fin);
+            const loadLatestBalance = async (kind) => {
+                const permission = kind === 'clients' ? 'balance_agee.read' : 'balance_fournisseur.read';
+                if (!has(permission)) return null;
+                try {
+                    const history = await ApiService.getBalanceAgeeHistorique(kind, 1, 0);
+                    const latest = history?.items?.[0];
+                    return latest?.id ? await ApiService.getBalanceAgeeRapport(kind, latest.id) : null;
+                } catch (err) {
+                    return null;
+                }
+            };
+            const [res, clients, fournisseurs] = await Promise.all([
+                dashboardPromise,
+                loadLatestBalance('clients'),
+                loadLatestBalance('fournisseurs'),
+            ]);
             setData(res);
+            setBalancesAgees({ clients, fournisseurs });
             setLastUpdate(new Date());
         } catch (err) {
             // Pas de log console
         } finally {
             setLoading(false);
         }
-    }, [getDateRange, isSuperAdmin]);
+    }, [getDateRange, isSuperAdmin, has]);
 
     // Keep loadDataRef in sync so the WebSocket callback always calls the latest version
     useEffect(() => { loadDataRef.current = loadData; }, [loadData]);
@@ -285,7 +303,7 @@ function Dashboard({ refreshTrigger, onNavigate }) {
                 // Reload the dashboard when any relevant channel fires
                 const channels = isSuperAdminRef.current
                     ? ['users', 'audit', 'sessions']
-                    : ['caisse', 'migration', 'sage_bfc', 'forecast'];
+                    : ['caisse', 'migration', 'sage_bfc', 'forecast', 'balance_agee', 'balance_fournisseur'];
                 if (channels.includes(channel)) {
                     loadDataRef.current?.();
                 }
@@ -358,6 +376,43 @@ function Dashboard({ refreshTrigger, onNavigate }) {
     const adminSessions = data?.sessions;
     const adminAudit = data?.audit;
     const adminRealtime = data?.realtime;
+    const balanceClients = balancesAgees.clients;
+    const balanceFournisseurs = balancesAgees.fournisseurs;
+
+    const balanceAgeeData = useMemo(() => {
+        const buckets = [
+            ['non_echu', 'Non échu'], ['1-30', '1-30 j'], ['31-60', '31-60 j'],
+            ['61-90', '61-90 j'], ['+90', '+90 j'],
+        ];
+        const clients = balanceClients ? {
+            date: balanceClients.date_reference,
+            rapportId: balanceClients.rapport_id,
+            total: balanceClients.total_debiteur || 0,
+            echu: buckets.slice(1).reduce((s, [key]) => s + (balanceClients.totaux_buckets?.[key] || 0), 0),
+            plus90: balanceClients.totaux_buckets?.['+90'] || 0,
+            count: (balanceClients.clients || []).filter((x) => x.total_solde > 0).length,
+            aging: buckets.map(([key, label]) => ({ name: label, value: balanceClients.totaux_buckets?.[key] || 0 })),
+            risks: (balanceClients.clients || []).filter((x) => x.total_solde > 0)
+                .map((x) => ({ code: x.code, name: x.nom, value: buckets.slice(1).reduce((s, [key]) => s + (x[{ '1-30': 'echu_30', '31-60': 'echu_60', '61-90': 'echu_90', '+90': 'echu_plus' }[key]] || 0), 0) }))
+                .filter((x) => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 5),
+        } : null;
+        const fournisseurs = balanceFournisseurs ? {
+            date: balanceFournisseurs.date_reference,
+            rapportId: balanceFournisseurs.rapport_id,
+            total: balanceFournisseurs.total_dettes || 0,
+            echu: buckets.slice(1).reduce((s, [key]) => s + (balanceFournisseurs.totaux_buckets?.[key] || 0), 0),
+            plus90: balanceFournisseurs.totaux_buckets?.['+90'] || 0,
+            count: (balanceFournisseurs.fournisseurs || []).filter((x) => x.total_solde > 0).length,
+            nonImputes: Math.abs(balanceFournisseurs.total_non_imputes || 0),
+            avanceRestante: balanceFournisseurs.total_avance_restante || 0,
+            fnp: balanceFournisseurs.total_fnp || 0,
+            aging: buckets.map(([key, label]) => ({ name: label, value: balanceFournisseurs.totaux_buckets?.[key] || 0 })),
+            risks: (balanceFournisseurs.fournisseurs || []).filter((x) => x.total_solde > 0)
+                .map((x) => ({ code: x.code, name: x.nom, value: x.echu_plus || 0 }))
+                .filter((x) => x.value > 0).sort((a, b) => b.value - a.value).slice(0, 5),
+        } : null;
+        return { clients, fournisseurs };
+    }, [balanceClients, balanceFournisseurs]);
 
     const tauxMigration = useMemo(() => {
         if (!caisse || caisse.nombre_ecritures === 0) return 0;
@@ -423,6 +478,11 @@ function Dashboard({ refreshTrigger, onNavigate }) {
             return;
         }
         onNavigate?.(target);
+    }, [onNavigate]);
+
+    const openBalanceTarget = useCallback((kind, params = {}) => {
+        const tab = kind === 'fournisseurs' ? 'balance-fournisseur' : 'balance-agee';
+        onNavigate?.(tab, params);
     }, [onNavigate]);
 
     const openLatestBfcYear = useCallback(() => {
@@ -577,6 +637,64 @@ function Dashboard({ refreshTrigger, onNavigate }) {
                                     value={adminAudit?.total_7d || 0}
                                     sub={`WS: ${adminRealtime?.ws_clients || 0}`} loading={loading} />
                             </div>
+
+                            {false && <Section title="Balances âgées" subtitle="Dernières balances générées · cliquez pour consulter le détail" icon={<FiUsers />}>
+                                {(balanceAgeeData.clients || balanceAgeeData.fournisseurs) ? (
+                                    <>
+                                        <div className="gd-kpi-row gd-kpi-row-5 gd-balance-kpi-row">
+                                            <KpiCard icon={<FiUsers />} label="Créances clients" color="primary"
+                                                value={fmtMontant(balanceAgeeData.clients?.total || 0)} unit="TND"
+                                                sub={balanceAgeeData.clients ? `${balanceAgeeData.clients.count} débiteurs · au ${balanceAgeeData.clients.date}` : 'Aucune balance récente'}
+                                                onClick={balanceAgeeData.clients ? () => openBalanceTarget('clients', { rapportId: balanceAgeeData.clients.rapportId }) : undefined} />
+                                            <KpiCard icon={<FiTrendingDown />} label="Clients > 90 jours" color="danger"
+                                                value={fmtMontant(balanceAgeeData.clients?.plus90 || 0)} unit="TND"
+                                                sub={balanceAgeeData.clients ? `${((balanceAgeeData.clients.plus90 / (balanceAgeeData.clients.total || 1)) * 100).toFixed(0)} % des créances` : '—'}
+                                                onClick={balanceAgeeData.clients ? () => openBalanceTarget('clients', { rapportId: balanceAgeeData.clients.rapportId, vue: 'debiteurs' }) : undefined} />
+                                            <KpiCard icon={<FiUsers />} label="Dettes fournisseurs" color="debit"
+                                                value={fmtMontant(balanceAgeeData.fournisseurs?.total || 0)} unit="TND"
+                                                sub={balanceAgeeData.fournisseurs ? `${balanceAgeeData.fournisseurs.count} fournisseurs · au ${balanceAgeeData.fournisseurs.date}` : 'Aucune balance récente'}
+                                                onClick={balanceAgeeData.fournisseurs ? () => openBalanceTarget('fournisseurs', { rapportId: balanceAgeeData.fournisseurs.rapportId }) : undefined} />
+                                            <KpiCard icon={<FiTrendingDown />} label="Fournisseurs > 90 jours" color="danger"
+                                                value={fmtMontant(balanceAgeeData.fournisseurs?.plus90 || 0)} unit="TND"
+                                                sub={balanceAgeeData.fournisseurs ? `${((balanceAgeeData.fournisseurs.plus90 / (balanceAgeeData.fournisseurs.total || 1)) * 100).toFixed(0)} % des dettes` : '—'}
+                                                onClick={balanceAgeeData.fournisseurs ? () => openBalanceTarget('fournisseurs', { rapportId: balanceAgeeData.fournisseurs.rapportId, vue: 'debiteurs' }) : undefined} />
+                                            <KpiCard icon={<FiActivity />} label="Paiements non imputés" color="purple"
+                                                value={fmtMontant(balanceAgeeData.fournisseurs?.nonImputes || 0)} unit="TND"
+                                                sub={balanceAgeeData.fournisseurs ? `Avances restantes : ${fmtMontant(balanceAgeeData.fournisseurs.avanceRestante)} TND` : '—'}
+                                                onClick={balanceAgeeData.fournisseurs ? () => openBalanceTarget('fournisseurs', { rapportId: balanceAgeeData.fournisseurs.rapportId, vue: 'crediteurs' }) : undefined} />
+                                        </div>
+                                        <div className="gd-row-2col">
+                                            <Section title="Ancienneté clients / fournisseurs" subtitle="Répartition des dernières balances" icon={<FiBarChart2 />} className="gd-col-large">
+                                                <ResponsiveContainer width="100%" height={280}>
+                                                    <BarChart data={balanceAgeeData.clients?.aging?.map((x, i) => ({ ...x, clients: x.value, fournisseurs: balanceAgeeData.fournisseurs?.aging?.[i]?.value || 0 })) || balanceAgeeData.fournisseurs?.aging || []} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                                                        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                                        <XAxis dataKey="name" fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                                                        <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={60} />
+                                                        <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 12 }} />
+                                                        {balanceAgeeData.clients && <Bar dataKey="clients" name="Clients" fill={COLORS.primary} radius={[4, 4, 0, 0]} />}
+                                                        {balanceAgeeData.fournisseurs && <Bar dataKey="fournisseurs" name="Fournisseurs" fill={COLORS.debit} radius={[4, 4, 0, 0]} />}
+                                                    </BarChart>
+                                                </ResponsiveContainer>
+                                            </Section>
+                                            <Section title="Top risques" subtitle="Montant supérieur à 90 jours" icon={<FiTarget />} className="gd-col-small">
+                                                <div className="gd-financial-alerts">
+                                                    {(balanceAgeeData.clients?.risks || []).slice(0, 3).map((risk) => (
+                                                        <button type="button" className="gd-financial-alert gd-financial-alert-danger clickable" key={`c-${risk.code}`} onClick={() => openBalanceTarget('clients', { rapportId: balanceAgeeData.clients.rapportId, search: risk.code, open: risk.code, vue: 'debiteurs' })}>
+                                                            <span className="gd-financial-alert-icon"><FiUsers /></span><div><strong>{risk.name}</strong><p>Client · {fmtMontant(risk.value)} TND &gt; 90 j</p></div>
+                                                        </button>
+                                                    ))}
+                                                    {(balanceAgeeData.fournisseurs?.risks || []).slice(0, 3).map((risk) => (
+                                                        <button type="button" className="gd-financial-alert gd-financial-alert-warning clickable" key={`f-${risk.code}`} onClick={() => openBalanceTarget('fournisseurs', { rapportId: balanceAgeeData.fournisseurs.rapportId, search: risk.code, open: risk.code, vue: 'debiteurs' })}>
+                                                            <span className="gd-financial-alert-icon"><FiUsers /></span><div><strong>{risk.name}</strong><p>Fournisseur · {fmtMontant(risk.value)} TND &gt; 90 j</p></div>
+                                                        </button>
+                                                    ))}
+                                                    {!balanceAgeeData.clients?.risks?.length && !balanceAgeeData.fournisseurs?.risks?.length && <EmptyChart message="Aucun risque identifié" />}
+                                                </div>
+                                            </Section>
+                                        </div>
+                                    </>
+                                ) : <EmptyChart message="Aucune balance âgée récente disponible" />}
+                            </Section>}
 
                             <div className="gd-row-2col">
                                 <Section title="Activité d'audit" subtitle="Évolution des actions" icon={<FiTrendingUp />} className="gd-col-large">
@@ -750,6 +868,8 @@ function Dashboard({ refreshTrigger, onNavigate }) {
             {/* ══════ SECTION: TRÉSORERIE ══════ */}
             {(activeSection === 'tresorerie') && (
                 <>
+                    <BalanceAgeeOverview data={balanceAgeeData} onOpen={openBalanceTarget} />
+                    {false && <>
                     {/* KPIs Caisse */}
                     <div className="gd-kpi-row gd-kpi-row-4">
                         <KpiCard icon={<FiDollarSign />} label="Solde Caisse" color="primary"
@@ -852,6 +972,7 @@ function Dashboard({ refreshTrigger, onNavigate }) {
                             ) : <EmptyChart message="Aucune donnée" />}
                         </Section>
                     </div>
+                    </>}
                 </>
             )}
 
@@ -1038,6 +1159,80 @@ function Dashboard({ refreshTrigger, onNavigate }) {
 // ═══════════════════════════════════════════════════════════
 // SOUS-COMPOSANTS
 // ═══════════════════════════════════════════════════════════
+
+function BalanceAgeeOverview({ data, onOpen }) {
+    const { clients, fournisseurs } = data;
+    const open = (kind, extra = {}) => onOpen(kind, { rapportId: data[kind]?.rapportId, ...extra });
+    const chart = clients
+        ? clients.aging.map((item, index) => ({
+            name: item.name,
+            clients: item.value,
+            fournisseurs: fournisseurs?.aging?.[index]?.value || 0,
+        }))
+        : (fournisseurs?.aging || []).map((item) => ({
+            name: item.name,
+            fournisseurs: item.value,
+        }));
+    const agingTitle = clients && fournisseurs
+        ? 'Ancienneté clients / fournisseurs'
+        : clients ? 'Ancienneté clients' : 'Ancienneté fournisseurs';
+    const agingSubtitle = clients && fournisseurs
+        ? 'Répartition des dernières balances'
+        : clients ? 'Répartition de la dernière balance clients' : 'Répartition de la dernière balance fournisseurs';
+    const risks = [
+        ...(clients?.risks || []).slice(0, 3).map((r) => ({ ...r, kind: 'clients' })),
+        ...(fournisseurs?.risks || []).slice(0, 3).map((r) => ({ ...r, kind: 'fournisseurs' })),
+    ];
+
+    return (
+        <>
+            {(clients || fournisseurs) ? <>
+                <div className="gd-kpi-row gd-kpi-row-5 gd-balance-kpi-row">
+                    <KpiCard icon={<FiUsers />} label="Créances clients" color="primary" value={fmtMontant(clients?.total || 0)} unit="TND"
+                        sub={clients ? `${clients.count} débiteurs · au ${clients.date}` : 'Aucune balance récente'}
+                        onClick={clients ? () => open('clients') : undefined} />
+                    <KpiCard icon={<FiTrendingDown />} label="Clients > 90 jours" color="danger" value={fmtMontant(clients?.plus90 || 0)} unit="TND"
+                        sub={clients ? `${((clients.plus90 / (clients.total || 1)) * 100).toFixed(0)} % des créances` : '—'}
+                        onClick={clients ? () => open('clients', { vue: 'debiteurs' }) : undefined} />
+                    <KpiCard icon={<FiUsers />} label="Dettes fournisseurs" color="debit" value={fmtMontant(fournisseurs?.total || 0)} unit="TND"
+                        sub={fournisseurs ? `${fournisseurs.count} fournisseurs · au ${fournisseurs.date}` : 'Aucune balance récente'}
+                        onClick={fournisseurs ? () => open('fournisseurs') : undefined} />
+                    <KpiCard icon={<FiTrendingDown />} label="Fournisseurs > 90 jours" color="danger" value={fmtMontant(fournisseurs?.plus90 || 0)} unit="TND"
+                        sub={fournisseurs ? `${((fournisseurs.plus90 / (fournisseurs.total || 1)) * 100).toFixed(0)} % des dettes` : '—'}
+                        onClick={fournisseurs ? () => open('fournisseurs', { vue: 'debiteurs' }) : undefined} />
+                    <KpiCard icon={<FiActivity />} label="Paiements non imputés" color="purple" value={fmtMontant(fournisseurs?.nonImputes || 0)} unit="TND"
+                        sub={fournisseurs ? `Avances restantes : ${fmtMontant(fournisseurs.avanceRestante)} TND` : '—'}
+                        onClick={fournisseurs ? () => open('fournisseurs', { vue: 'crediteurs' }) : undefined} />
+                </div>
+                <div className="gd-row-2col">
+                    <Section title={agingTitle} subtitle={agingSubtitle} icon={<FiBarChart2 />} className="gd-col-large">
+                        <ResponsiveContainer width="100%" height={280}>
+                            <BarChart data={chart} margin={{ top: 10, right: 20, left: 0, bottom: 10 }}>
+                                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" />
+                                <XAxis dataKey="name" fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
+                                <YAxis tickFormatter={fmtShort} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={60} />
+                                <Tooltip content={<CustomTooltip />} /><Legend wrapperStyle={{ fontSize: 12 }} />
+                                {clients && <Bar dataKey="clients" name="Clients" fill={COLORS.primary} radius={[4, 4, 0, 0]} />}
+                                {fournisseurs && <Bar dataKey="fournisseurs" name="Fournisseurs" fill={COLORS.debit} radius={[4, 4, 0, 0]} />}
+                            </BarChart>
+                        </ResponsiveContainer>
+                    </Section>
+                    <Section title="Top risques" subtitle="Montant supérieur à 90 jours" icon={<FiTarget />} className="gd-col-small">
+                        <div className="gd-financial-alerts">
+                            {risks.length ? risks.map((risk) => (
+                                <button type="button" className={`gd-financial-alert gd-financial-alert-${risk.kind === 'clients' ? 'danger' : 'warning'} clickable`} key={`${risk.kind}-${risk.code}`}
+                                    onClick={() => open(risk.kind, { search: risk.code, open: risk.code, vue: 'debiteurs' })}>
+                                    <span className="gd-financial-alert-icon"><FiUsers /></span>
+                                    <div><strong>{risk.name}</strong><p>{risk.kind === 'clients' ? 'Client' : 'Fournisseur'} · {fmtMontant(risk.value)} TND &gt; 90 j</p></div>
+                                </button>
+                            )) : <EmptyChart message="Aucun risque identifié" />}
+                        </div>
+                    </Section>
+                </div>
+            </> : <EmptyChart message="Aucune balance âgée récente disponible" />}
+        </>
+    );
+}
 
 function KpiCard({ icon, label, color, value, unit, sub, trend, trendLabel, loading, onClick }) {
     const CardTag = onClick ? 'button' : 'div';

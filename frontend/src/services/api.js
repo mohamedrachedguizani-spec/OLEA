@@ -5,6 +5,7 @@ class ApiService {
 
     // ===================== Helper : fetch avec credentials (cookies) =====================
     static _loggingOut = false;
+    static _refreshPromise = null;
 
     static async _fetch(url, options = {}) {
         const defaultOptions = {
@@ -66,23 +67,31 @@ class ApiService {
     }
 
     static async refreshToken() {
-        try {
-            const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
-                method: 'POST',
-                credentials: 'include',
-            });
-            if (!response.ok) return false;
-            return true;
-        } catch {
-            return false;
-        }
+        // Une seule rotation à la fois si plusieurs requêtes constatent
+        // l'expiration du même access token simultanément.
+        if (ApiService._refreshPromise) return ApiService._refreshPromise;
+
+        ApiService._refreshPromise = (async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/refresh`, {
+                    method: 'POST',
+                    credentials: 'include',
+                });
+                return response.ok;
+            } catch {
+                return false;
+            } finally {
+                ApiService._refreshPromise = null;
+            }
+        })();
+
+        return ApiService._refreshPromise;
     }
 
     static async sessionCheck() {
         try {
-            const response = await fetch(`${API_BASE_URL}/auth/session-check`, {
-                credentials: 'include',
-            });
+            // _fetch tente d'abord un refresh si l'access token est expiré.
+            const response = await ApiService._fetch(`${API_BASE_URL}/auth/session-check`);
             return response.ok;
         } catch {
             return true; // En cas d'erreur réseau, ne pas déconnecter

@@ -49,6 +49,7 @@ function App() {
     const [configurationRefresh, setConfigurationRefresh] = useState(0);
     const [configurationInitialTab, setConfigurationInitialTab] = useState('comptes');
     const [notificationTarget, setNotificationTarget] = useState(null);
+    const [balanceTarget, setBalanceTarget] = useState(null);
 
     const openMappingConfiguration = useCallback(() => {
         setConfigurationInitialTab('mapping');
@@ -95,6 +96,16 @@ function App() {
 
     const consumeNotificationTarget = useCallback((targetKey) => {
         setNotificationTarget((current) => current?.key === targetKey ? null : current);
+    }, []);
+
+    const openBalanceTarget = useCallback((tab, params = {}) => {
+        if (!canAccessTab(tab)) return;
+        setBalanceTarget({ key: `${tab}-${Date.now()}`, tab, params });
+        setActiveTab(tab);
+    }, [canAccessTab]);
+
+    const consumeBalanceTarget = useCallback((targetKey) => {
+        setBalanceTarget((current) => current?.key === targetKey ? null : current);
     }, []);
 
     useEffect(() => {
@@ -236,7 +247,7 @@ function App() {
 
                 <div className="content-wrapper">
                     {activeTab === 'dashboard' && canAccessTab('dashboard') && (
-                        <Dashboard refreshTrigger={refreshTrigger} onNavigate={(tab) => canAccessTab(tab) && setActiveTab(tab)} />
+                        <Dashboard refreshTrigger={refreshTrigger} onNavigate={openBalanceTarget} />
                     )}
                     {activeTab === 'reporting' && hasPermission('reporting', 'read') && <Reporting refreshTrigger={reportingRefresh} />}
                     {activeTab === 'saisie' && hasPermission('saisie_caisse') && <SaisieCaisse refreshTrigger={refreshTrigger} />}
@@ -251,8 +262,8 @@ function App() {
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration initialTab={configurationInitialTab} />}
                     {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire navigationTarget={notificationTarget?.tab === 'rapprochement' ? notificationTarget : null} />}
                     {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire navigationTarget={notificationTarget?.tab === 'rapprochement_bancaire' ? notificationTarget : null} />}
-                    {activeTab === 'balance-agee' && hasPermission('balance_agee') && <BalanceAgee />}
-                    {activeTab === 'balance-fournisseur' && hasPermission('balance_fournisseur') && <BalanceAgeeFournisseur />}
+                    {activeTab === 'balance-agee' && hasPermission('balance_agee') && <BalanceAgee navigationTarget={balanceTarget?.tab === 'balance-agee' ? balanceTarget : null} onNavigationConsumed={consumeBalanceTarget} />}
+                    {activeTab === 'balance-fournisseur' && hasPermission('balance_fournisseur') && <BalanceAgeeFournisseur navigationTarget={balanceTarget?.tab === 'balance-fournisseur' ? balanceTarget : null} onNavigationConsumed={consumeBalanceTarget} />}
                     {activeTab === 'users' && has('admin.users.read') && <UserManagement />}
                     {activeTab === 'roles' && has('admin.roles.read') && <RoleManagement />}
                     {activeTab === 'audit' && has('admin.audit.read') && <AuditLogs />}
@@ -260,8 +271,8 @@ function App() {
 
                 <footer className="main-footer">
                     <div className="footer-content">
-                        <span>Système de Gestion comptable et financière - Format compatible Sage</span>
-                        <span className="footer-brand">© Powered by Guizani Med Rached</span>
+                        <span>Système de Gestion comptable et financière</span>
+                        <span className="footer-brand">© Olea Tunisie</span>
                     </div>
                 </footer>
             </main>
