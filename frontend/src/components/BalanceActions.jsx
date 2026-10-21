@@ -16,7 +16,7 @@ const SECTIONS = [
   { key: 'avances_fnp', label: 'Avances (409) et FNP (408)', only: 'fournisseurs' },
   { key: 'ecritures', label: 'Écritures ouvertes' },
 ];
-const SELECTION_KINDS = ['fournisseurs'];   // ajouter 'clients' quand le router clients transmet `sections`
+const SELECTION_KINDS = ['clients', 'fournisseurs'];
 
 const BalanceActions = ({ kind = 'clients', data, fichier, onBack }) => {
   const { has } = useAuth();

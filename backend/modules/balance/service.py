@@ -117,6 +117,9 @@ def fusionner_lignes(lines: Iterable[str]) -> List[str]:
 
 
 # ───────────────────────── Étape 1 : lecture des lignes ─────────────────────────
+PAT_RAN_NUL = re.compile(r"\bRAN\s+Report\s+à\s+nouveau", re.I)
+
+
 def parser_lignes(lines: Iterable[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
     """Transforme les lignes texte du Grand Livre en écritures par client."""
     clients: Dict[str, Dict[str, Any]] = {}
@@ -208,6 +211,8 @@ def parser_lignes(lines: Iterable[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict
         if m:
             amts = extract_amounts(line)
             if not amts:
+                if PAT_RAN_NUL.search(line):      # report à nouveau à zéro : Sage n'imprime aucun montant (le total du tiers le confirme)
+                    continue
                 meta["ignorees"].append({"code": current, "ligne": line[:120], "raison": "aucun montant lisible"})
                 continue
             vals = [a for a, _ in amts]

@@ -27,6 +27,9 @@ PAT_BRUIT = re.compile(r"^Total\s+compte")
 PAT_DEBUT = re.compile(r"^(\d{2}/\d{2}/\d{2}\s|TN-\d{6}\s|\d{7}T\s|Cumuls?\s+avant|Total\s)")
 
 
+PAT_RAN_NUL = re.compile(r"\bRAN\s+Report\s+à\s+nouveau", re.I)   # report à zéro : aucun montant imprimé
+
+
 def fusionner_lignes(lines: Iterable[str]) -> List[str]:
     """Recolle un libellé coupé sur 2 lignes (1re ligne SANS aucun montant).
     Une ligne avec un seul montant est valide : Sage n'imprime pas le solde cumulé quand il est nul."""
@@ -135,6 +138,8 @@ def parser_lignes(lines: Iterable[str]):
         if m:
             amts = extract_amounts(line)
             if not amts:
+                if PAT_RAN_NUL.search(line):      # report à nouveau à zéro : Sage n'imprime aucun montant (le total du tiers le confirme)
+                    continue
                 meta["ignorees"].append({"code": code, "ligne": line[:120], "raison": "aucun montant lisible"})
                 continue
             vals = [a for a, _ in amts]
