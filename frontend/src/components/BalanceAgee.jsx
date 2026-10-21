@@ -33,7 +33,7 @@ const BalanceAgee = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [data, setData] = useState(null);
-  const [vue, setVue] = useState('debiteurs');
+  const [vue, setVue] = useState('tous');
   const [search, setSearch] = useState('');
   const [open, setOpen] = useState(null);
   const [showWarn, setShowWarn] = useState(false);
@@ -49,7 +49,7 @@ const BalanceAgee = () => {
   // Ouvre une balance enregistrée (depuis l'historique) : même écran d'analyse que juste après la génération
   const openRapport = async (id) => {
     const res = await ApiService.getBalanceAgeeRapport('clients', id);
-    setData(res); setOpen(null); setSearch(''); setVue('debiteurs'); setShowWarn(false);
+    setData(res); setOpen(null); setSearch(''); setVue('tous'); setShowWarn(false);
     setStep('detail');
   };
 
