@@ -175,36 +175,43 @@ def get_similarity_ratio(a: str, b: str) -> float:
     return SequenceMatcher(None, a, b).ratio()
 
 
-def parse_sage_file(file_bytes: bytes, filename: str) -> List[SageMovement]:
+def parse_sage_file(file_bytes: bytes, filename: str, return_metadata: bool = False):
     """Parse un fichier Grand Livre Sage (CSV ou Excel) et retourne une liste de SageMovement."""
     df = _read_sage_dataframe(file_bytes, filename)
     col_mapping = _map_sage_columns(df)
 
     movements = []
+    ignored = []
+    ignored_count = 0
+    def skip(reason, row):
+        nonlocal ignored_count
+        ignored_count += 1
+        if len(ignored) < 25:
+            ignored.append({"raison": reason, "ligne": int(row.name) + 1})
     for _, row in df.iterrows():
         # Ignorer les lignes de totaux ou de report à nouveau cumulé si elles ne contiennent pas de code compte valide
         code = str(row.get(col_mapping.get("code_compte")) or "").strip()
         if not code or code.lower() == "nan" or "total" in code.lower():
-            continue
+            skip("compte absent, total ou report", row); continue
 
         source_label = str(row.get(col_mapping.get("libelle_ecriture")) or "").strip()
         if any(pattern in _normalize_text(source_label) for pattern in SAGE_OPENING_LABELS):
-            continue
+            skip("écriture d'ouverture", row); continue
 
         date_val = _parse_date(row.get(col_mapping.get("date_ecriture")))
         if not date_val:
-            continue
+            skip("date illisible", row); continue
 
         debit = _parse_amount(row.get(col_mapping.get("debit")))
         credit = _parse_amount(row.get(col_mapping.get("credit")))
 
         # Ignorer les lignes vides
         if debit == 0 and credit == 0:
-            continue
+            skip("montant nul", row); continue
 
         # Ignorer les lignes qui contiennent à la fois du débit et du crédit (ex: cumuls/soldes de report)
         if debit > 0 and credit > 0:
-            continue
+            skip("débit et crédit présents simultanément", row); continue
 
         lib_compte = str(row.get(col_mapping.get("libelle_compte")) or "").strip()
         jnl = str(row.get(col_mapping.get("journal")) or "").strip() or "N/A"
@@ -228,17 +235,22 @@ def parse_sage_file(file_bytes: bytes, filename: str) -> List[SageMovement]:
             amount=amount
         ))
 
+    if return_metadata:
+        return movements, {"source": len(df.index), "ignored": ignored_count, "details": ignored}
     return movements
 
 
-def parse_bank_file(file_bytes: bytes, filename: str, file_type: str) -> List[BankMovement]:
+def parse_bank_file(file_bytes: bytes, filename: str, file_type: str, return_metadata: bool = False):
     """Parse le relevé bancaire (PDF, Excel, CSV) et retourne une liste de BankMovement."""
     df = _read_bank_dataframe(file_bytes, filename, file_type)
     extracted = _extract_movements(df)
     
     movements = []
+    ignored = []
     for m in extracted:
         if any(pattern in _normalize_text(m.get("libelle")) for pattern in BANK_OPENING_LABELS):
+            if len(ignored) < 25:
+                ignored.append({"raison": "solde d'ouverture", "libelle": m.get("libelle")})
             continue
         # Montant directionnel pour le relevé bancaire :
         # Crédit (inflow) = positif (+), Débit (outflow) = négatif (-)
@@ -254,6 +266,8 @@ def parse_bank_file(file_bytes: bytes, filename: str, file_type: str) -> List[Ba
             amount=amount
         ))
         
+    if return_metadata:
+        return movements, {"source": len(df.index), "ignored": max(0, len(df.index) - len(movements)), "details": ignored}
     return movements
 
 

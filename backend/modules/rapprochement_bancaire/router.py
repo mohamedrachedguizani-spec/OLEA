@@ -90,11 +90,14 @@ def compare_files(
 
     # Le compte et la période décrivent le rapprochement, sans réduire les
     # mouvements effectivement présents dans les deux fichiers importés.
-    sage_movements = parse_sage_file(sage_bytes, sage_file.filename)
-    bank_movements = parse_bank_file(
+    sage_movements, sage_meta = parse_sage_file(sage_bytes, sage_file.filename, return_metadata=True)
+    bank_movements, bank_meta = parse_bank_file(
         bank_bytes,
         bank_file.filename,
         bank_file.content_type or ""
+        , 
+        return_metadata=True
+
     )
     if not sage_movements:
         raise HTTPException(
@@ -106,6 +109,27 @@ def compare_files(
             status_code=400,
             detail="Aucun mouvement bancaire exploitable n'a été trouvé dans le relevé importé.",
         )
+
+    def extraction_control(filename, file_type, movements, metadata, label):
+        total_debit = round(sum(float(item.debit or 0) for item in movements), 3)
+        total_credit = round(sum(float(item.credit or 0) for item in movements), 3)
+        return {
+            "statut": "OK",
+            "fichier": filename,
+            "format_detecte": (filename.rsplit('.', 1)[-1] if '.' in filename else file_type or "unknown").upper(),
+            "lignes_source": metadata.get("source", len(movements)),
+            "lignes_extraites": len(movements),
+            "lignes_ignorees": metadata.get("ignored", 0),
+            "total_debit": total_debit,
+            "total_credit": total_credit,
+            "messages": ([f"{label} analysé avec succès."] + ([f"{metadata.get('ignored', 0)} ligne(s) ignorée(s) ou non interprétée(s)."] if metadata.get("ignored", 0) else [])),
+            "details": metadata.get("details", []),
+        }
+
+    extraction_controls = [
+        extraction_control(sage_file.filename, sage_file.content_type, sage_movements, sage_meta, "Grand Livre Sage"),
+        extraction_control(bank_file.filename, bank_file.content_type, bank_movements, bank_meta, "Relevé bancaire"),
+    ]
 
     # Configurer les options par défaut
     options = ReconciliationOptions(
@@ -138,6 +162,7 @@ def compare_files(
         opening_status=opening_status,
         **balance_control,
     )
+    result.controle_extraction = extraction_controls
 
     with db.get_cursor() as cursor:
         cursor.execute(

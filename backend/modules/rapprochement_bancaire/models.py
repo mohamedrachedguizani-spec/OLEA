@@ -1,6 +1,7 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date, datetime
 from typing import List, Optional
+from modules.saisie_bancaire.models import ExtractionControl
 
 class ReconciliationOptions(BaseModel):
     date_tolerance_days: int = 3
@@ -85,6 +86,7 @@ class ReconciliationResult(BaseModel):
     sage_only: List[SageMovement]
     discrepancies: List[DiscrepancyPair]
     context: Optional[ReconciliationContext] = None
+    controle_extraction: List[ExtractionControl] = Field(default_factory=list)
 
 
 class ReconciliationPdfRequest(BaseModel):

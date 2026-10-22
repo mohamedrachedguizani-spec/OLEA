@@ -16,6 +16,7 @@ import ApiService from '../services/api';
 import './BalanceAgee.css';   // badge de l'onglet, barre d'actions et fenêtre de confirmation partagés avec les balances âgées
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
+import ExtractionControlModal from './ExtractionControlModal';
 
 const getCurrentPeriod = () => {
     const today = new Date();
@@ -136,6 +137,7 @@ function RapprochementBancaire({ navigationTarget }) {
 
     // Reconciliation results
     const [result, setResult] = useState(null);
+    const [showExtractionControl, setShowExtractionControl] = useState(false);
     const [activeTab, setActiveTab] = useState('reconciled'); // 'reconciled' | 'discrepancies' | 'bank_only' | 'sage_only'
     const refreshTotal = () => {
         if (!canRead) return;
@@ -181,6 +183,7 @@ function RapprochementBancaire({ navigationTarget }) {
             .then((data) => {
                 if (cancelled) return;
                 setResult(data);
+                setShowExtractionControl(false);
                 if (data.context?.bank_journal) setBankJournal(data.context.bank_journal);
                 if (data.context?.period) setPeriod(data.context.period);
                 setStep(2);
@@ -318,6 +321,7 @@ function RapprochementBancaire({ navigationTarget }) {
         try {
             const data = await ApiService.compareReconciliation(formData);
             setResult(data);
+            setShowExtractionControl(Boolean(data?.controle_extraction?.length));
             setSuccess('Rapprochement effectué avec succès.');
             setStep(2);
             setHistoryPage(1);
@@ -335,6 +339,7 @@ function RapprochementBancaire({ navigationTarget }) {
         setBankJournal('');
         setPeriod(getCurrentPeriod());
         setResult(null);
+        setShowExtractionControl(false);
         setError('');
         setSuccess('');
         setFilterQuery('');
@@ -398,6 +403,7 @@ function RapprochementBancaire({ navigationTarget }) {
                 return;
             }
             setResult(data);
+            setShowExtractionControl(false);
             setBankJournal(data.context?.bank_journal || '');
             setPeriod(data.context?.period || period);
             setActiveTab('reconciled');
@@ -1101,6 +1107,11 @@ function RapprochementBancaire({ navigationTarget }) {
                 </div>
             )}
             {workspaceView === 'new' && step === 2 && <div className="ba-card" style={{ padding: '1.5rem' }}>{renderStep2()}</div>}
+            <ExtractionControlModal
+                controls={showExtractionControl ? result?.controle_extraction : null}
+                title="Contrôle d’extraction du rapprochement"
+                onClose={() => setShowExtractionControl(false)}
+            />
         </div>
     );
 }

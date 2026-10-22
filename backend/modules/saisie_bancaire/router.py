@@ -25,6 +25,7 @@ from .models import (
     SessionEntry,
     SaveSessionResponse,
     PendingSession,
+    ExtractionControl,
 )
 
 
@@ -79,6 +80,21 @@ def upload_bank_reconciliation(
         raise HTTPException(status_code=400, detail="Format non supporté")
 
     movements = _extract_movements(df)
+    total_debit = round(sum(float(m.get("debit") or 0) for m in movements), 3)
+    total_credit = round(sum(float(m.get("credit") or 0) for m in movements), 3)
+    lignes_source = int(len(df.index))
+    lignes_ignorees = max(0, lignes_source - len(movements))
+    controle_extraction = ExtractionControl(
+        statut="WARNING" if lignes_ignorees else "OK",
+        fichier=file_name,
+        format_detecte=(extension or file_type or "unknown").upper(),
+        lignes_source=lignes_source,
+        lignes_extraites=len(movements),
+        lignes_ignorees=lignes_ignorees,
+        total_debit=total_debit,
+        total_credit=total_credit,
+        messages=([f"{lignes_ignorees} ligne(s) ignorée(s) ou non interprétée(s)."] if lignes_ignorees else []),
+    )
 
     _DEVISE_MAP = {"UB2": "EUR", "UB3": "USD"}
     devise_source = _DEVISE_MAP.get(compte_banque.strip().upper())
@@ -169,6 +185,7 @@ def upload_bank_reconciliation(
         "batch": batch_row,
         "total_mouvements": len(movements),
         "preview": preview,
+        "controle_extraction": controle_extraction,
     }
 
 

@@ -1,6 +1,23 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import date, datetime
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Any
+
+
+class ExtractionControl(BaseModel):
+    statut: str = "OK"
+    fichier: Optional[str] = None
+    format_detecte: Optional[str] = None
+    lignes_source: int = 0
+    lignes_extraites: int = 0
+    lignes_ignorees: int = 0
+    total_debit: float = 0.0
+    total_credit: float = 0.0
+    solde_initial: Optional[float] = None
+    solde_final: Optional[float] = None
+    solde_final_calcule: Optional[float] = None
+    ecart: Optional[float] = None
+    messages: List[str] = Field(default_factory=list)
+    details: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class BankReconciliationBatchBase(BaseModel):
@@ -42,6 +59,7 @@ class BankReconciliationUploadResponse(BaseModel):
     batch: BankReconciliationBatch
     total_mouvements: int
     preview: List[BankReconciliationMovement]
+    controle_extraction: Optional[ExtractionControl] = None
 
 
 class BankReconciliationSageGenerationRequest(BaseModel):

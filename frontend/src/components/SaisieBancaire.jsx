@@ -23,6 +23,7 @@ import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
 import './BalanceAgee.css';   // styles de liste / barre d'actions partagés avec les balances âgées
+import ExtractionControlModal from './ExtractionControlModal';
 
 function SaisieBancaire({ navigationTarget }) {
     const { user: currentUser, has } = useAuth();
@@ -40,6 +41,8 @@ function SaisieBancaire({ navigationTarget }) {
     const [batch, setBatch] = useState(null);
     const [movements, setMovements] = useState([]);
     const [showPreview, setShowPreview] = useState(false);
+    const [extractionControl, setExtractionControl] = useState(null);
+    const [showExtractionControl, setShowExtractionControl] = useState(false);
     const [activeCompteInput, setActiveCompteInput] = useState(null);
     const [activeTiersInput, setActiveTiersInput] = useState(null);
     const [dragActive, setDragActive] = useState(false);
@@ -156,6 +159,7 @@ function SaisieBancaire({ navigationTarget }) {
     // --- Reprendre une session ---
     const handleResumeSession = useCallback(async (sessionBatch) => {
         setShowResumeModal(false);
+        setShowExtractionControl(false);
         setLoading(true);
         try {
             const batchData = await ApiService.getBankReconciliationBatch(sessionBatch.id);
@@ -281,6 +285,7 @@ function SaisieBancaire({ navigationTarget }) {
         setLoading(true);
         try {
             const data = await ApiService.uploadBankReconciliation(payload);
+            setExtractionControl(data?.controle_extraction || null);
             setBatch(data?.batch || null);
             const batchId = data?.batch?.id;
             if (batchId) {
@@ -291,6 +296,7 @@ function SaisieBancaire({ navigationTarget }) {
             }
             setPage(1);
             setStep(2);
+            setShowExtractionControl(Boolean(data?.controle_extraction));
             setMessage('Fichier importé avec succès.');
         } catch (err) {
             setError(err.message || 'Erreur lors de l’import.');
@@ -1227,6 +1233,11 @@ function SaisieBancaire({ navigationTarget }) {
             )}
             <PreviewModal />
             <ResumeSessionModal />
+            <ExtractionControlModal
+                controls={showExtractionControl ? extractionControl : null}
+                title="Contrôle d’extraction du relevé bancaire"
+                onClose={() => setShowExtractionControl(false)}
+            />
         </div>
     );
 }
