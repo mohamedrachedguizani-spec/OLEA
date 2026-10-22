@@ -1,5 +1,6 @@
 // src/App.jsx
 import React, { useState, useCallback, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import useLiveUpdates from './hooks/useLiveUpdates';
 import useNotifications from './hooks/useNotifications';
@@ -28,10 +29,39 @@ const APP_TABS = [
     'balance-agee', 'balance-fournisseur', 'configuration', 'users', 'roles', 'audit',
 ];
 
+const TAB_PATHS = {
+    dashboard: '/',
+    saisie: '/saisie-caisse',
+    export: '/export',
+    rapprochement: '/saisie-bancaire',
+    rapprochement_bancaire: '/rapprochement-bancaire',
+    'sage-bfc': '/sage-bfc',
+    reporting: '/reporting',
+    'balance-agee': '/balance-agee',
+    'balance-fournisseur': '/balance-fournisseur',
+    configuration: '/configuration',
+    users: '/users',
+    roles: '/roles',
+    audit: '/audit',
+};
+
+const PATH_TABS = Object.entries(TAB_PATHS).reduce((result, [tab, path]) => {
+    result[path] = tab;
+    return result;
+}, {});
+
+function tabFromPath(pathname) {
+    return PATH_TABS[pathname] || 'dashboard';
+}
+
 function App() {
     const { user, loading, has, hasPermission } = useAuth();
+    const location = useLocation();
+    const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState(() => {
         if (typeof window === 'undefined') return 'dashboard';
+        const routeTab = tabFromPath(window.location.pathname);
+        if (window.location.pathname !== '/' || routeTab !== 'dashboard') return routeTab;
         const storedTab = window.localStorage.getItem(ACTIVE_TAB_STORAGE_KEY);
         return APP_TABS.includes(storedTab) ? storedTab : 'dashboard';
     });
@@ -51,10 +81,23 @@ function App() {
     const [notificationTarget, setNotificationTarget] = useState(null);
     const [balanceTarget, setBalanceTarget] = useState(null);
 
+    const navigateToTab = useCallback((tab, params = {}) => {
+        const path = TAB_PATHS[tab] || TAB_PATHS.dashboard;
+        const search = new URLSearchParams(params).toString();
+        navigate(search ? `${path}?${search}` : path);
+        setActiveTab(tab);
+    }, [navigate]);
+
+    // L'URL est la source de vérité : un accès direct ou les boutons précédent/suivant
+    // mettent aussi à jour l'onglet actif utilisé par le composant Sidebar.
+    useEffect(() => {
+        setActiveTab(tabFromPath(location.pathname));
+    }, [location.pathname]);
+
     const openMappingConfiguration = useCallback(() => {
         setConfigurationInitialTab('mapping');
-        setActiveTab('configuration');
-    }, []);
+        navigateToTab('configuration');
+    }, [navigateToTab]);
 
     const canAccessTab = useCallback((tab) => ({
         dashboard: has('dashboard.read') || has('admin.dashboard.read'),
@@ -91,8 +134,8 @@ function App() {
             entityType: notification.entity_type,
             entityId: notification.entity_id,
         });
-        setActiveTab(targetTab);
-    }, [canAccessTab]);
+        navigateToTab(targetTab, Object.fromEntries(targetUrl.searchParams.entries()));
+    }, [canAccessTab, navigateToTab]);
 
     const consumeNotificationTarget = useCallback((targetKey) => {
         setNotificationTarget((current) => current?.key === targetKey ? null : current);
@@ -101,8 +144,8 @@ function App() {
     const openBalanceTarget = useCallback((tab, params = {}) => {
         if (!canAccessTab(tab)) return;
         setBalanceTarget({ key: `${tab}-${Date.now()}`, tab, params });
-        setActiveTab(tab);
-    }, [canAccessTab]);
+        navigateToTab(tab, params);
+    }, [canAccessTab, navigateToTab]);
 
     const consumeBalanceTarget = useCallback((targetKey) => {
         setBalanceTarget((current) => current?.key === targetKey ? null : current);
@@ -111,8 +154,8 @@ function App() {
     useEffect(() => {
         if (!user || canAccessTab(activeTab)) return;
         const firstAllowed = APP_TABS.find(canAccessTab);
-        if (firstAllowed) setActiveTab(firstAllowed);
-    }, [activeTab, canAccessTab, user]);
+        if (firstAllowed) navigateToTab(firstAllowed);
+    }, [activeTab, canAccessTab, navigateToTab, user]);
 
     useEffect(() => {
         if (!user || !canAccessTab(activeTab) || typeof window === 'undefined') return;
@@ -197,7 +240,7 @@ function App() {
         <div className={`app ${darkMode ? 'dark-mode' : 'light-mode'}`}>
             <Sidebar 
                 activeTab={activeTab}
-                setActiveTab={setActiveTab}
+                setActiveTab={navigateToTab}
                 darkMode={darkMode}
                 setDarkMode={setDarkMode}
                 sidebarOpen={sidebarOpen}
