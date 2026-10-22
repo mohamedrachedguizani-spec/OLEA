@@ -2,10 +2,10 @@
    Balance Âgée Client – styles du module
    Utilise les variables du thème OLEA (index.css)
    ============================================ */
-.ba { max-width: 1400px; margin: 0 auto; padding: 0 0 1.5rem; animation: ba-in .4s ease-out; --b0:#1f9d55; --b1:#d4a528; --b2:#e07b2e; --b3:#b7482b; --b4:#7a2616; --adv:#6a727b; }
+.ba { width: 100%; max-width: 1400px; min-width: 0; margin: 0 auto; padding: 0 0 1.5rem; overflow-x: hidden; animation: ba-in .4s ease-out; --b0:#1f9d55; --b1:#d4a528; --b2:#e07b2e; --b3:#b7482b; --b4:#7a2616; --adv:#6a727b; }
 @keyframes ba-in { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
 
-.ba-card { background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1.1rem 1.25rem; margin-bottom: 1.25rem; }
+.ba-card { min-width: 0; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 1.1rem 1.25rem; margin-bottom: 1.25rem; }
 .ba-card-title { margin: 0 0 .9rem; font-size: 1rem; font-weight: 700; color: var(--text-primary); display:flex; align-items:center; gap:.5rem; }
 .ba-card-title small { font-weight: 400; color: var(--text-muted); font-size: .8rem; }
 
@@ -36,11 +36,15 @@
 
 /* KPI */
 .ba-kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap:1rem; margin-bottom:1.25rem; }
-.ba-kpi { background: var(--bg-card); border:1px solid var(--border-light); border-left:4px solid var(--k, var(--border-default)); border-radius: var(--radius-md); padding:.9rem 1.1rem; transition: box-shadow var(--transition-base), transform var(--transition-fast); }
+.ba-kpi { background: var(--bg-card); border:1px solid var(--border-light); border-top:4px solid var(--k, var(--border-default)); border-radius: var(--radius-md); padding:.9rem 1.1rem; transition: box-shadow var(--transition-base), transform var(--transition-fast); }
 .ba-kpi:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); }
 .ba-kpi-label { font-size:.72rem; text-transform:uppercase; letter-spacing:.05em; color: var(--text-muted); font-weight:600; }
 .ba-kpi-value { font-size:1.4rem; font-weight:700; color: var(--text-primary); margin:.25rem 0 .1rem; font-variant-numeric: tabular-nums; }
 .ba-kpi-sub { font-size:.78rem; color: var(--text-muted); }
+.ba-kpis--fournisseurs { grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; }
+.ba-kpis--fournisseurs .ba-kpi { min-width: 0; }
+.ba-kpis--fournisseurs .ba-kpi-label,
+.ba-kpis--fournisseurs .ba-kpi-sub { overflow-wrap: anywhere; }
 
 /* Répartition + Top risques */
 .ba-grid { display:grid; grid-template-columns: 1.6fr 1fr; gap:1.25rem; margin-bottom:1.25rem; }
@@ -100,6 +104,11 @@
 @media (max-width: 960px) {
   .ba-import { grid-template-columns: 1fr; }
   .ba-grid { grid-template-columns: 1fr; }
+  .ba-kpis--fournisseurs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .ba-kpis--fournisseurs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ───────── Contrôle d'extraction ───────── */
@@ -127,6 +136,28 @@
 .ba-ctrl-yes { color: var(--b0); font-weight: 800; }
 .ba-ctrl-no { color: var(--b3); font-weight: 800; }
 
+/* Contrôle affiché après une nouvelle génération */
+.ba-control-modal-overlay { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1.5rem; background: rgba(17, 24, 39, .64); backdrop-filter: blur(5px); animation: ba-control-overlay-in .2s ease-out; }
+.ba-control-modal { position: relative; width: min(1100px, 95vw); max-height: min(900px, 94vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid rgba(128, 128, 128, .22); border-radius: 16px; background: var(--bg-card); box-shadow: 0 24px 70px rgba(0, 0, 0, .3); animation: ba-control-modal-in .24s ease-out; }
+.ba-control-modal-header { display: flex; align-items: flex-start; gap: 1rem; padding: 1.4rem 1.5rem 1.2rem; border-bottom: 1px solid var(--border-light); }
+.ba-control-modal-icon { display: grid; place-items: center; width: 46px; height: 46px; flex: 0 0 46px; border-radius: 50%; font-size: 1.35rem; font-weight: 800; }
+.ba-control-modal-icon.ok { background: rgba(31, 157, 85, .13); color: #168047; }
+.ba-control-modal-icon.ko { background: rgba(224, 123, 46, .15); color: #b45c1d; }
+.ba-control-modal-heading { flex: 1; min-width: 0; }
+.ba-control-modal-heading > span { display: block; margin-bottom: .2rem; color: #168047; font-size: .72rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+.ba-control-modal-heading h2 { margin: 0; color: var(--text-primary); font-size: 1.22rem; }
+.ba-control-modal-heading p { margin: .35rem 0 0; color: var(--text-secondary); font-size: .86rem; }
+.ba-control-modal-close { display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 9px; background: transparent; color: var(--text-muted); font-size: 1.7rem; line-height: 1; cursor: pointer; }
+.ba-control-modal-close:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.ba-control-modal-body { min-height: 0; overflow: auto; padding: 1.25rem 1.5rem 0; }
+.ba-control-modal-body .ba-ctrl { margin-bottom: 1rem; box-shadow: none; }
+.ba-control-modal-footer { display: flex; justify-content: flex-end; gap: .7rem; padding: 1rem 1.5rem; border-top: 1px solid var(--border-light); background: var(--bg-secondary); }
+.ba-control-modal-primary { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; padding: .65rem 1rem; border: 1px solid #168047; border-radius: 8px; background: #168047; color: #fff; cursor: pointer; font-size: .84rem; font-weight: 650; }
+.ba-control-modal-primary:hover { background: #116a3a; }
+@keyframes ba-control-overlay-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ba-control-modal-in { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: none; } }
+@media (max-width: 650px) { .ba-control-modal-overlay { padding: .75rem; } .ba-control-modal { max-height: 96vh; } .ba-control-modal-header { padding: 1.1rem 1rem 1rem; } .ba-control-modal-body { padding: 1rem .75rem 0; } .ba-control-modal-footer { flex-direction: column-reverse; padding: .75rem; } .ba-control-modal-primary { width: 100%; } }
+
 /* ───────── Export / impression ───────── */
 .ba-actions { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .6rem; margin-bottom: 1rem; }
 .ba-actions-right { display: flex; gap: .6rem; margin-left: auto; }
@@ -139,7 +170,9 @@
 /* ───────── Historique des balances ───────── */
 .ba-hist-title { color: var(--text-primary); }
 .ba-hist-table td:nth-child(5), .ba-hist-table th:nth-child(5) { text-align: right; }
-.ba-hist-actions { display: flex; gap: .4rem; justify-content: flex-end; white-space: nowrap; }
+.ba-hist-actions-heading,
+.ba-hist-actions-cell { text-align: center !important; }
+.ba-hist-actions { display: flex; align-items: center; justify-content: center; gap: .4rem; width: 100%; white-space: nowrap; }
 .ba-hist-del:hover:not(:disabled) { color: var(--b3); border-color: var(--b3); }
 .ba-confirm { text-align: center; }
 .ba-confirm p { margin: .4rem 0; font-size: .88rem; color: var(--text-secondary); }

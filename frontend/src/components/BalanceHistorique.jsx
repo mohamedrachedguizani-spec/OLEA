@@ -99,7 +99,7 @@ const BalanceHistorique = ({ kind = 'clients', onOpen, onImport, onTotal }) => {
                 <th>Par</th>
                 <th>{L.tiers}</th>
                 <th>Contrôle</th>
-                <th>Actions</th>
+                <th className="ba-hist-actions-heading">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -115,8 +115,8 @@ const BalanceHistorique = ({ kind = 'clients', onOpen, onImport, onTotal }) => {
                       {r.controle_statut === 'OK' ? '✓ Conforme' : r.controle_statut ? '! Anomalies' : '—'}
                     </span>
                   </td>
-                  <td>
-                    <div className="reco-history-actions">
+                  <td className="ba-hist-actions-cell">
+                    <div className="ba-hist-actions">
                       <button type="button" className="reco-icon-button" title="Consulter" aria-label="Consulter la balance"
                         disabled={Boolean(openingId)} onClick={(e) => { e.stopPropagation(); ouvrir(r.id); }}>
                         {openingId === r.id ? <span className="spinner" /> : <FiEye />}

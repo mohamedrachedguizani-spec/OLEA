@@ -4,8 +4,8 @@ import React, { useState } from 'react';
 
 const fmt = (n) => new Intl.NumberFormat('fr-TN', { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(n || 0);
 
-const BalanceControle = ({ controle, tiers = 'clients' }) => {
-  const [open, setOpen] = useState(false);
+const BalanceControle = ({ controle, tiers = 'clients', initialOpen = false }) => {
+  const [open, setOpen] = useState(initialOpen);
   const [seulementEcarts, setSeulementEcarts] = useState(false);
   if (!controle) return null;
 

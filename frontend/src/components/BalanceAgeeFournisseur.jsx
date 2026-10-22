@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import BalanceUpload, { BalanceHeader } from './BalanceUpload';
-import BalanceControle from './BalanceControle';
+import BalanceControleModal from './BalanceControleModal';
 import BalanceActions from './BalanceActions';
 import BalanceHistorique from './BalanceHistorique'; // Ajustez le chemin
 import './BalanceAgee.css';
@@ -39,6 +39,7 @@ const BalanceAgeeFournisseur = ({ navigationTarget, onNavigationConsumed }) => {
   const [showWarn, setShowWarn] = useState(false);
   const [sort, setSort] = useState({ key: 'total_solde', dir: -1 });
   const [step, setStep] = useState(canGenerate ? 'upload' : 'list'); // upload | list | detail (consultation seule : on arrive sur la liste)
+  const [showControleModal, setShowControleModal] = useState(false);
 
   const refreshCount = () => {
     if (!canRead) return;
@@ -64,6 +65,7 @@ const BalanceAgeeFournisseur = ({ navigationTarget, onNavigationConsumed }) => {
   const openRapport = async (id) => {
     const res = await ApiService.getBalanceAgeeRapport('fournisseurs', id);
     setData(res); setOpen(null); setSearch(''); setVue('tous'); setShowWarn(false);
+    setShowControleModal(false);
     setStep('detail');
   };
 
@@ -72,7 +74,9 @@ const BalanceAgeeFournisseur = ({ navigationTarget, onNavigationConsumed }) => {
     if (!file) return setError('Veuillez sélectionner un fichier PDF.');
     setLoading(true); setError(''); setData(null); setOpen(null);
     try {
-      setData(await ApiService.parseBalanceAgeeFournisseur(file, dateReference || null));
+      const result = await ApiService.parseBalanceAgeeFournisseur(file, dateReference || null);
+      setData(result);
+      setShowControleModal(Boolean(result.controle));
       setStep('detail');   // la balance vient d'être enregistrée : on affiche son analyse
       refreshCount();
     } catch (err) {
@@ -153,7 +157,7 @@ const BalanceAgeeFournisseur = ({ navigationTarget, onNavigationConsumed }) => {
       {step === 'detail' && data && (
         <>
           <BalanceActions kind="fournisseurs" data={data} fichier={data.fichier || (file ? file.name : null)} onBack={canRead ? () => setStep('list') : undefined} />
-          <BalanceControle controle={data.controle} tiers="fournisseurs" />
+          {showControleModal && <BalanceControleModal controle={data.controle} tiers="fournisseurs" onClose={() => setShowControleModal(false)} />}
 
           {data.avertissements?.length > 0 && (
             <div className="ba-warn">
@@ -165,7 +169,7 @@ const BalanceAgeeFournisseur = ({ navigationTarget, onNavigationConsumed }) => {
           )}
 
           {/* ── 2. Synthèse ── */}
-          <div className="ba-kpis ba-kpis--compact">
+          <div className="ba-kpis ba-kpis--fournisseurs">
             <div className="ba-kpi" style={{ '--k': 'var(--primary-500)' }}>
               <div className="ba-kpi-label">Reste à payer (401 net d'avances)</div>
               <div className="ba-kpi-value">{fmt(creances)}</div>
