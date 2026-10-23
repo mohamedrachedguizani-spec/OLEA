@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import useLiveUpdates from './hooks/useLiveUpdates';
@@ -55,7 +55,7 @@ function tabFromPath(pathname) {
 }
 
 function App() {
-    const { user, loading, has, hasPermission } = useAuth();
+    const { user, loading, has, hasPermission, logout } = useAuth();
     const location = useLocation();
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState(() => {
@@ -80,6 +80,13 @@ function App() {
     const [configurationInitialTab, setConfigurationInitialTab] = useState('comptes');
     const [notificationTarget, setNotificationTarget] = useState(null);
     const [balanceTarget, setBalanceTarget] = useState(null);
+    const explicitLogout = useRef(false);
+
+    const handleLogout = useCallback(async () => {
+        explicitLogout.current = true;
+        navigate('/login', { replace: true });
+        await logout();
+    }, [logout, navigate]);
 
     const navigateToTab = useCallback((tab, params = {}) => {
         const path = TAB_PATHS[tab] || TAB_PATHS.dashboard;
@@ -93,6 +100,26 @@ function App() {
     useEffect(() => {
         setActiveTab(tabFromPath(location.pathname));
     }, [location.pathname]);
+
+    // Les écrans protégés redirigent vers la connexion. Après authentification,
+    // l'utilisateur revient sur la page qu'il essayait d'ouvrir.
+    useEffect(() => {
+        if (loading) return;
+        if (!user && location.pathname !== '/login' && !explicitLogout.current) {
+            const currentUrl = `${location.pathname}${location.search}${location.hash}`;
+            const loginUrl = currentUrl === '/' ? '/login' : `/login?redirect=${encodeURIComponent(currentUrl)}`;
+            navigate(loginUrl, { replace: true });
+        } else if (user && location.pathname === '/login') {
+            navigate('/', { replace: true });
+        }
+    }, [loading, user, location.pathname, location.search, location.hash, navigate]);
+
+    const handleLoginSuccess = useCallback(() => {
+        explicitLogout.current = false;
+        const redirect = new URLSearchParams(location.search).get('redirect');
+        const target = redirect && redirect.startsWith('/') ? redirect : '/';
+        navigate(target, { replace: true });
+    }, [location.search, navigate]);
 
     const openMappingConfiguration = useCallback(() => {
         setConfigurationInitialTab('mapping');
@@ -230,7 +257,7 @@ function App() {
     if (!user) {
         return (
             <div className={`app ${darkMode ? 'dark-mode' : 'light-mode'}`}>
-                <Login />
+                <Login onSuccess={handleLoginSuccess} />
             </div>
         );
     }
@@ -241,6 +268,7 @@ function App() {
             <Sidebar 
                 activeTab={activeTab}
                 setActiveTab={navigateToTab}
+                onLogout={handleLogout}
                 darkMode={darkMode}
                 setDarkMode={setDarkMode}
                 sidebarOpen={sidebarOpen}

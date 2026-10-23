@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import oleaLogo from '../assets/olea-logo.svg';
 
-function Login() {
+function Login({ onSuccess }) {
     const { login } = useAuth();
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
@@ -17,6 +17,7 @@ function Login() {
         setLoading(true);
         try {
             await login(username, password);
+            onSuccess?.();
         } catch (err) {
             setError(err.message || 'Identifiants incorrects');
         } finally {

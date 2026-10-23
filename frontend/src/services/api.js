@@ -99,7 +99,11 @@ class ApiService {
     }
 
     static async getMe() {
-        const response = await ApiService._fetch(`${API_BASE_URL}/auth/me`);
+        // La vérification initiale peut légitimement retourner 401 lorsqu'il
+        // n'existe encore aucune session. Ne pas lancer un refresh dans ce cas.
+        const response = await fetch(`${API_BASE_URL}/auth/me`, {
+            credentials: 'include',
+        });
         if (!response.ok) return null;
         return response.json();
     }

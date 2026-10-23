@@ -265,7 +265,7 @@ function Reporting({ refreshTrigger = 0 }) {
                 <div className="reporting-toolbar-grid">
                     <label>
                         <span>Année</span>
-                        <select value={targetYear} onChange={(e) => setTargetYear(Number(e.target.value))}>
+                        <select value={targetYear ?? ''} onChange={(e) => setTargetYear(Number(e.target.value))}>
                             {availableYears.map((y) => <option key={y} value={y}>{y}</option>)}
                         </select>
                     </label>

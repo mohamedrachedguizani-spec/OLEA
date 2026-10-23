@@ -1,5 +1,5 @@
 // src/contexts/AuthContext.js
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import ApiService from '../services/api';
 
 const AuthContext = createContext(null);
@@ -20,9 +20,14 @@ const MODULE_PERMISSION_PREFIXES = {
 export function AuthProvider({ children }) {
     const [user, setUser] = useState(null);
     const [loading, setLoading] = useState(true);
+    const sessionCheckStarted = useRef(false);
 
     // Vérifier la session au chargement (via cookie httpOnly)
     const checkSession = useCallback(async () => {
+        // React.StrictMode rejoue l'effet en développement. Éviter une double
+        // vérification de session et donc deux réponses 401 identiques.
+        if (sessionCheckStarted.current) return;
+        sessionCheckStarted.current = true;
         try {
             const userData = await ApiService.getMe();
             setUser(userData);

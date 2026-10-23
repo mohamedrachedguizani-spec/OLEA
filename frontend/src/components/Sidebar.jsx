@@ -22,6 +22,7 @@ function Sidebar({
     setSidebarOpen,
     sidebarCollapsed,
     setSidebarCollapsed,
+    onLogout,
 }) {
     const { logout, has, hasPermission } = useAuth();
     const [showPasswordModal, setShowPasswordModal] = useState(false);
@@ -407,7 +408,11 @@ function Sidebar({
                                 {!sidebarCollapsed && <div className="sidebar-dropdown-divider"></div>}
                                 <button
                                     className="sidebar-dropdown-item sidebar-dropdown-logout"
-                                    onClick={() => { setShowSettingsMenu(false); logout(); }}
+                                    onClick={async () => {
+                                        setShowSettingsMenu(false);
+                                        if (onLogout) await onLogout();
+                                        else await logout();
+                                    }}
                                     title="Déconnexion"
                                 >
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16">
