@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactDOM from 'react-dom';
-import { FiShield, FiEye, FiTrash2 } from 'react-icons/fi';
+import { FiShield, FiEye, FiTrash2, FiClock, FiUser, FiTag, FiDatabase } from 'react-icons/fi';
 import ApiService, { API_BASE_URL } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import './sage-bfc/SageBfcParser.css';
@@ -8,6 +8,34 @@ import './BalanceAgee.css';   // cartes, icônes d'action et fenêtre de confirm
 
 const WS_URL = API_BASE_URL.replace(/^http/i, 'ws') + '/ws/live';
 const WS_RECONNECT_DELAY = 3000;
+
+const ACTION_STYLES = {
+    create: { label: 'Création', tone: 'success' },
+    created: { label: 'Création', tone: 'success' },
+    import: { label: 'Import', tone: 'success' },
+    update: { label: 'Modification', tone: 'warning' },
+    updated: { label: 'Modification', tone: 'warning' },
+    delete: { label: 'Suppression', tone: 'danger' },
+    deleted: { label: 'Suppression', tone: 'danger' },
+    login: { label: 'Connexion', tone: 'info' },
+    logout: { label: 'Déconnexion', tone: 'muted' },
+};
+
+const actionMeta = (action) => {
+    const raw = String(action || '').toLowerCase();
+    return ACTION_STYLES[raw] || { label: raw ? raw.replaceAll('_', ' ') : 'Action', tone: 'muted' };
+};
+const displayModule = (module) => String(module || '-').replaceAll('_', ' ');
+const displayEntity = (log) => [log.entity_type, log.entity_id].filter(Boolean).join(' · ') || '-';
+const displayDate = (value) => value ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }) : '-';
+const detailEntries = (detail) => detail && typeof detail === 'object' ? Object.entries(detail) : [];
+const detailSummary = (log) => {
+    const entries = detailEntries(log.detail);
+    if (!entries.length) return displayEntity(log);
+    const [key, value] = entries[0];
+    const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    return `${key.replaceAll('_', ' ')} : ${text}`;
+};
 
 function AuditLogs() {
     const { isSuperAdmin } = useAuth();
@@ -27,6 +55,7 @@ function AuditLogs() {
     const [pages, setPages] = useState(1);
 
     const [selectedLog, setSelectedLog] = useState(null);
+    const [showTechnical, setShowTechnical] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
     const [selectedIds, setSelectedIds] = useState([]);
     const [moduleOptions, setModuleOptions] = useState([]);
@@ -165,6 +194,11 @@ function AuditLogs() {
         }
     };
 
+    const openLog = (log) => {
+        setSelectedLog(log);
+        setShowTechnical(false);
+    };
+
     if (!isSuperAdmin) {
         return (
             <div className="sage-bfc-container fade-in">
@@ -283,7 +317,7 @@ function AuditLogs() {
 
             <div className="ba-card">
             <div className="table-responsive">
-                <table className="olea-table">
+                        <table className="olea-table audit-table">
                     <thead>
                         <tr>
                             <th className="text-center">
@@ -298,25 +332,26 @@ function AuditLogs() {
                             <th>Module</th>
                             <th>Action</th>
                             <th>Entité</th>
+                            <th>Résumé</th>
                             <th className="text-center">Détails</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
+                                <td colSpan="8" style={{ textAlign: 'center', padding: '1rem' }}>
                                     Chargement...
                                 </td>
                             </tr>
                         ) : logs.length === 0 ? (
                             <tr>
-                                <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
+                                <td colSpan="8" style={{ textAlign: 'center', padding: '1rem' }}>
                                     Aucun log trouvé
                                 </td>
                             </tr>
                         ) : (
                             logs.map((log) => (
-                                <tr key={log.id} className="ba-row" onClick={() => setSelectedLog(log)}>
+                                <tr key={log.id} className="ba-row audit-log-row" onClick={() => openLog(log)}>
                                     <td className="text-center" onClick={(e) => e.stopPropagation()}>
                                         <input
                                             type="checkbox"
@@ -324,18 +359,19 @@ function AuditLogs() {
                                             onChange={() => toggleSelectOne(log.id)}
                                         />
                                     </td>
-                                    <td>{log.created_at ? new Date(log.created_at).toLocaleString('fr-FR') : '-'}</td>
-                                    <td>{log.username || log.user_id || '-'}</td>
-                                    <td>{log.module}</td>
-                                    <td>{log.action}</td>
-                                    <td>{[log.entity_type, log.entity_id].filter(Boolean).join(' / ') || '-'}</td>
+                                    <td><strong>{log.created_at ? new Date(log.created_at).toLocaleDateString('fr-FR') : '-'}</strong><small className="audit-muted-line">{log.created_at ? new Date(log.created_at).toLocaleTimeString('fr-FR') : ''}</small></td>
+                                    <td><strong>{log.username || 'Utilisateur inconnu'}</strong><small className="audit-muted-line">ID : {log.user_id || '-'}</small></td>
+                                    <td><span className="audit-module-badge">{displayModule(log.module)}</span></td>
+                                    <td><span className={`audit-action-badge audit-action-${actionMeta(log.action).tone}`}>{actionMeta(log.action).label}</span></td>
+                                    <td>{displayEntity(log)}</td>
+                                    <td className="audit-summary-cell" title={detailSummary(log)}>{detailSummary(log)}</td>
                                     <td className="text-center">
                                         <button
                                             type="button"
                                             className="reco-icon-button"
                                             title="Voir les détails"
                                             aria-label="Voir les détails"
-                                            onClick={(e) => { e.stopPropagation(); setSelectedLog(log); }}
+                                            onClick={(e) => { e.stopPropagation(); openLog(log); }}
                                         >
                                             <FiEye />
                                         </button>
@@ -421,15 +457,49 @@ function AuditLogs() {
             )}
             </div>
 
-            {selectedLog && (
-                <div className="um-modal-overlay" onClick={() => setSelectedLog(null)}>
-                    <div className="um-modal um-modal-wide" onClick={(e) => e.stopPropagation()}>
-                        <div className="um-modal-header">
-                            <h3>Détails du log</h3>
+            {selectedLog && ReactDOM.createPortal(
+                <div className="um-modal-overlay audit-log-overlay" onClick={() => setSelectedLog(null)}>
+                    <div className="um-modal um-modal-wide audit-log-modal" onClick={(e) => e.stopPropagation()}>
+                        <div className="um-modal-header audit-modal-heading">
+                            <div>
+                                <h3>Détails du log</h3>
+                                <div className="audit-modal-subtitle">
+                                    <span className={`audit-action-badge audit-action-${actionMeta(selectedLog.action).tone}`}>{actionMeta(selectedLog.action).label}</span>
+                                    <span>{displayModule(selectedLog.module)}</span>
+                                </div>
+                            </div>
                             <button className="um-modal-close" onClick={() => setSelectedLog(null)}>×</button>
                         </div>
-                        <div className="um-modal-body" style={{ whiteSpace: 'pre-wrap' }}>
-                            {JSON.stringify(selectedLog, null, 2)}
+                        <div className="um-modal-body audit-modal-body">
+                            <div className="audit-detail-grid">
+                                <div className="audit-detail-card"><span><FiClock /> Date</span><strong>{displayDate(selectedLog.created_at)}</strong></div>
+                                <div className="audit-detail-card"><span><FiUser /> Utilisateur</span><strong>{selectedLog.username || 'Utilisateur inconnu'} <small>(ID : {selectedLog.user_id || '-'})</small></strong></div>
+                                <div className="audit-detail-card"><span><FiTag /> Entité</span><strong>{displayEntity(selectedLog)}</strong></div>
+                                <div className="audit-detail-card"><span><FiDatabase /> Adresse IP</span><strong>{selectedLog.ip_address || '-'}</strong></div>
+                            </div>
+                            <section className="audit-detail-section">
+                                <h4>Informations de l’opération</h4>
+                                <div className="audit-detail-list">
+                                    <div><span>Module</span><strong>{displayModule(selectedLog.module)}</strong></div>
+                                    <div><span>Action</span><strong>{actionMeta(selectedLog.action).label}</strong></div>
+                                    <div><span>Type d’entité</span><strong>{selectedLog.entity_type || '-'}</strong></div>
+                                    <div><span>Identifiant</span><strong>{selectedLog.entity_id || '-'}</strong></div>
+                                </div>
+                            </section>
+                            <section className="audit-detail-section">
+                                <h4>Données associées</h4>
+                                {detailEntries(selectedLog.detail).length ? (
+                                    <div className="audit-detail-list">
+                                        {detailEntries(selectedLog.detail).map(([key, value]) => (
+                                            <div key={key}><span>{key.replaceAll('_', ' ')}</span><strong>{typeof value === 'object' ? JSON.stringify(value) : String(value)}</strong></div>
+                                        ))}
+                                    </div>
+                                ) : <p className="audit-empty-detail">Aucune donnée complémentaire.</p>}
+                            </section>
+                            <button type="button" className="audit-technical-toggle" onClick={() => setShowTechnical((value) => !value)}>
+                                {showTechnical ? 'Masquer les données techniques' : 'Afficher les données techniques'}
+                            </button>
+                            {showTechnical && <pre className="audit-json-block">{JSON.stringify(selectedLog, null, 2)}</pre>}
                         </div>
                         <div className="um-modal-footer">
                             <button className="btn btn-secondary" onClick={() => setSelectedLog(null)}>
@@ -437,7 +507,8 @@ function AuditLogs() {
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body
             )}
 
             {confirmDelete && ReactDOM.createPortal(
