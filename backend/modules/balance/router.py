@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Depends, Query, Request
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, StreamingResponse
 
@@ -14,6 +14,7 @@ from .export import build_pdf, build_print_html, build_sections, rapport_clients
 from .service import parser_pdf_sage
 from .models import BalanceAgeeResponse, BalanceExportClients
 from modules.auth.dependencies import require_permission_code
+from modules.audit.service import log_audit_action
 from ws_manager import manager as ws_manager
 
 router = APIRouter(prefix="/balance", tags=["Balance Client"])
@@ -23,6 +24,7 @@ MAX_SIZE = 20 * 1024 * 1024  # 20 Mo
 
 @router.post("/agee/parse", response_model=BalanceAgeeResponse)
 async def parse_balance_agee(
+    request: Request,
     file: UploadFile = File(..., description="Grand Livre Auxiliaire Sage (PDF)"),
     date_reference: Optional[str] = Form(None, description="YYYY-MM-DD (défaut : fin de période du PDF)"),
     delai_paiement: int = Form(0, ge=0, le=365, description="Délai de paiement en jours"),
@@ -59,6 +61,7 @@ async def parse_balance_agee(
             )
         # Conserve la balance dans l'historique (consultation ultérieure) – hors boucle asyncio (accès DB synchrone)
         result = await run_in_threadpool(enregistrer_resultat, "clients", result, file.filename, current_user)
+        log_audit_action(user=current_user, action="generate", module="balance_agee", entity_type="balance_agee_report", entity_id=str(result.rapport_id) if result.rapport_id else None, detail={"date_reference": result.date_reference, "fichier": file.filename, "nb_tiers": result.nb_clients,  "controle_statut": (result.controle or {}).get("statut")}, request=request)
         ws_manager.broadcast("balance_agee", "generated", {"id": result.rapport_id, "date_reference": result.date_reference})
         return result
 
@@ -74,6 +77,7 @@ async def parse_balance_agee(
 
 @router.post("/agee/export-pdf")
 def export_pdf(
+    request: Request,
     payload: BalanceExportClients,
     current_user: dict = Depends(require_permission_code("balance_agee.export_pdf")),
 ):
@@ -85,18 +89,22 @@ def export_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du PDF : {str(e)}")
     filename = f"Balance_Agee_Clients_{payload.analyse.date_reference}.pdf"
+    log_audit_action(user=current_user, action="export_pdf", module="balance_agee", entity_type="balance_agee_report", entity_id=str(payload.analyse.rapport_id) if payload.analyse.rapport_id else None, detail={"date_reference": payload.analyse.date_reference, "fichier": payload.fichier or payload.analyse.fichier, "sections": payload.sections, "inclure_detail": payload.inclure_detail}, request=request)
     return StreamingResponse(output, media_type="application/pdf",
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 
 @router.post("/agee/print-html", response_class=HTMLResponse)
 def print_html(
+    request: Request,
     payload: BalanceExportClients,
     current_user: dict = Depends(require_permission_code("balance_agee.print")),
 ):
     """Version HTML mise en page pour l'impression navigateur (ouverte dans une nouvelle fenêtre)."""
     try:
-        return HTMLResponse(build_print_html(rapport_clients(payload.analyse, payload.fichier, payload.inclure_detail, payload.sections)))
+        output = build_print_html(rapport_clients(payload.analyse, payload.fichier, payload.inclure_detail, payload.sections))
+        log_audit_action(user=current_user, action="print", module="balance_agee", entity_type="balance_agee_report", entity_id=str(payload.analyse.rapport_id) if payload.analyse.rapport_id else None, detail={"date_reference": payload.analyse.date_reference, "fichier": payload.fichier or payload.analyse.fichier, "sections": payload.sections, "inclure_detail": payload.inclure_detail}, request=request)
+        return HTMLResponse(output)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -142,9 +150,11 @@ def detail_historique(
 @router.delete("/agee/historique/{rapport_id}")
 def supprimer_historique(
     rapport_id: int,
+    request: Request,
     current_user: dict = Depends(require_permission_code("balance_agee.delete")),
 ):
     """Supprime définitivement une balance enregistrée."""
     if not supprimer("clients", rapport_id):
         raise HTTPException(status_code=404, detail="Balance introuvable.")
+    log_audit_action(user=current_user, action="delete", module="balance_agee", entity_type="balance_agee_report", entity_id=str(rapport_id), detail={"kind": "clients"}, request=request)
     return {"deleted": True, "id": rapport_id}

@@ -29,14 +29,6 @@ const displayModule = (module) => String(module || '-').replaceAll('_', ' ');
 const displayEntity = (log) => [log.entity_type, log.entity_id].filter(Boolean).join(' · ') || '-';
 const displayDate = (value) => value ? new Date(value).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }) : '-';
 const detailEntries = (detail) => detail && typeof detail === 'object' ? Object.entries(detail) : [];
-const detailSummary = (log) => {
-    const entries = detailEntries(log.detail);
-    if (!entries.length) return displayEntity(log);
-    const [key, value] = entries[0];
-    const text = typeof value === 'object' ? JSON.stringify(value) : String(value);
-    return `${key.replaceAll('_', ' ')} : ${text}`;
-};
-
 function AuditLogs() {
     const { isSuperAdmin } = useAuth();
     const [logs, setLogs] = useState([]);
@@ -332,20 +324,19 @@ function AuditLogs() {
                             <th>Module</th>
                             <th>Action</th>
                             <th>Entité</th>
-                            <th>Résumé</th>
                             <th className="text-center">Détails</th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan="8" style={{ textAlign: 'center', padding: '1rem' }}>
+                                <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
                                     Chargement...
                                 </td>
                             </tr>
                         ) : logs.length === 0 ? (
                             <tr>
-                                <td colSpan="8" style={{ textAlign: 'center', padding: '1rem' }}>
+                                <td colSpan="7" style={{ textAlign: 'center', padding: '1rem' }}>
                                     Aucun log trouvé
                                 </td>
                             </tr>
@@ -364,7 +355,6 @@ function AuditLogs() {
                                     <td><span className="audit-module-badge">{displayModule(log.module)}</span></td>
                                     <td><span className={`audit-action-badge audit-action-${actionMeta(log.action).tone}`}>{actionMeta(log.action).label}</span></td>
                                     <td>{displayEntity(log)}</td>
-                                    <td className="audit-summary-cell" title={detailSummary(log)}>{detailSummary(log)}</td>
                                     <td className="text-center">
                                         <button
                                             type="button"

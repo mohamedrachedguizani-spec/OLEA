@@ -7656,7 +7656,6 @@ body {
 .audit-action-danger { color: #a63c2b; background: #fbe9e5; border: 1px solid #e5b2a8; }
 .audit-action-info { color: #28688b; background: #e8f4fb; border: 1px solid #b7d9e9; }
 .audit-action-muted { color: var(--text-muted); background: var(--bg-muted); border: 1px solid var(--border-light); }
-.audit-summary-cell { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: .78rem; }
 .audit-log-modal { box-sizing: border-box; width: min(640px, calc(100vw - 2rem)); height: min(760px, calc(100vh - 2rem)); max-height: calc(100vh - 2rem); display: flex; flex-direction: column; overflow: hidden; animation: none; opacity: 1; transform: none; }
 .audit-log-overlay { z-index: 12000; backdrop-filter: none; animation: none; }
 .audit-log-modal .um-modal-header,
