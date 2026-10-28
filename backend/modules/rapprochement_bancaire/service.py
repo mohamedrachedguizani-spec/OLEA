@@ -755,6 +755,31 @@ def calculate_reconciliation_balances(
     }
 
 
+def cancel_equal_opposite_movements(movements):
+    """Remove opposite-side pairs of equal amount, regardless of their dates."""
+    debit_indexes = {}
+    credit_indexes = {}
+    for index, movement in enumerate(movements):
+        debit = float(movement.debit or 0)
+        credit = float(movement.credit or 0)
+        if debit > 0 and credit <= 0:
+            debit_indexes.setdefault(round(debit, 3), []).append(index)
+        elif credit > 0 and debit <= 0:
+            credit_indexes.setdefault(round(credit, 3), []).append(index)
+
+    cancelled = set()
+    pair_count = 0
+    for amount in debit_indexes.keys() & credit_indexes.keys():
+        count = min(len(debit_indexes[amount]), len(credit_indexes[amount]))
+        cancelled.update(debit_indexes[amount][:count])
+        cancelled.update(credit_indexes[amount][:count])
+        pair_count += count
+
+    remaining = [movement for index, movement in enumerate(movements) if index not in cancelled]
+    cancelled_movements = [movement for index, movement in enumerate(movements) if index in cancelled]
+    return remaining, cancelled_movements, pair_count
+
+
 def reconcile(
     bank_list: List[BankMovement],
     sage_list: List[SageMovement],
@@ -780,6 +805,10 @@ def reconcile(
         # Trouver tous les candidats Sage qui ont le même montant (à 0.01 près)
         candidates = []
         for sage_idx, sm in enumerate(remaining_sage):
+            # Never match two old unresolved rows to each other. Carryovers are
+            # intended to find their counterpart in the currently imported month.
+            if bm.carryover_origin_result_id is not None and sm.carryover_origin_result_id is not None:
+                continue
             if abs(bm.amount - sm.amount) < 0.01:
                 # Score de confiance de base (le montant correspond)
                 score = 60.0
@@ -837,6 +866,8 @@ def reconcile(
         found_match = False
         
         for sage_idx, sm in enumerate(remaining_sage):
+            if bm.carryover_origin_result_id is not None and sm.carryover_origin_result_id is not None:
+                continue
             diff_days = abs((bm.date_operation - sm.date_ecriture).days)
             if diff_days <= options.date_tolerance_days:
                 norm_b = normalize_libelle(bm.libelle)
@@ -866,10 +897,15 @@ def reconcile(
     total_discrepancy_amt = sum(d.difference for d in discrepancies)
     
     # Calcul des débits et crédits totaux
-    sage_total_debit = sum(sm.debit for sm in sage_list)
-    sage_total_credit = sum(sm.credit for sm in sage_list)
-    bank_total_debit = sum(bm.debit for bm in bank_list)
-    bank_total_credit = sum(bm.credit for bm in bank_list)
+    # Les soldes de clôture reflètent les fichiers du mois sélectionné. Les
+    # montants reportés servent à la comparaison, mais ne doivent pas être
+    # additionnés une seconde fois aux totaux de la période courante.
+    sage_current = [sm for sm in sage_list if sm.carryover_origin_result_id is None]
+    bank_current = [bm for bm in bank_list if bm.carryover_origin_result_id is None]
+    sage_total_debit = sum(sm.debit for sm in sage_current)
+    sage_total_credit = sum(sm.credit for sm in sage_current)
+    bank_total_debit = sum(bm.debit for bm in bank_current)
+    bank_total_credit = sum(bm.credit for bm in bank_current)
 
     # Reste
     bank_only = remaining_bank

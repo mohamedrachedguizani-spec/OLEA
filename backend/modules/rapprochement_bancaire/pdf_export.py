@@ -404,6 +404,38 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
             result, context, sage_closing, bank_closing, context.period_end, styles
         ))
 
+    bank_cancelled = result.cancellations.bank_pairs
+    sage_cancelled = result.cancellations.sage_pairs
+    if bank_cancelled or sage_cancelled:
+        story.extend([
+            Paragraph(
+                escape(
+                    "Paires débit/crédit exclues du tableau de comparaison : "
+                    f"Banque {bank_cancelled}, Sage {sage_cancelled}. "
+                    "Les fichiers et écritures sources restent inchangés."
+                ),
+                styles["subtitle"],
+            ),
+            Spacer(1, 2 * mm),
+        ])
+
+    carryover_rows = [[
+        pair.sage.carryover_origin_period or "Période courante",
+        _date(pair.sage.date_ecriture), pair.sage.libelle_ecriture,
+        _date(pair.bank.date_operation), pair.bank.libelle,
+        _money(pair.sage.amount),
+    ] for pair in result.reconciled if (
+        pair.sage.carryover_origin_period or pair.bank.carryover_origin_period
+    )]
+    if carryover_rows:
+        story.extend(_table(
+            f"Écritures reportées rapprochées ({len(carryover_rows)})",
+            ["Origine", "Date Sage", "Libellé Sage", "Date banque", "Libellé banque", "Montant"],
+            carryover_rows,
+            [24*mm, 20*mm, 75*mm, 20*mm, 100*mm, 24*mm],
+            styles,
+        ))
+
     discrepancy_rows = [[
         _date(pair.sage.date_ecriture), pair.sage.libelle_ecriture, pair.sage.reference_piece,
         _money(pair.sage.amount), _date(pair.bank.date_operation), pair.bank.libelle,

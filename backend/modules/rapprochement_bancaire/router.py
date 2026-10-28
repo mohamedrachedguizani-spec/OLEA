@@ -13,8 +13,11 @@ from modules.notifications.service import notify_module_users
 from modules.notifications.rules import has_important_reconciliation_discrepancy
 from database import db
 from modules.rapprochement_bancaire.models import (
+    BankMovement,
+    SageMovement,
     ReconciliationOptions,
     ReconciliationContext,
+    ReconciliationCancellationSummary,
     ReconciliationPdfRequest,
     ReconciliationResult,
     ReconciliationHistoryResponse,
@@ -26,6 +29,7 @@ from modules.rapprochement_bancaire.service import (
     extract_sage_opening_balance,
     parse_sage_file,
     parse_bank_file,
+    cancel_equal_opposite_movements,
     reconcile,
     calculate_reconciliation_balances,
 )
@@ -35,6 +39,51 @@ router = APIRouter(
     responses={404: {"description": "Non trouvé"}},
     dependencies=[],
 )
+
+
+def _load_carryover_movements(cursor, journal: str, account_code: str, period_start: date):
+    """Load unresolved movements from earlier results that have not been consumed."""
+    cursor.execute(
+        "SELECT origin_result_id, source_type, source_item_index "
+        "FROM bank_reconciliation_carryovers"
+    )
+    consumed = {
+        (int(row["origin_result_id"]), row["source_type"], int(row["source_item_index"]))
+        for row in cursor.fetchall()
+    }
+    cursor.execute(
+        "SELECT r.id, r.periode, r.result_json FROM bank_reconciliation_results r "
+        "JOIN (SELECT MAX(id) AS id FROM bank_reconciliation_results "
+        "WHERE compte_banque = %s AND compte_comptable = %s AND periode < %s "
+        "GROUP BY periode) latest ON latest.id = r.id "
+        "ORDER BY r.periode ASC, r.id ASC",
+        (journal, account_code, period_start),
+    )
+    prior_sage = []
+    prior_bank = []
+    for row in cursor.fetchall():
+        payload = row.get("result_json")
+        payload = json.loads(payload) if isinstance(payload, str) else (payload or {})
+        source_period = row.get("periode")
+        source_period = source_period.strftime("%Y-%m") if hasattr(source_period, "strftime") else str(source_period or "")[:7]
+        for source_type, key, model, target in (
+            ("sage", "sage_only", SageMovement, prior_sage),
+            ("bank", "bank_only", BankMovement, prior_bank),
+        ):
+            for item_index, item in enumerate(payload.get(key) or []):
+                # Historical copies of a carried row are not new candidates.
+                if item.get("carryover_origin_result_id") is not None:
+                    continue
+                identity = (int(row["id"]), source_type, item_index)
+                if identity in consumed:
+                    continue
+                target.append(model(**{
+                    **item,
+                    "carryover_origin_period": source_period,
+                    "carryover_origin_result_id": int(row["id"]),
+                    "carryover_origin_item_index": item_index,
+                }))
+    return prior_sage, prior_bank
 
 
 @router.get("/rapprochement/bank-accounts")
@@ -131,6 +180,8 @@ def compare_files(
         extraction_control(bank_file.filename, bank_file.content_type, bank_movements, bank_meta, "Relevé bancaire"),
     ]
 
+    # Neutraliser les paires uniquement dans la comparaison du mois importé.
+    # Les anciens écarts reportés restent indépendants et en attente.
     # Configurer les options par défaut
     options = ReconciliationOptions(
         date_tolerance_days=3,
@@ -139,7 +190,38 @@ def compare_files(
     )
 
     # Exécuter le rapprochement
-    result = reconcile(bank_movements, sage_movements, options)
+    with db.get_cursor() as cursor:
+        prior_sage_movements, prior_bank_movements = _load_carryover_movements(
+            cursor, normalized_journal, account_code, period_start
+        )
+    bank_movements, cancelled_bank_movements, bank_cancelled_pairs = cancel_equal_opposite_movements(
+        [*bank_movements, *prior_bank_movements]
+    )
+    sage_movements, cancelled_sage_movements, sage_cancelled_pairs = cancel_equal_opposite_movements(
+        [*sage_movements, *prior_sage_movements]
+    )
+    if sage_cancelled_pairs:
+        extraction_controls[0]["messages"].append(
+            f"{sage_cancelled_pairs} paire(s) débit/crédit de même montant exclue(s), reports antérieurs compris."
+        )
+    if bank_cancelled_pairs:
+        extraction_controls[1]["messages"].append(
+            f"{bank_cancelled_pairs} paire(s) débit/crédit de même montant exclue(s), reports antérieurs compris."
+        )
+    result = reconcile(
+        bank_movements,
+        sage_movements,
+        options,
+    )
+    result.cancellations = ReconciliationCancellationSummary(
+        bank_pairs=bank_cancelled_pairs,
+        sage_pairs=sage_cancelled_pairs,
+    )
+    # Totals remain based on all imported transactions, even when comparison rows are hidden.
+    result.stats.bank_total_debit = extraction_controls[1]["total_debit"]
+    result.stats.bank_total_credit = extraction_controls[1]["total_credit"]
+    result.stats.sage_total_debit = extraction_controls[0]["total_debit"]
+    result.stats.sage_total_credit = extraction_controls[0]["total_credit"]
     opening_difference = None
     opening_status = "unverifiable"
     if sage_opening.amount is not None and bank_opening.amount is not None:
@@ -189,6 +271,36 @@ def compare_files(
             ),
         )
         reconciliation_id = int(cursor.lastrowid)
+        consumed_sources = set()
+        for movement in cancelled_bank_movements:
+            if movement.carryover_origin_result_id is not None:
+                consumed_sources.add((
+                    movement.carryover_origin_result_id,
+                    "bank",
+                    movement.carryover_origin_item_index,
+                ))
+        for movement in cancelled_sage_movements:
+            if movement.carryover_origin_result_id is not None:
+                consumed_sources.add((
+                    movement.carryover_origin_result_id,
+                    "sage",
+                    movement.carryover_origin_item_index,
+                ))
+        for pair in result.reconciled:
+            for movement, source_type in ((pair.sage, "sage"), (pair.bank, "bank")):
+                if movement.carryover_origin_result_id is not None:
+                    consumed_sources.add((
+                        movement.carryover_origin_result_id,
+                        source_type,
+                        movement.carryover_origin_item_index,
+                    ))
+        for origin_result_id, source_type, item_index in consumed_sources:
+            cursor.execute(
+                "INSERT IGNORE INTO bank_reconciliation_carryovers "
+                "(origin_result_id, source_type, source_item_index, consumed_by_result_id) "
+                "VALUES (%s, %s, %s, %s)",
+                (origin_result_id, source_type, item_index, reconciliation_id),
+            )
     result.id = reconciliation_id
 
     # Enregistrer dans l'audit log
@@ -368,6 +480,11 @@ def delete_reconciliation_result(
         if not row:
             raise HTTPException(status_code=404, detail="Résultat de rapprochement introuvable")
         cursor.execute("DELETE FROM bank_reconciliation_results WHERE id = %s", (result_id,))
+        cursor.execute(
+            "DELETE FROM bank_reconciliation_carryovers WHERE consumed_by_result_id = %s "
+            "OR origin_result_id = %s",
+            (result_id, result_id),
+        )
 
     log_audit_action(
         user=user,

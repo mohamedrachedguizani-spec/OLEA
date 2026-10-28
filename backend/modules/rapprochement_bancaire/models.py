@@ -15,6 +15,9 @@ class BankMovement(BaseModel):
     debit: float
     credit: float
     amount: float
+    carryover_origin_period: Optional[str] = None
+    carryover_origin_result_id: Optional[int] = None
+    carryover_origin_item_index: Optional[int] = None
 
 class SageMovement(BaseModel):
     code_compte: str
@@ -27,6 +30,9 @@ class SageMovement(BaseModel):
     debit: float
     credit: float
     amount: float
+    carryover_origin_period: Optional[str] = None
+    carryover_origin_result_id: Optional[int] = None
+    carryover_origin_item_index: Optional[int] = None
 
 class ReconciledPair(BaseModel):
     bank: BankMovement
@@ -51,6 +57,11 @@ class ReconciliationStats(BaseModel):
     bank_total_credit: float = 0.0
     sage_total_debit: float = 0.0
     sage_total_credit: float = 0.0
+
+
+class ReconciliationCancellationSummary(BaseModel):
+    bank_pairs: int = 0
+    sage_pairs: int = 0
 
 
 class OpeningBalanceInfo(BaseModel):
@@ -85,6 +96,7 @@ class ReconciliationResult(BaseModel):
     bank_only: List[BankMovement]
     sage_only: List[SageMovement]
     discrepancies: List[DiscrepancyPair]
+    cancellations: ReconciliationCancellationSummary = Field(default_factory=ReconciliationCancellationSummary)
     context: Optional[ReconciliationContext] = None
     controle_extraction: List[ExtractionControl] = Field(default_factory=list)
 

@@ -147,6 +147,20 @@ def init_saisie_bancaire_tables():
             """
         )
 
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS bank_reconciliation_carryovers (
+                origin_result_id INT NOT NULL,
+                source_type VARCHAR(16) NOT NULL,
+                source_item_index INT NOT NULL,
+                consumed_by_result_id INT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (origin_result_id, source_type, source_item_index),
+                INDEX idx_bank_reco_carryover_consumer (consumed_by_result_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """
+        )
+
         for col, col_def in [
             ("compte_banque", "VARCHAR(32) NULL"),
             ("compte_comptable", "VARCHAR(32) NULL"),

@@ -23,8 +23,9 @@ const getCurrentPeriod = () => {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 };
 
-function ReconciliationSummary({ stats, formatAmount }) {
+function ReconciliationSummary({ stats, cancellations, formatAmount }) {
     const automationRate = Math.max(0, Math.min(100, Number(stats.automation_rate) || 0));
+    const cancellationSummary = cancellations || {};
     return (
         <section className="reco-summary" aria-labelledby="reco-summary-title">
             <div className="reco-summary-heading">
@@ -56,6 +57,12 @@ function ReconciliationSummary({ stats, formatAmount }) {
                         <div><span>Écarts de montant</span><strong>{stats.discrepancies_count}</strong></div>
                         <div><span>Montant cumulé</span><strong>{formatAmount(stats.total_discrepancy_amount)} TND</strong></div>
                     </div>
+                    {(Number(cancellationSummary.bank_pairs) > 0 || Number(cancellationSummary.sage_pairs) > 0) && (
+                        <div className="reco-cancellation-line">
+                            <span>Paires débit/crédit exclues du tableau</span>
+                            <strong>Banque : {cancellationSummary.bank_pairs || 0} · Sage : {cancellationSummary.sage_pairs || 0}</strong>
+                        </div>
+                    )}
                 </div>
             </div>
         </section>
@@ -798,7 +805,7 @@ function RapprochementBancaire({ navigationTarget }) {
             </div>
             <OpeningBalanceControl context={result.context} formatAmount={formatAmount} />
 
-            <ReconciliationSummary stats={result.stats} formatAmount={formatAmount} />
+            <ReconciliationSummary stats={result.stats} cancellations={result.cancellations} formatAmount={formatAmount} />
 
             {/* Navigation Tabs and Search inside Results */}
             <div className="card shadow-sm" style={{ padding: '1.25rem' }}>
@@ -901,7 +908,10 @@ function RapprochementBancaire({ navigationTarget }) {
                         <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr', gap: '0.5rem', padding: '0.6rem 1rem', background: idx % 2 === 0 ? 'var(--bg-card)' : '#fbfbfb', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', alignItems: 'center' }}>
                             {/* Left: Sage */}
                             <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px 90px 90px', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                                <div style={{ color: 'var(--text-secondary)' }}>{formatDate(pair.sage.date_ecriture)}</div>
+                                <div style={{ color: 'var(--text-secondary)' }}>
+                                    {formatDate(pair.sage.date_ecriture)}
+                                    {pair.sage.carryover_origin_period && <small style={{ display: 'block', color: 'var(--olea-terracotta)' }}>Report {pair.sage.carryover_origin_period}</small>}
+                                </div>
                                 <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={pair.sage.libelle_ecriture}>{pair.sage.libelle_ecriture}</div>
                                 <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-muted)' }} title={pair.sage.reference_piece || '-'}>{pair.sage.reference_piece || '-'}</div>
                                 <div style={{ textAlign: 'right', fontWeight: pair.sage.debit > 0 ? 600 : 400 }}>{pair.sage.debit > 0 ? formatAmount(pair.sage.debit) : '-'}</div>
@@ -915,7 +925,10 @@ function RapprochementBancaire({ navigationTarget }) {
                             </div>
                             {/* Right: Bank */}
                             <div style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px 90px 90px', gap: '0.5rem', color: 'var(--text-primary)' }}>
-                                <div style={{ color: 'var(--text-secondary)' }}>{formatDate(pair.bank.date_operation)}</div>
+                                <div style={{ color: 'var(--text-secondary)' }}>
+                                    {formatDate(pair.bank.date_operation)}
+                                    {pair.bank.carryover_origin_period && <small style={{ display: 'block', color: 'var(--olea-terracotta)' }}>Report {pair.bank.carryover_origin_period}</small>}
+                                </div>
                                 <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={pair.bank.libelle}>{pair.bank.libelle}</div>
                                 <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-muted)' }} title={pair.bank.reference || '-'}>{pair.bank.reference || '-'}</div>
                                 <div style={{ textAlign: 'right', fontWeight: pair.bank.debit > 0 ? 600 : 400 }}>{pair.bank.debit > 0 ? formatAmount(pair.bank.debit) : '-'}</div>
