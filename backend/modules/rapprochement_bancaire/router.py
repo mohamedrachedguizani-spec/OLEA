@@ -17,9 +17,12 @@ from modules.rapprochement_bancaire.models import (
     SageMovement,
     ReconciliationOptions,
     ReconciliationContext,
+    DiscrepancyPair,
     ReconciliationCancellationSummary,
     CancelledBankPair,
     CancelledSagePair,
+    CarryoverMovementStatus,
+    CarryoverSummary,
     ReconciliationPdfRequest,
     ReconciliationResult,
     ReconciliationHistoryResponse,
@@ -44,7 +47,7 @@ router = APIRouter(
 
 
 def _load_carryover_movements(cursor, journal: str, account_code: str, period_start: date):
-    """Load unresolved movements from earlier results that have not been consumed."""
+    """Load unresolved movements and discrepancy pairs from earlier results."""
     cursor.execute(
         "SELECT origin_result_id, source_type, source_item_index "
         "FROM bank_reconciliation_carryovers"
@@ -63,6 +66,7 @@ def _load_carryover_movements(cursor, journal: str, account_code: str, period_st
     )
     prior_sage = []
     prior_bank = []
+    prior_discrepancies = []
     for row in cursor.fetchall():
         payload = row.get("result_json")
         payload = json.loads(payload) if isinstance(payload, str) else (payload or {})
@@ -81,11 +85,38 @@ def _load_carryover_movements(cursor, journal: str, account_code: str, period_st
                     continue
                 target.append(model(**{
                     **item,
-                    "carryover_origin_period": source_period,
+                    "carryover_origin_period": item.get("carryover_origin_period") or source_period,
                     "carryover_origin_result_id": int(row["id"]),
                     "carryover_origin_item_index": item_index,
+                    "carryover_origin_source_type": source_type,
                 }))
-    return prior_sage, prior_bank
+
+        for item_index, discrepancy in enumerate(payload.get("discrepancies") or []):
+            loaded = {}
+            for source_type, key, model, target in (
+                ("bank_discrepancy", "bank", BankMovement, prior_bank),
+                ("sage_discrepancy", "sage", SageMovement, prior_sage),
+            ):
+                item = discrepancy.get(key) or {}
+                existing_origin_id = item.get("carryover_origin_result_id")
+                # A copy carried through a later result is not a new source pair.
+                if existing_origin_id is not None and int(existing_origin_id) != int(row["id"]):
+                    continue
+                identity = (int(row["id"]), source_type, item_index)
+                if identity in consumed:
+                    continue
+                movement = model(**{
+                    **item,
+                    "carryover_origin_period": item.get("carryover_origin_period") or source_period,
+                    "carryover_origin_result_id": int(row["id"]),
+                    "carryover_origin_item_index": item_index,
+                    "carryover_origin_source_type": source_type,
+                })
+                target.append(movement)
+                loaded[key] = movement
+            if "bank" in loaded and "sage" in loaded:
+                prior_discrepancies.append((loaded["bank"], loaded["sage"]))
+    return prior_sage, prior_bank, prior_discrepancies
 
 
 @router.get("/rapprochement/bank-accounts")
@@ -193,7 +224,7 @@ def compare_files(
 
     # Exécuter le rapprochement
     with db.get_cursor() as cursor:
-        prior_sage_movements, prior_bank_movements = _load_carryover_movements(
+        prior_sage_movements, prior_bank_movements, prior_discrepancy_pairs = _load_carryover_movements(
             cursor, normalized_journal, account_code, period_start
         )
     bank_movements, bank_cancellation_pairs = cancel_equal_opposite_movements(
@@ -217,12 +248,101 @@ def compare_files(
         sage_movements,
         options,
     )
+
+    # Keep an old amount-discrepancy pair visible while neither source entry has
+    # found a new counterpart. Reconcile() intentionally does not pair two old
+    # carryovers with each other, so restore their original discrepancy here.
+    for prior_bank, prior_sage in prior_discrepancy_pairs:
+        bank_is_unmatched = any(item is prior_bank for item in result.bank_only)
+        sage_is_unmatched = any(item is prior_sage for item in result.sage_only)
+        if bank_is_unmatched and sage_is_unmatched:
+            result.bank_only = [item for item in result.bank_only if item is not prior_bank]
+            result.sage_only = [item for item in result.sage_only if item is not prior_sage]
+            result.discrepancies.append(DiscrepancyPair(
+                bank=prior_bank,
+                sage=prior_sage,
+                difference=round(abs(prior_bank.amount - prior_sage.amount), 3),
+            ))
+    result.stats.discrepancies_count = len(result.discrepancies)
+    result.stats.total_discrepancy_amount = round(
+        sum(pair.difference for pair in result.discrepancies), 3
+    )
     result.cancellations = ReconciliationCancellationSummary(
         bank_pairs=bank_cancelled_pairs,
         sage_pairs=sage_cancelled_pairs,
         bank_details=[CancelledBankPair(debit=debit, credit=credit) for debit, credit in bank_cancellation_pairs],
         sage_details=[CancelledSagePair(debit=debit, credit=credit) for debit, credit in sage_cancellation_pairs],
     )
+
+    def carryover_identity(movement, source_type):
+        if (
+            movement.carryover_origin_result_id is None
+            or movement.carryover_origin_item_index is None
+        ):
+            return None
+        return (
+            int(movement.carryover_origin_result_id),
+            movement.carryover_origin_source_type or source_type,
+            int(movement.carryover_origin_item_index),
+        )
+
+    carryover_outcomes = {}
+
+    def record_carryover_outcome(movement, source_type, status, counterpart=None, counterpart_type=None):
+        identity = carryover_identity(movement, source_type)
+        if identity is None:
+            return
+        if counterpart is None:
+            counterpart_date = counterpart_label = counterpart_amount = None
+        elif counterpart_type == "sage":
+            counterpart_date = counterpart.date_ecriture
+            counterpart_label = counterpart.libelle_ecriture
+            counterpart_amount = counterpart.amount
+        else:
+            counterpart_date = counterpart.date_operation
+            counterpart_label = counterpart.libelle
+            counterpart_amount = counterpart.amount
+        carryover_outcomes[identity] = {
+            "status": status,
+            "counterpart_date": counterpart_date,
+            "counterpart_label": counterpart_label,
+            "counterpart_amount": counterpart_amount,
+        }
+
+    for pair in result.reconciled:
+        record_carryover_outcome(pair.sage, "sage", "reconciled", pair.bank, "bank")
+        record_carryover_outcome(pair.bank, "bank", "reconciled", pair.sage, "sage")
+    for pair in result.discrepancies:
+        record_carryover_outcome(pair.sage, "sage", "discrepancy", pair.bank, "bank")
+        record_carryover_outcome(pair.bank, "bank", "discrepancy", pair.sage, "sage")
+    for debit, credit in sage_cancellation_pairs:
+        record_carryover_outcome(debit, "sage", "cancelled", credit, "sage")
+        record_carryover_outcome(credit, "sage", "cancelled", debit, "sage")
+    for debit, credit in bank_cancellation_pairs:
+        record_carryover_outcome(debit, "bank", "cancelled", credit, "bank")
+        record_carryover_outcome(credit, "bank", "cancelled", debit, "bank")
+
+    carryover_details = []
+    for source_type, movements in (("sage", prior_sage_movements), ("bank", prior_bank_movements)):
+        for movement in movements:
+            identity = carryover_identity(movement, source_type)
+            outcome = carryover_outcomes.get(identity, {"status": "pending"})
+            if source_type == "sage":
+                operation_date = movement.date_ecriture
+                label = movement.libelle_ecriture
+            else:
+                operation_date = movement.date_operation
+                label = movement.libelle
+            carryover_details.append(CarryoverMovementStatus(
+                source_type=source_type,
+                origin_period=movement.carryover_origin_period or "Période antérieure",
+                operation_date=operation_date,
+                label=label,
+                amount=movement.amount,
+                **outcome,
+            ))
+    result.carryovers = CarryoverSummary(movements=carryover_details)
+
     # Totals remain based on all imported transactions, even when comparison rows are hidden.
     result.stats.bank_total_debit = extraction_controls[1]["total_debit"]
     result.stats.bank_total_credit = extraction_controls[1]["total_credit"]
@@ -277,29 +397,56 @@ def compare_files(
             ),
         )
         reconciliation_id = int(cursor.lastrowid)
-        consumed_sources = set()
+        consumed_sources = {
+            identity
+            for bank_movement, sage_movement in prior_discrepancy_pairs
+            for movement, source_type in ((bank_movement, "bank"), (sage_movement, "sage"))
+            if (identity := carryover_identity(movement, source_type)) is not None
+        }
+
+        # Any carryover participating in a new discrepancy is transferred to
+        # this result so it can be reloaded as one linked pair next period.
+        for discrepancy_index, pair in enumerate(result.discrepancies):
+            for movement, source_type in ((pair.bank, "bank"), (pair.sage, "sage")):
+                identity = carryover_identity(movement, source_type)
+                if identity is not None:
+                    consumed_sources.add(identity)
+                movement.carryover_origin_period = movement.carryover_origin_period or period
+                movement.carryover_origin_result_id = reconciliation_id
+                movement.carryover_origin_item_index = discrepancy_index
+                movement.carryover_origin_source_type = f"{source_type}_discrepancy"
+
+        # If only one side of an old discrepancy remains unmatched, transfer it
+        # into the regular one-sided carryover list for the next period.
+        for source_type, movements in (("bank", result.bank_only), ("sage", result.sage_only)):
+            for movement in movements:
+                if (movement.carryover_origin_source_type or "").endswith("_discrepancy"):
+                    identity = carryover_identity(movement, source_type)
+                    if identity is not None:
+                        consumed_sources.add(identity)
+                    movement.carryover_origin_result_id = None
+                    movement.carryover_origin_item_index = None
+                    movement.carryover_origin_source_type = None
+
         for movement in (movement for pair in bank_cancellation_pairs for movement in pair):
-            if movement.carryover_origin_result_id is not None:
-                consumed_sources.add((
-                    movement.carryover_origin_result_id,
-                    "bank",
-                    movement.carryover_origin_item_index,
-                ))
+            identity = carryover_identity(movement, "bank")
+            if identity is not None:
+                consumed_sources.add(identity)
         for movement in (movement for pair in sage_cancellation_pairs for movement in pair):
-            if movement.carryover_origin_result_id is not None:
-                consumed_sources.add((
-                    movement.carryover_origin_result_id,
-                    "sage",
-                    movement.carryover_origin_item_index,
-                ))
+            identity = carryover_identity(movement, "sage")
+            if identity is not None:
+                consumed_sources.add(identity)
         for pair in result.reconciled:
             for movement, source_type in ((pair.sage, "sage"), (pair.bank, "bank")):
-                if movement.carryover_origin_result_id is not None:
-                    consumed_sources.add((
-                        movement.carryover_origin_result_id,
-                        source_type,
-                        movement.carryover_origin_item_index,
-                    ))
+                identity = carryover_identity(movement, source_type)
+                if identity is not None:
+                    consumed_sources.add(identity)
+
+        result.id = reconciliation_id
+        cursor.execute(
+            "UPDATE bank_reconciliation_results SET result_json = %s WHERE id = %s",
+            (result.model_dump_json() if hasattr(result, "model_dump_json") else result.json(), reconciliation_id),
+        )
         for origin_result_id, source_type, item_index in consumed_sources:
             cursor.execute(
                 "INSERT IGNORE INTO bank_reconciliation_carryovers "

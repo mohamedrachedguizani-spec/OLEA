@@ -18,6 +18,7 @@ class BankMovement(BaseModel):
     carryover_origin_period: Optional[str] = None
     carryover_origin_result_id: Optional[int] = None
     carryover_origin_item_index: Optional[int] = None
+    carryover_origin_source_type: Optional[str] = None
 
 class SageMovement(BaseModel):
     code_compte: str
@@ -33,6 +34,7 @@ class SageMovement(BaseModel):
     carryover_origin_period: Optional[str] = None
     carryover_origin_result_id: Optional[int] = None
     carryover_origin_item_index: Optional[int] = None
+    carryover_origin_source_type: Optional[str] = None
 
 class ReconciledPair(BaseModel):
     bank: BankMovement
@@ -76,6 +78,22 @@ class ReconciliationCancellationSummary(BaseModel):
     sage_details: List[CancelledSagePair] = Field(default_factory=list)
 
 
+class CarryoverMovementStatus(BaseModel):
+    source_type: str
+    origin_period: str
+    operation_date: date
+    label: str
+    amount: float
+    status: str  # "reconciled", "cancelled", or "pending"
+    counterpart_date: Optional[date] = None
+    counterpart_label: Optional[str] = None
+    counterpart_amount: Optional[float] = None
+
+
+class CarryoverSummary(BaseModel):
+    movements: List[CarryoverMovementStatus] = Field(default_factory=list)
+
+
 class OpeningBalanceInfo(BaseModel):
     amount: Optional[float] = None
     label: Optional[str] = None
@@ -109,6 +127,7 @@ class ReconciliationResult(BaseModel):
     sage_only: List[SageMovement]
     discrepancies: List[DiscrepancyPair]
     cancellations: ReconciliationCancellationSummary = Field(default_factory=ReconciliationCancellationSummary)
+    carryovers: CarryoverSummary = Field(default_factory=CarryoverSummary)
     context: Optional[ReconciliationContext] = None
     controle_extraction: List[ExtractionControl] = Field(default_factory=list)
 

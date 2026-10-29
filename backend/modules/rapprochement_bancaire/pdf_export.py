@@ -419,6 +419,61 @@ def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
             Spacer(1, 2 * mm),
         ])
 
+        cancellation_rows = {"same_period": [], "carryover": []}
+        for source, pairs, is_sage in (
+            ("Sage", result.cancellations.sage_details, True),
+            ("Banque", result.cancellations.bank_details, False),
+        ):
+            for pair in pairs:
+                debit, credit = pair.debit, pair.credit
+                debit_origin = debit.carryover_origin_period
+                credit_origin = credit.carryover_origin_period
+                origins = list(dict.fromkeys(origin for origin in (debit_origin, credit_origin) if origin))
+                has_carryover = bool(origins)
+                if is_sage:
+                    debit_date, credit_date = debit.date_ecriture, credit.date_ecriture
+                    debit_label, credit_label = debit.libelle_ecriture, credit.libelle_ecriture
+                    amount = debit.debit or credit.credit
+                else:
+                    debit_date, credit_date = debit.date_operation, credit.date_operation
+                    debit_label, credit_label = debit.libelle, credit.libelle
+                    amount = debit.debit or credit.credit
+                cancellation_rows["carryover" if has_carryover else "same_period"].append([
+                    source,
+                    ", ".join(origins) if origins else "Période courante",
+                    _date(debit_date), debit_label,
+                    _date(credit_date), credit_label,
+                    _money(amount),
+                ])
+
+        cancellation_columns = [
+            "Source", "Origine", "Date débit", "Libellé débit",
+            "Date crédit", "Libellé crédit", "Montant",
+        ]
+        cancellation_widths = [17*mm, 22*mm, 18*mm, 61*mm, 18*mm, 61*mm, 24*mm]
+        if cancellation_rows["same_period"]:
+            story.extend(_table(
+                f"Paires annulées sur la période ({len(cancellation_rows['same_period'])})",
+                cancellation_columns,
+                cancellation_rows["same_period"],
+                cancellation_widths,
+                styles,
+            ))
+        if cancellation_rows["carryover"]:
+            story.extend(_table(
+                f"Paires reportées annulées ({len(cancellation_rows['carryover'])})",
+                cancellation_columns,
+                cancellation_rows["carryover"],
+                cancellation_widths,
+                styles,
+            ))
+        if not cancellation_rows["same_period"] and not cancellation_rows["carryover"]:
+            story.append(Paragraph(
+                "Le détail des paires annulées n'est pas disponible pour ce résultat historique.",
+                styles["empty"],
+            ))
+            story.append(Spacer(1, 3 * mm))
+
     carryover_rows = [[
         pair.sage.carryover_origin_period or "Période courante",
         _date(pair.sage.date_ecriture), pair.sage.libelle_ecriture,

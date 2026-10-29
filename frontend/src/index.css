@@ -4534,6 +4534,21 @@ body {
 .reco-cancellation-pair strong { color: var(--text-primary); font-size: .76rem; }
 .reco-cancellation-pair > b { color: var(--text-muted); text-align: center; }
 .reco-cancellation-empty { margin: .6rem 0 0; color: var(--text-muted); font-size: .74rem; }
+.reco-carryover-block { margin-top: .25rem; }
+.reco-carryover-totals { display: flex; flex-wrap: wrap; gap: .45rem; margin-top: .55rem; }
+.reco-carryover-totals span { padding: .25rem .5rem; border-radius: var(--radius-full); background: var(--bg-muted); color: var(--text-secondary); font-size: .68rem; font-weight: 600; }
+.reco-carryover-list { display: grid; gap: .4rem; margin-top: .65rem; }
+.reco-carryover-item { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: .35rem .75rem; padding: .6rem; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-card); }
+.reco-carryover-item > div { display: grid; gap: .2rem; min-width: 0; }
+.reco-carryover-item small { color: var(--text-muted); font-size: .67rem; }
+.reco-carryover-item > div span { overflow: hidden; color: var(--text-primary); font-size: .75rem; text-overflow: ellipsis; white-space: nowrap; }
+.reco-carryover-item > strong { color: var(--text-primary); font-size: .75rem; }
+.reco-carryover-item > em { padding: .2rem .45rem; border-radius: var(--radius-full); background: var(--bg-muted); color: var(--text-secondary); font-size: .65rem; font-style: normal; font-weight: 700; }
+.reco-carryover-item > em.status-reconciled { background: #e8f6ee; color: #25714a; }
+.reco-carryover-item > em.status-cancelled { background: #fff4dc; color: #9a5b00; }
+.reco-carryover-item > em.status-discrepancy { background: #fff4dc; color: #9a5b00; }
+.reco-carryover-item > em.status-pending { background: #fce9e6; color: #9f3520; }
+.reco-carryover-item > .reco-carryover-counterpart { grid-column: 1 / -1; }
 .reco-history { border: 1px solid var(--border-light); border-radius: var(--radius-lg); background: var(--bg-card); overflow: hidden; }
 .reco-history-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; padding: 1.15rem 1.25rem; border-bottom: 1px solid var(--border-light); }
 .reco-history-header p { margin: .3rem 0 0; color: var(--text-muted); font-size: .76rem; }

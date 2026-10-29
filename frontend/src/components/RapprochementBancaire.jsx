@@ -23,9 +23,25 @@ const getCurrentPeriod = () => {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 };
 
-function ReconciliationSummary({ stats, cancellations, formatAmount, formatDate }) {
+function ReconciliationSummary({ stats, cancellations, carryovers, formatAmount, formatDate }) {
     const automationRate = Math.max(0, Math.min(100, Number(stats.automation_rate) || 0));
     const cancellationSummary = cancellations || {};
+    const carryoverMovements = carryovers?.movements || [];
+    const bankCancellationDetails = cancellationSummary.bank_details || [];
+    const sageCancellationDetails = cancellationSummary.sage_details || [];
+    const currentBankCancellationDetails = bankCancellationDetails.filter((pair) => (
+        !pair.debit.carryover_origin_period && !pair.credit.carryover_origin_period
+    ));
+    const currentSageCancellationDetails = sageCancellationDetails.filter((pair) => (
+        !pair.debit.carryover_origin_period && !pair.credit.carryover_origin_period
+    ));
+    const currentBankCancellationCount = bankCancellationDetails.length
+        ? currentBankCancellationDetails.length
+        : Number(cancellationSummary.bank_pairs || 0);
+    const currentSageCancellationCount = sageCancellationDetails.length
+        ? currentSageCancellationDetails.length
+        : Number(cancellationSummary.sage_pairs || 0);
+    const carryoverStatusLabels = { reconciled: 'Rapprochée', discrepancy: 'Écart à valider', cancelled: 'Annulée', pending: 'En attente' };
     return (
         <section className="reco-summary" aria-labelledby="reco-summary-title">
             <div className="reco-summary-heading">
@@ -57,18 +73,46 @@ function ReconciliationSummary({ stats, cancellations, formatAmount, formatDate 
                         <div><span>Écarts de montant</span><strong>{stats.discrepancies_count}</strong></div>
                         <div><span>Montant cumulé</span><strong>{formatAmount(stats.total_discrepancy_amount)} TND</strong></div>
                     </div>
-                    {(Number(cancellationSummary.bank_pairs) > 0 || Number(cancellationSummary.sage_pairs) > 0) && (
+                    {carryoverMovements.length > 0 && (
+                        <div className="reco-carryover-block">
+                            <div className="reco-cancellation-line">
+                                <span>Écritures reportées reçues</span>
+                                <strong>{carryoverMovements.length}</strong>
+                            </div>
+                            <div className="reco-carryover-totals">
+                                {['reconciled', 'discrepancy', 'cancelled', 'pending'].map((status) => {
+                                    const items = carryoverMovements.filter((item) => item.status === status);
+                                    if (!items.length) return null;
+                                    return <span key={status}>{carryoverStatusLabels[status]} : {items.length}</span>;
+                                })}
+                            </div>
+                            <details className="reco-cancellation-details">
+                                <summary>Afficher le détail des reports</summary>
+                                <div className="reco-carryover-list">
+                                    {carryoverMovements.map((item, index) => (
+                                        <div className="reco-carryover-item" key={`${item.source_type}-${item.origin_period}-${index}`}>
+                                            <div><small>{item.source_type === 'sage' ? 'Sage' : 'Banque'} · Origine {item.origin_period} · {formatDate(item.operation_date)}</small><span>{item.label}</span></div>
+                                            <strong>{formatAmount(item.amount)} TND</strong>
+                                            <em className={`status-${item.status}`}>{carryoverStatusLabels[item.status] || item.status}</em>
+                                            {item.counterpart_label && <small className="reco-carryover-counterpart">Contrepartie : {formatDate(item.counterpart_date)} · {item.counterpart_label} · {formatAmount(item.counterpart_amount)} TND</small>}
+                                        </div>
+                                    ))}
+                                </div>
+                            </details>
+                        </div>
+                    )}
+                    {(currentBankCancellationCount > 0 || currentSageCancellationCount > 0) && (
                         <>
                             <div className="reco-cancellation-line">
-                                <span>Paires débit/crédit exclues du tableau</span>
-                                <strong>Banque : {cancellationSummary.bank_pairs || 0} · Sage : {cancellationSummary.sage_pairs || 0}</strong>
+                                <span>Paires débit/crédit exclues (période courante)</span>
+                                <strong>Banque : {currentBankCancellationCount} · Sage : {currentSageCancellationCount}</strong>
                             </div>
                             <details className="reco-cancellation-details">
                                 <summary>Afficher les opérations annulées</summary>
-                                {cancellationSummary.bank_details?.length > 0 && (
+                                {currentBankCancellationDetails.length > 0 && (
                                     <div className="reco-cancellation-group">
-                                        <h4>Relevé bancaire ({cancellationSummary.bank_details.length} paire(s))</h4>
-                                        {cancellationSummary.bank_details.map((pair, index) => (
+                                        <h4>Relevé bancaire ({currentBankCancellationDetails.length} paire(s))</h4>
+                                        {currentBankCancellationDetails.map((pair, index) => (
                                             <div className="reco-cancellation-pair" key={`bank-${index}`}>
                                                 <div><small>Débit · {formatDate(pair.debit.date_operation)}</small><span>{pair.debit.libelle}</span><strong>{formatAmount(pair.debit.debit)} TND</strong></div>
                                                 <b aria-hidden="true">↔</b>
@@ -77,10 +121,10 @@ function ReconciliationSummary({ stats, cancellations, formatAmount, formatDate 
                                         ))}
                                     </div>
                                 )}
-                                {cancellationSummary.sage_details?.length > 0 && (
+                                {currentSageCancellationDetails.length > 0 && (
                                     <div className="reco-cancellation-group">
-                                        <h4>Grand livre Sage ({cancellationSummary.sage_details.length} paire(s))</h4>
-                                        {cancellationSummary.sage_details.map((pair, index) => (
+                                        <h4>Grand livre Sage ({currentSageCancellationDetails.length} paire(s))</h4>
+                                        {currentSageCancellationDetails.map((pair, index) => (
                                             <div className="reco-cancellation-pair" key={`sage-${index}`}>
                                                 <div><small>Débit · {formatDate(pair.debit.date_ecriture)}</small><span>{pair.debit.libelle_ecriture}</span><strong>{formatAmount(pair.debit.debit)} TND</strong></div>
                                                 <b aria-hidden="true">↔</b>
@@ -89,7 +133,7 @@ function ReconciliationSummary({ stats, cancellations, formatAmount, formatDate 
                                         ))}
                                     </div>
                                 )}
-                                {!cancellationSummary.bank_details?.length && !cancellationSummary.sage_details?.length && (
+                                {!bankCancellationDetails.length && !sageCancellationDetails.length && (
                                     <p className="reco-cancellation-empty">Le détail n’a pas été conservé pour ce résultat historique.</p>
                                 )}
                             </details>
@@ -136,7 +180,7 @@ function OpeningBalanceControl({ context, formatAmount }) {
                 <div>
                     <span>Écart initial</span>
                     <strong>{context.opening_difference === null || context.opening_difference === undefined ? 'Non calculable' : `${formatAmount(context.opening_difference)} TND`}</strong>
-                    <small>Banque - SAGE</small>
+                    <small>Calcul : {context.bank_opening?.amount == null || context.sage_opening?.amount == null ? 'Banque − Sage' : `${formatAmount(context.bank_opening.amount)} − ${formatAmount(context.sage_opening.amount)} TND`}</small>
                 </div>
             </div>
             {context.opening_status === 'ecart' && (
@@ -837,7 +881,7 @@ function RapprochementBancaire({ navigationTarget }) {
             </div>
             <OpeningBalanceControl context={result.context} formatAmount={formatAmount} />
 
-            <ReconciliationSummary stats={result.stats} cancellations={result.cancellations} formatAmount={formatAmount} formatDate={formatDate} />
+            <ReconciliationSummary stats={result.stats} cancellations={result.cancellations} carryovers={result.carryovers} formatAmount={formatAmount} formatDate={formatDate} />
 
             {/* Navigation Tabs and Search inside Results */}
             <div className="card shadow-sm" style={{ padding: '1.25rem' }}>
