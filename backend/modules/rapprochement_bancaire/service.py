@@ -768,16 +768,22 @@ def cancel_equal_opposite_movements(movements):
             credit_indexes.setdefault(round(credit, 3), []).append(index)
 
     cancelled = set()
-    pair_count = 0
-    for amount in debit_indexes.keys() & credit_indexes.keys():
+    cancellation_pairs = []
+    for amount in debit_indexes:
+        if amount not in credit_indexes:
+            continue
         count = min(len(debit_indexes[amount]), len(credit_indexes[amount]))
-        cancelled.update(debit_indexes[amount][:count])
-        cancelled.update(credit_indexes[amount][:count])
-        pair_count += count
+        debit_pair_indexes = debit_indexes[amount][:count]
+        credit_pair_indexes = credit_indexes[amount][:count]
+        cancelled.update(debit_pair_indexes)
+        cancelled.update(credit_pair_indexes)
+        cancellation_pairs.extend(
+            (movements[debit_index], movements[credit_index])
+            for debit_index, credit_index in zip(debit_pair_indexes, credit_pair_indexes)
+        )
 
     remaining = [movement for index, movement in enumerate(movements) if index not in cancelled]
-    cancelled_movements = [movement for index, movement in enumerate(movements) if index in cancelled]
-    return remaining, cancelled_movements, pair_count
+    return remaining, cancellation_pairs
 
 
 def reconcile(

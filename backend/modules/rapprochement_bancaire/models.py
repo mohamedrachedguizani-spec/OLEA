@@ -59,9 +59,21 @@ class ReconciliationStats(BaseModel):
     sage_total_credit: float = 0.0
 
 
+class CancelledBankPair(BaseModel):
+    debit: BankMovement
+    credit: BankMovement
+
+
+class CancelledSagePair(BaseModel):
+    debit: SageMovement
+    credit: SageMovement
+
+
 class ReconciliationCancellationSummary(BaseModel):
     bank_pairs: int = 0
     sage_pairs: int = 0
+    bank_details: List[CancelledBankPair] = Field(default_factory=list)
+    sage_details: List[CancelledSagePair] = Field(default_factory=list)
 
 
 class OpeningBalanceInfo(BaseModel):

@@ -23,7 +23,7 @@ const getCurrentPeriod = () => {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 };
 
-function ReconciliationSummary({ stats, cancellations, formatAmount }) {
+function ReconciliationSummary({ stats, cancellations, formatAmount, formatDate }) {
     const automationRate = Math.max(0, Math.min(100, Number(stats.automation_rate) || 0));
     const cancellationSummary = cancellations || {};
     return (
@@ -58,10 +58,42 @@ function ReconciliationSummary({ stats, cancellations, formatAmount }) {
                         <div><span>Montant cumulé</span><strong>{formatAmount(stats.total_discrepancy_amount)} TND</strong></div>
                     </div>
                     {(Number(cancellationSummary.bank_pairs) > 0 || Number(cancellationSummary.sage_pairs) > 0) && (
-                        <div className="reco-cancellation-line">
-                            <span>Paires débit/crédit exclues du tableau</span>
-                            <strong>Banque : {cancellationSummary.bank_pairs || 0} · Sage : {cancellationSummary.sage_pairs || 0}</strong>
-                        </div>
+                        <>
+                            <div className="reco-cancellation-line">
+                                <span>Paires débit/crédit exclues du tableau</span>
+                                <strong>Banque : {cancellationSummary.bank_pairs || 0} · Sage : {cancellationSummary.sage_pairs || 0}</strong>
+                            </div>
+                            <details className="reco-cancellation-details">
+                                <summary>Afficher les opérations annulées</summary>
+                                {cancellationSummary.bank_details?.length > 0 && (
+                                    <div className="reco-cancellation-group">
+                                        <h4>Relevé bancaire ({cancellationSummary.bank_details.length} paire(s))</h4>
+                                        {cancellationSummary.bank_details.map((pair, index) => (
+                                            <div className="reco-cancellation-pair" key={`bank-${index}`}>
+                                                <div><small>Débit · {formatDate(pair.debit.date_operation)}</small><span>{pair.debit.libelle}</span><strong>{formatAmount(pair.debit.debit)} TND</strong></div>
+                                                <b aria-hidden="true">↔</b>
+                                                <div><small>Crédit · {formatDate(pair.credit.date_operation)}</small><span>{pair.credit.libelle}</span><strong>{formatAmount(pair.credit.credit)} TND</strong></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {cancellationSummary.sage_details?.length > 0 && (
+                                    <div className="reco-cancellation-group">
+                                        <h4>Grand livre Sage ({cancellationSummary.sage_details.length} paire(s))</h4>
+                                        {cancellationSummary.sage_details.map((pair, index) => (
+                                            <div className="reco-cancellation-pair" key={`sage-${index}`}>
+                                                <div><small>Débit · {formatDate(pair.debit.date_ecriture)}</small><span>{pair.debit.libelle_ecriture}</span><strong>{formatAmount(pair.debit.debit)} TND</strong></div>
+                                                <b aria-hidden="true">↔</b>
+                                                <div><small>Crédit · {formatDate(pair.credit.date_ecriture)}</small><span>{pair.credit.libelle_ecriture}</span><strong>{formatAmount(pair.credit.credit)} TND</strong></div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                {!cancellationSummary.bank_details?.length && !cancellationSummary.sage_details?.length && (
+                                    <p className="reco-cancellation-empty">Le détail n’a pas été conservé pour ce résultat historique.</p>
+                                )}
+                            </details>
+                        </>
                     )}
                 </div>
             </div>
@@ -805,7 +837,7 @@ function RapprochementBancaire({ navigationTarget }) {
             </div>
             <OpeningBalanceControl context={result.context} formatAmount={formatAmount} />
 
-            <ReconciliationSummary stats={result.stats} cancellations={result.cancellations} formatAmount={formatAmount} />
+            <ReconciliationSummary stats={result.stats} cancellations={result.cancellations} formatAmount={formatAmount} formatDate={formatDate} />
 
             {/* Navigation Tabs and Search inside Results */}
             <div className="card shadow-sm" style={{ padding: '1.25rem' }}>

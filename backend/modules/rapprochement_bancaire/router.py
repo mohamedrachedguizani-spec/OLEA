@@ -18,6 +18,8 @@ from modules.rapprochement_bancaire.models import (
     ReconciliationOptions,
     ReconciliationContext,
     ReconciliationCancellationSummary,
+    CancelledBankPair,
+    CancelledSagePair,
     ReconciliationPdfRequest,
     ReconciliationResult,
     ReconciliationHistoryResponse,
@@ -194,12 +196,14 @@ def compare_files(
         prior_sage_movements, prior_bank_movements = _load_carryover_movements(
             cursor, normalized_journal, account_code, period_start
         )
-    bank_movements, cancelled_bank_movements, bank_cancelled_pairs = cancel_equal_opposite_movements(
+    bank_movements, bank_cancellation_pairs = cancel_equal_opposite_movements(
         [*bank_movements, *prior_bank_movements]
     )
-    sage_movements, cancelled_sage_movements, sage_cancelled_pairs = cancel_equal_opposite_movements(
+    sage_movements, sage_cancellation_pairs = cancel_equal_opposite_movements(
         [*sage_movements, *prior_sage_movements]
     )
+    bank_cancelled_pairs = len(bank_cancellation_pairs)
+    sage_cancelled_pairs = len(sage_cancellation_pairs)
     if sage_cancelled_pairs:
         extraction_controls[0]["messages"].append(
             f"{sage_cancelled_pairs} paire(s) débit/crédit de même montant exclue(s), reports antérieurs compris."
@@ -216,6 +220,8 @@ def compare_files(
     result.cancellations = ReconciliationCancellationSummary(
         bank_pairs=bank_cancelled_pairs,
         sage_pairs=sage_cancelled_pairs,
+        bank_details=[CancelledBankPair(debit=debit, credit=credit) for debit, credit in bank_cancellation_pairs],
+        sage_details=[CancelledSagePair(debit=debit, credit=credit) for debit, credit in sage_cancellation_pairs],
     )
     # Totals remain based on all imported transactions, even when comparison rows are hidden.
     result.stats.bank_total_debit = extraction_controls[1]["total_debit"]
@@ -272,14 +278,14 @@ def compare_files(
         )
         reconciliation_id = int(cursor.lastrowid)
         consumed_sources = set()
-        for movement in cancelled_bank_movements:
+        for movement in (movement for pair in bank_cancellation_pairs for movement in pair):
             if movement.carryover_origin_result_id is not None:
                 consumed_sources.add((
                     movement.carryover_origin_result_id,
                     "bank",
                     movement.carryover_origin_item_index,
                 ))
-        for movement in cancelled_sage_movements:
+        for movement in (movement for pair in sage_cancellation_pairs for movement in pair):
             if movement.carryover_origin_result_id is not None:
                 consumed_sources.add((
                     movement.carryover_origin_result_id,
