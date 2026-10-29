@@ -636,6 +636,7 @@ def _parse_pdf_biat_releve(file_bytes: bytes) -> pd.DataFrame:
     """
     rows = []
     opening_balance = None
+    opening_balance_side = None
     total_debit = total_credit = None
     stmt_year = stmt_month = None
 
@@ -673,6 +674,9 @@ def _parse_pdf_biat_releve(file_bytes: bytes) -> pd.DataFrame:
                 # Solde initial
                 if joined.upper().startswith("SOLDE AU") and _BIAT_AMOUNT_RE.match(texts[-1]):
                     opening_balance = _parse_amount(texts[-1])
+                    opening_word = ln[-1]
+                    opening_center = (opening_word["x0"] + opening_word["x1"]) / 2
+                    opening_balance_side = "credit" if opening_center > split_x else "debit"
                     continue
 
                 # Ligne de totaux (deux montants, aucune date)
@@ -731,16 +735,18 @@ def _parse_pdf_biat_releve(file_bytes: bytes) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
 
-    # Contrôle de cohérence : le total Crédit du relevé inclut le solde initial
+    # Le total du relevé inclut le solde initial dans la colonne où celui-ci est imprimé.
     if total_debit is not None and total_credit is not None:
-        sum_d = round(df["debit"].sum(), 3)
-        sum_c = round(df["credit"].sum() + (opening_balance or 0.0), 3)
+        opening_debit = (opening_balance or 0.0) if opening_balance_side == "debit" else 0.0
+        opening_credit = (opening_balance or 0.0) if opening_balance_side == "credit" else 0.0
+        sum_d = round(df["debit"].sum() + opening_debit, 3)
+        sum_c = round(df["credit"].sum() + opening_credit, 3)
         if abs(sum_d - total_debit) > 0.01 or abs(sum_c - total_credit) > 0.01:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Écart de contrôle BIAT : débit extrait {:.3f} vs relevé {:.3f} ; "
-                    "crédit extrait (+solde initial) {:.3f} vs relevé {:.3f}"
+                    "Écart de contrôle BIAT : débit extrait (solde initial inclus si débiteur) {:.3f} vs relevé {:.3f} ; "
+                    "crédit extrait (solde initial inclus si créditeur) {:.3f} vs relevé {:.3f}"
                 ).format(sum_d, total_debit, sum_c, total_credit),
             )
     return df
