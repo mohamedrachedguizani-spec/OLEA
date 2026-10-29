@@ -12,6 +12,7 @@ from modules.audit.service import log_audit_action
 from modules.notifications.service import notify_module_users
 from modules.notifications.rules import has_important_reconciliation_discrepancy
 from database import db
+from modules.saisie_bancaire.models import ExtractionControl
 from modules.rapprochement_bancaire.models import (
     BankMovement,
     SageMovement,
@@ -370,7 +371,9 @@ def compare_files(
         opening_status=opening_status,
         **balance_control,
     )
-    result.controle_extraction = extraction_controls
+    result.controle_extraction = [
+        ExtractionControl(**control) for control in extraction_controls
+    ]
 
     with db.get_cursor() as cursor:
         cursor.execute(
