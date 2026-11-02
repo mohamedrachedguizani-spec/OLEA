@@ -1291,6 +1291,25 @@ def _ubci_date(txt):
         return None
 
 
+def _ubci_movement_from_net(debit, credit):
+    """
+    Colonnes Débit / Crédit UBCI (signe imprimé) -> (débit, crédit) positifs.
+
+    Le relevé imprime parfois une écriture de SENS INVERSE dans une colonne :
+    « PAIEMENT INTERET : INTÉRÊTS DÉBITEURS …  -214,876 » dans la colonne Débit.
+    Le montant reste affecté à sa colonne et s'y soustrait : les totaux imprimés
+    (« TOTAL DU DEBIT ET DU CREDIT » → 407.242,737 / 711.706,693) sont la somme
+    signée. Prendre la valeur absolue classe ce crédit en débit et gonfle le débit
+    de 429,752, ce qui fait échouer le contrôle de clôture.
+    """
+    net = round((debit or 0.0) - (credit or 0.0), 3)
+    if net > 0:
+        return net, 0.0
+    if net < 0:
+        return 0.0, abs(net)
+    return 0.0, 0.0
+
+
 def _is_ubci_format(raw_text: str) -> bool:
     up = raw_text.upper()
     return (
@@ -1308,6 +1327,7 @@ def _parse_pdf_ubci(file_bytes: bytes) -> pd.DataFrame:
     Contrôles : solde initial + crédits - débits == solde de clôture, et totaux Débit/Crédit.
     """
     rows = []
+    net_debit = net_credit = 0.0
     opening = closing = None
     tot_debit = tot_credit = None
 
@@ -1350,26 +1370,31 @@ def _parse_pdf_ubci(file_bytes: bytes) -> pd.DataFrame:
                             status_code=400,
                             detail="Ligne UBCI illisible : {} {}".format(cells[0], libelle),
                         )
+                    # Les totaux du relevé sont signés : on les reconstitue tels quels.
+                    net_debit += debit or 0.0
+                    net_credit += credit or 0.0
+                    out_debit, out_credit = _ubci_movement_from_net(debit, credit)
                     rows.append({
                         "date_operation": date_op,
                         "date_valeur": _ubci_date(cells[4]),
                         "reference": cells[5] or None,
                         "libelle": libelle or "(sans libellé)",
-                        "debit": abs(debit) if debit else 0.0,
-                        "credit": abs(credit) if credit else 0.0,
+                        "debit": out_debit,
+                        "credit": out_credit,
                     })
 
     if not rows:
         raise HTTPException(status_code=400, detail="Aucun mouvement détecté dans le relevé UBCI")
     df = pd.DataFrame(rows)
 
+    # Contrôles sur les colonnes signées, identiques à ce qu'imprime le relevé.
     problems = []
+    sd, sc = round(net_debit, 3), round(net_credit, 3)
     if opening is not None and closing is not None:
-        expected = round(opening + df["credit"].sum() - df["debit"].sum(), 3)
+        expected = round(opening + sc - sd, 3)
         if abs(expected - closing) > 0.01:
             problems.append("solde de clôture calculé {:.3f} vs relevé {:.3f}".format(expected, closing))
     if tot_debit is not None and tot_credit is not None:
-        sd, sc = round(df["debit"].sum(), 3), round(df["credit"].sum(), 3)
         if abs(sd - tot_debit) > 0.01 or abs(sc - tot_credit) > 0.01:
             problems.append(
                 "totaux débit {:.3f}/{:.3f}, crédit {:.3f}/{:.3f} (extrait/relevé)".format(sd, tot_debit, sc, tot_credit)
