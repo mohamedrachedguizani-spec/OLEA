@@ -757,11 +757,18 @@ def calculate_reconciliation_balances(
 
 # Natures d'opération reconnues dans les libellés. Deux mouvements de nature
 # différente ne s'annulent pas, même à montant égal : un virement n'est pas un
+# versement, un versement n'est pas un chèque, un règlement n'est pas un
 # versement, un versement n'est pas une indemnité. Les variantes couvrent les
-# graphies usuelles (VIEREMENT, VIR, dépôt...) pour toutes les sources.
+# graphies usuelles (VIEREMENT, VIR, CHQ, REGLT, dépôt...) pour toutes les sources.
 _OPERATION_NATURES = {
     "virement": ("virement", "vierement", "virem", "viremt", "vir", "virs", "vire", "transfert", "transferts"),
     "versement": ("versement", "versem", "versemt", "verse", "verses", "depot", "depots", "encaissement", "encaissements"),
+    "cheque": ("cheque", "cheques", "cheq", "chq", "chqs", "traite", "traites", "lcn", "effet", "effets"),
+    "reglement": (
+        "reglement", "reglements", "regl", "reglt", "reglts", "reglmt", "reglem",
+        "rglt", "rglts",
+        "paiement", "paiements", "payement", "payements", "payment", "payments",
+    ),
     "indemnite": ("indemnite", "indemnites", "indemnisation", "indemnisations", "indem"),
 }
 
