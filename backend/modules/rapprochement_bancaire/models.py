@@ -78,6 +78,25 @@ class ReconciliationCancellationSummary(BaseModel):
     sage_details: List[CancelledSagePair] = Field(default_factory=list)
 
 
+class ManualReconciliationPair(BaseModel):
+    """Rapprochement validé par un utilisateur entre plusieurs lignes de chaque source.
+
+    Un même mouvement Sage peut par exemple correspondre à trois mouvements du
+    relevé bancaire : les listes portent alors plusieurs éléments de chaque côté.
+    """
+    bank: List[BankMovement] = Field(default_factory=list)
+    sage: List[SageMovement] = Field(default_factory=list)
+    bank_total: float = 0.0
+    sage_total: float = 0.0
+    validated_at: Optional[datetime] = None
+    validated_by: Optional[str] = None
+
+
+class ManualReconciliationRequest(BaseModel):
+    bank: List[BankMovement] = Field(default_factory=list)
+    sage: List[SageMovement] = Field(default_factory=list)
+
+
 class CarryoverMovementStatus(BaseModel):
     source_type: str
     origin_period: str
@@ -127,6 +146,7 @@ class ReconciliationResult(BaseModel):
     sage_only: List[SageMovement]
     discrepancies: List[DiscrepancyPair]
     cancellations: ReconciliationCancellationSummary = Field(default_factory=ReconciliationCancellationSummary)
+    manual_reconciliations: List[ManualReconciliationPair] = Field(default_factory=list)
     carryovers: CarryoverSummary = Field(default_factory=CarryoverSummary)
     context: Optional[ReconciliationContext] = None
     controle_extraction: List[ExtractionControl] = Field(default_factory=list)

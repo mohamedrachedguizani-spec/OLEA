@@ -18,7 +18,6 @@ from modules.rapprochement_bancaire.models import (
     ReconciliationOptions,
     OpeningBalanceInfo,
 )
-
 # Import the parsing helpers from saisie_bancaire service
 from modules.saisie_bancaire.service import (
     _parse_csv_text,
@@ -790,11 +789,86 @@ def _detect_operation_natures(libelle: str) -> set:
     return natures
 
 
+# Mots qui attestent explicitement qu'une ligne annule une opération antérieure.
+# Cette preuve prime sur la nature du libellé : « Annulation double paiement » et
+# « VIR EMIS ... » de même montant doivent pouvoir se neutraliser.
+_CANCELLATION_PROOF_WORDS = frozenset({
+    "annulation", "annulations", "annule", "annulee", "annulees", "annules", "annul",
+    "contrepassation", "contrepasser", "contre", "extourne", "extournee", "extournes",
+    "regularisation", "regularise", "regularisee", "correction", "corrige", "corrigee",
+    "rejet", "rejetee", "rejete", "retour", "retournee", "retourne", "impaye", "impayee",
+    "opposition", "oppose", "opposee", "erreur", "erronee", "errone", "doublon", "doublons",
+    "suspens", "suspension", "reverse", "reversal", "cancelled", "canceled",
+})
+
+
+def _has_cancellation_proof(libelle: str) -> bool:
+    """Vrai si le libellé contient un mot d'annulation ou de correction explicite."""
+    return any(token in _CANCELLATION_PROOF_WORDS for token in _normalize_text(libelle).split())
+
+
 def _are_different_operation_types(first_libelle: str, second_libelle: str) -> bool:
-    """Vrai si les deux libellés désignent des natures d'opération incompatibles."""
+    """Vrai si les deux libellés désignent des natures d'opération incompatibles.
+
+    Un mot d'annulation explicite d'un côté lève la restriction : il documente le
+    lien entre les deux lignes (règlement extourné par un virement, par exemple).
+    """
+    if _has_cancellation_proof(first_libelle) or _has_cancellation_proof(second_libelle):
+        return False
     first_natures = _detect_operation_natures(first_libelle)
     second_natures = _detect_operation_natures(second_libelle)
     return bool(first_natures and second_natures and not (first_natures & second_natures))
+
+
+def movement_identity(movement) -> str:
+    """Clé stable d'un mouvement, utilisée pour réintégrer des lignes après rechargement."""
+    def stamp(value):
+        return value.isoformat() if hasattr(value, "isoformat") else str(value or "")
+
+    def number(value):
+        return f"{float(value or 0):.3f}"
+
+    reference = getattr(movement, "reference", None)
+    if reference is not None:
+        return "|".join((
+            "bank",
+            stamp(getattr(movement, "date_operation", None)),
+            str(reference or ""),
+            number(getattr(movement, "debit", None)),
+            number(getattr(movement, "credit", None)),
+            _movement_label(movement),
+        ))
+    return "|".join((
+        "sage",
+        str(getattr(movement, "code_compte", "") or ""),
+        str(getattr(movement, "numero_piece", "") or ""),
+        str(getattr(movement, "reference_piece", "") or ""),
+        stamp(getattr(movement, "date_ecriture", None)),
+        number(getattr(movement, "debit", None)),
+        number(getattr(movement, "credit", None)),
+        _movement_label(movement),
+    ))
+
+
+def apply_manual_reconciliations(result: ReconciliationResult) -> None:
+    """Retire des listes « uniquement » les lignes déjà rapprochées manuellement.
+
+    Recalcule les soldes ajustés et le statut pour que les exports restent cohérents
+    qu'ils soient générés depuis l'écran ou depuis un résultat rechargé.
+    """
+    manual_bank = {movement_identity(movement) for pair in result.manual_reconciliations for movement in pair.bank}
+    manual_sage = {movement_identity(movement) for pair in result.manual_reconciliations for movement in pair.sage}
+    if manual_bank:
+        result.bank_only = [item for item in result.bank_only if movement_identity(item) not in manual_bank]
+    if manual_sage:
+        result.sage_only = [item for item in result.sage_only if movement_identity(item) not in manual_sage]
+
+    context = result.context
+    if context is None:
+        return
+    balances = calculate_reconciliation_balances(result, context.sage_opening.amount, context.bank_opening.amount)
+    for field, value in balances.items():
+        setattr(context, field, value)
 
 
 def cancel_equal_opposite_movements(movements):

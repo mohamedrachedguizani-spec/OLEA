@@ -484,6 +484,19 @@ class ApiService {
         return response.json();
     }
 
+    static async validateManualReconciliation(resultId, payload) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/results/${resultId}/manual`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Validation impossible' }));
+            throw new Error(err.detail || 'Erreur lors de la validation du rapprochement manuel');
+        }
+        return response.json();
+    }
+
     static async getAccessPermissions() {
         const response = await ApiService._fetch(`${API_BASE_URL}/access/permissions`);
         if (!response.ok) throw new Error('Erreur lors du chargement des permissions');

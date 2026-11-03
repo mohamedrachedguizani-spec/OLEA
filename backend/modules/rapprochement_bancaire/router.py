@@ -2,7 +2,7 @@ import os
 import json
 import math
 from calendar import monthrange
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
@@ -24,6 +24,8 @@ from modules.rapprochement_bancaire.models import (
     CancelledSagePair,
     CarryoverMovementStatus,
     CarryoverSummary,
+    ManualReconciliationPair,
+    ManualReconciliationRequest,
     ReconciliationPdfRequest,
     ReconciliationResult,
     ReconciliationHistoryResponse,
@@ -36,6 +38,8 @@ from modules.rapprochement_bancaire.service import (
     parse_sage_file,
     parse_bank_file,
     cancel_equal_opposite_movements,
+    movement_identity,
+    apply_manual_reconciliations,
     reconcile,
     calculate_reconciliation_balances,
 )
@@ -658,6 +662,116 @@ def delete_reconciliation_result(
         request=request,
     )
     return {"message": "Le rapprochement a été supprimé de l’historique."}
+
+
+@router.post("/rapprochement/results/{result_id}/manual", response_model=ReconciliationResult)
+def validate_manual_reconciliation(
+    result_id: int,
+    payload: ManualReconciliationRequest,
+    request: Request,
+    user: dict = Depends(require_permission_code("rapprochement_bancaire.run")),
+):
+    """Valide un rapprochement manuel entre plusieurs lignes Sage et plusieurs lignes banque.
+
+    Cas d'usage : le comptable a saisi une seule écriture de 30 000 TND alors que le
+    relevé présente trois mouvements totalisant 30 000 TND. Les montants netto de
+    chaque côté doivent être strictement égaux ; la paire validée quitte ensuite
+    « Banque uniquement » / « Sage uniquement » et apparaît dans « Rapprochés ».
+    """
+    if not payload.bank or not payload.sage:
+        raise HTTPException(
+            status_code=400,
+            detail="Sélectionnez au moins un mouvement bancaire et une écriture Sage.",
+        )
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            "SELECT result_json FROM bank_reconciliation_results WHERE id = %s",
+            (result_id,),
+        )
+        row = cursor.fetchone()
+        if not row:
+            raise HTTPException(status_code=404, detail="Résultat de rapprochement introuvable")
+
+        raw_payload = row["result_json"]
+        result = ReconciliationResult.model_validate(
+            json.loads(raw_payload) if isinstance(raw_payload, str) else raw_payload
+        )
+
+        # Les lignes ne doivent pas appartenir à une paire déjà rapprochée ou annulée.
+        # Les listes « uniquement » ne contiennent déjà que les lignes consommables,
+        # et apply_manual_reconciliations() précédent les a purgées des paires validées.
+        available_bank = {movement_identity(item) for item in result.bank_only}
+        available_sage = {movement_identity(item) for item in result.sage_only}
+
+        unknown = [movement_identity(item) for item in payload.bank if movement_identity(item) not in available_bank]
+        unknown += [movement_identity(item) for item in payload.sage if movement_identity(item) not in available_sage]
+        if unknown:
+            raise HTTPException(
+                status_code=409,
+                detail="Une ou plusieurs lignes ne figurent plus dans « Banque uniquement » ou « Sage uniquement » : rechargez le rapprochement.",
+            )
+
+        # Chaque ligne ne peut être consommée qu'une fois dans la même validation.
+        payload_bank_keys = [movement_identity(item) for item in payload.bank]
+        payload_sage_keys = [movement_identity(item) for item in payload.sage]
+        if len(set(payload_bank_keys)) != len(payload_bank_keys) or len(set(payload_sage_keys)) != len(payload_sage_keys):
+            raise HTTPException(status_code=400, detail="Une même ligne est sélectionnée plusieurs fois.")
+
+        bank_total = round(sum(float(item.amount or 0) for item in payload.bank), 3)
+        sage_total = round(sum(float(item.amount or 0) for item in payload.sage), 3)
+        if abs(bank_total - sage_total) > 0.001:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Les montants netto doivent être égaux : "
+                    f"banque {bank_total:.3f} TND contre Sage {sage_total:.3f} TND."
+                ),
+            )
+
+        result.manual_reconciliations.append(ManualReconciliationPair(
+            bank=list(payload.bank),
+            sage=list(payload.sage),
+            bank_total=bank_total,
+            sage_total=sage_total,
+            validated_at=datetime.now(),
+            validated_by=user.get("username") or user.get("login") or str(user.get("id")),
+        ))
+        result.stats.manual_validation_count = len(result.manual_reconciliations)
+        apply_manual_reconciliations(result)
+
+        cursor.execute(
+            "UPDATE bank_reconciliation_results SET result_json = %s, "
+            "discrepancies_count = %s, total_discrepancy_amount = %s, automation_rate = %s "
+            "WHERE id = %s",
+            (
+                result.model_dump_json(),
+                result.stats.discrepancies_count,
+                result.stats.total_discrepancy_amount,
+                result.stats.automation_rate,
+                result_id,
+            ),
+        )
+
+    log_audit_action(
+        user=user,
+        action="manual_reconcile",
+        module="rapprochement_bancaire",
+        entity_type="reconciliation",
+        entity_id=str(result_id),
+        detail={
+            "bank_movements": len(payload.bank),
+            "sage_movements": len(payload.sage),
+            "bank_total": bank_total,
+            "sage_total": sage_total,
+            "bank_journal": result.context.bank_journal if result.context else None,
+            "period": result.context.period if result.context else None,
+        },
+        request=request,
+    )
+
+    result.id = result_id
+    return result
 
 
 @router.post("/rapprochement/export-pdf")

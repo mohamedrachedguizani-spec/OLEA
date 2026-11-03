@@ -19,6 +19,7 @@ from reportlab.platypus import (
 )
 
 from modules.rapprochement_bancaire.models import ReconciliationPdfRequest
+from modules.rapprochement_bancaire.service import apply_manual_reconciliations
 
 
 OLEA_TERRACOTTA = colors.HexColor("#B4482B")
@@ -229,6 +230,9 @@ def _page(canvas, doc):
 
 def build_reconciliation_pdf(payload: ReconciliationPdfRequest) -> BytesIO:
     result = payload.result
+    # Le client peut exporter un résultat chargé avant une validation manuelle :
+    # on réaligne les listes « uniquement » sur les paires déjà validées.
+    apply_manual_reconciliations(result)
     stats = result.stats
     context = result.context
     buffer = BytesIO()

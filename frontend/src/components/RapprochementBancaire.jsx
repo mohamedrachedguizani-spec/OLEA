@@ -23,8 +23,7 @@ const getCurrentPeriod = () => {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
 };
 
-function ReconciliationSummary({ stats, cancellations, carryovers, formatAmount, formatDate }) {
-    const automationRate = Math.max(0, Math.min(100, Number(stats.automation_rate) || 0));
+function ReconciliationSummary({ stats, cancellations, carryovers, formatAmount, formatDate }) {    const automationRate = Math.max(0, Math.min(100, Number(stats.automation_rate) || 0));
     const cancellationSummary = cancellations || {};
     const carryoverMovements = carryovers?.movements || [];
     const bankCancellationDetails = cancellationSummary.bank_details || [];
@@ -145,6 +144,221 @@ function ReconciliationSummary({ stats, cancellations, carryovers, formatAmount,
     );
 }
 
+// Clé stable d'un mouvement, alignée sur `movement_identity` du backend.
+function movementKey(movement) {
+    const num = (value) => Number(value || 0).toFixed(3);
+    const stamp = (value) => (value ? String(value) : '');
+    if (movement && movement.date_operation !== undefined) {
+        return [
+            'bank', stamp(movement.date_operation), movement.reference || '',
+            num(movement.debit), num(movement.credit), movement.libelle || '',
+        ].join('|');
+    }
+    return [
+        'sage', movement?.code_compte || '', movement?.numero_piece || '',
+        movement?.reference_piece || '', stamp(movement?.date_ecriture),
+        num(movement?.debit), num(movement?.credit), movement?.libelle_ecriture || '',
+    ].join('|');
+}
+
+function ManualReconciliationTab({ result, readOnly, onValidate, formatAmount, formatDate }) {
+    const [selectedBank, setSelectedBank] = useState([]);
+    const [selectedSage, setSelectedSage] = useState([]);
+    const [busy, setBusy] = useState(false);
+    const [error, setError] = useState('');
+
+    const bankList = result?.bank_only || [];
+    const sageList = result?.sage_only || [];
+    const bankMovements = bankList.filter((item) => selectedBank.includes(movementKey(item)));
+    const sageMovements = sageList.filter((item) => selectedSage.includes(movementKey(item)));
+    const bankTotal = bankMovements.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const sageTotal = sageMovements.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+    const difference = Math.round((bankTotal - sageTotal) * 1000) / 1000;
+    const hasSelection = bankMovements.length > 0 || sageMovements.length > 0;
+    const isBalanced = bankMovements.length > 0 && sageMovements.length > 0 && Math.abs(difference) <= 0.001;
+
+    const toggle = (key, side) => {
+        const [current, setList] = side === 'bank' ? [selectedBank, setSelectedBank] : [selectedSage, setSelectedSage];
+        setError('');
+        setList(current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+    };
+
+    const clearSelection = () => {
+        setSelectedBank([]);
+        setSelectedSage([]);
+        setError('');
+    };
+
+    const submit = async () => {
+        if (!isBalanced || busy) return;
+        setBusy(true);
+        setError('');
+        try {
+            await onValidate({ bank: bankMovements, sage: sageMovements });
+            setSelectedBank([]);
+            setSelectedSage([]);
+        } catch (err) {
+            setError(err.message || 'Validation impossible.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const renderRow = (movement, side) => {
+        const key = movementKey(movement);
+        const selected = (side === 'bank' ? selectedBank : selectedSage).includes(key);
+        const isBank = side === 'bank';
+        const disabled = readOnly;
+        const label = isBank ? movement.libelle : movement.libelle_ecriture;
+        const reference = isBank ? movement.reference : (movement.reference_piece || movement.numero_piece);
+        return (
+            <div
+                key={key}
+                role="checkbox"
+                aria-checked={selected}
+                tabIndex={disabled ? -1 : 0}
+                onClick={() => { if (!disabled) toggle(key, side); }}
+                onKeyDown={(event) => {
+                    if (disabled) return;
+                    if (event.key === ' ' || event.key === 'Enter') {
+                        event.preventDefault();
+                        toggle(key, side);
+                    }
+                }}
+                style={{
+                    display: 'grid',
+                    gridTemplateColumns: '26px 76px 1fr 96px',
+                    gap: '0.5rem',
+                    alignItems: 'center',
+                    padding: '0.45rem 0.6rem',
+                    border: `1px solid ${selected ? 'var(--olea-terracotta)' : 'var(--border-light)'}`,
+                    borderRadius: 'var(--radius-sm)',
+                    background: selected ? '#fff8f5' : (disabled ? '#fafafa' : 'var(--bg-card)'),
+                    fontSize: '0.82rem',
+                    cursor: disabled ? 'default' : 'pointer',
+                }}
+            >
+                <span
+                    aria-hidden="true"
+                    style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        width: '20px', height: '20px', borderRadius: '4px',
+                        border: `1px solid ${selected ? 'var(--olea-terracotta)' : '#c9ccd1'}`,
+                        background: selected ? 'var(--olea-terracotta)' : 'transparent',
+                        color: '#fff', fontSize: '0.8rem', fontWeight: 700, lineHeight: 1,
+                    }}
+                >
+                    {selected ? '✕' : ''}
+                </span>
+                <span style={{ color: 'var(--text-secondary)' }}>
+                    {formatDate(isBank ? movement.date_operation : movement.date_ecriture)}
+                </span>
+                <span style={{ minWidth: 0 }}>
+                    <span style={{ display: 'block', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={label}>{label}</span>
+                    {reference && <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>{reference}</small>}
+                </span>
+                <span style={{ textAlign: 'right', fontWeight: 600 }}>
+                    {formatAmount(Math.abs(Number(movement.amount || 0)))}
+                </span>
+            </div>
+        );
+    };
+
+    return (
+        <div role="group" aria-label="Rapprochement manuel">
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', padding: '0.6rem 0.85rem', marginBottom: '0.6rem', background: '#fffdfc', border: '1px solid var(--olea-terracotta)', borderRadius: 'var(--radius-sm)' }}>
+                <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                    Cochez les lignes Sage et les lignes banque à rapprocher manuellement. Les montants netto doivent être strictement égaux.
+                </p>
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    {hasSelection && (
+                        <button type="button" className="btn btn-secondary" style={{ padding: '0.35rem 0.8rem', fontSize: '0.8rem' }} onClick={clearSelection}>
+                            Effacer la sélection
+                        </button>
+                    )}
+                    <button
+                        type="button"
+                        className="btn btn-primary"
+                        style={{ padding: '0.35rem 1rem', fontSize: '0.82rem' }}
+                        onClick={submit}
+                        disabled={!isBalanced || busy || readOnly || !result?.id}
+                        title={readOnly || !result?.id ? 'Validation indisponible pour ce rapprochement.' : undefined}
+                    >
+                        {busy ? <><span className="spinner" /> Validation…</> : 'Valider le rapprochement'}
+                    </button>
+                </div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr', gap: '0.5rem', background: 'var(--bg-muted)', padding: '0.6rem 0.85rem', borderRadius: 'var(--radius-sm)', fontWeight: 600, fontSize: '0.85rem', marginBottom: '0.4rem' }}>
+                <div>Sage à rapprocher ({sageList.length})</div>
+                <div style={{ textAlign: 'center' }}>⇅</div>
+                <div>Banque à rapprocher ({bankList.length})</div>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr', gap: '0.5rem', alignItems: 'start' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '420px', overflowY: 'auto' }}>
+                    {sageList.length === 0 && <em style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '0.5rem' }}>Aucune écriture Sage en attente.</em>}
+                    {sageList.map((item) => renderRow(item, 'sage'))}
+                </div>
+                <div style={{ textAlign: 'center', color: 'var(--text-muted)', paddingTop: '0.75rem' }}>
+                    {hasSelection ? '→' : ''}
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '420px', overflowY: 'auto' }}>
+                    {bankList.length === 0 && <em style={{ fontSize: '0.82rem', color: 'var(--text-muted)', padding: '0.5rem' }}>Aucun mouvement bancaire en attente.</em>}
+                    {bankList.map((item) => renderRow(item, 'bank'))}
+                </div>
+            </div>
+
+            <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', marginTop: '0.9rem', padding: '0.65rem 0.85rem', border: '1px solid var(--border-light)', borderRadius: 'var(--radius-sm)', background: '#fafaf9', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <span>Sélection Sage : <strong>{sageMovements.length}</strong> · Net <strong>{formatAmount(sageTotal)} TND</strong></span>
+                    <span>Sélection banque : <strong>{bankMovements.length}</strong> · Net <strong>{formatAmount(bankTotal)} TND</strong></span>
+                </div>
+                <span style={{ fontWeight: 600, color: isBalanced ? '#1f9d55' : 'var(--olea-terracotta)' }}>
+                    {!hasSelection ? 'Aucune sélection' : (isBalanced ? 'Équilibré ✓ — validation possible' : `Écart ${formatAmount(Math.abs(difference))} TND`)}
+                </span>
+            </div>
+
+            {error && <p role="alert" style={{ color: 'var(--olea-terracotta)', fontSize: '0.82rem', margin: '0.5rem 0 0' }}>{error}</p>}
+        </div>
+    );
+}
+
+function ManualPairRow({ pair, formatAmount, formatDate }) {
+    return (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr', gap: '0.5rem', padding: '0.6rem 1rem', background: '#f6fdf9', border: '1px solid #cdeedd', borderRadius: 'var(--radius-sm)', fontSize: '0.85rem', alignItems: 'center' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {pair.sage.map((item, i) => (
+                    <div key={`s-${i}`} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px 90px 90px', gap: '0.5rem' }}>
+                        <div style={{ color: 'var(--text-secondary)' }}>{formatDate(item.date_ecriture)}</div>
+                        <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.libelle_ecriture}>{item.libelle_ecriture}</div>
+                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-muted)' }}>{item.reference_piece || '-'}</div>
+                        <div style={{ textAlign: 'right' }}>{item.debit > 0 ? formatAmount(item.debit) : '-'}</div>
+                        <div style={{ textAlign: 'right' }}>{item.credit > 0 ? formatAmount(item.credit) : '-'}</div>
+                    </div>
+                ))}
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Net Sage : <strong>{formatAmount(pair.sage_total)} TND</strong></div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+                <span style={{ background: '#def7ec', color: '#1f9d55', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>✓</span>
+                <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>manuelle</div>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem' }}>
+                {pair.bank.map((item, i) => (
+                    <div key={`b-${i}`} style={{ display: 'grid', gridTemplateColumns: '80px 1fr 100px 90px 90px', gap: '0.5rem' }}>
+                        <div style={{ color: 'var(--text-secondary)' }}>{formatDate(item.date_operation)}</div>
+                        <div style={{ fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={item.libelle}>{item.libelle}</div>
+                        <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', color: 'var(--text-muted)' }}>{item.reference || '-'}</div>
+                        <div style={{ textAlign: 'right' }}>{item.debit > 0 ? formatAmount(item.debit) : '-'}</div>
+                        <div style={{ textAlign: 'right' }}>{item.credit > 0 ? formatAmount(item.credit) : '-'}</div>
+                    </div>
+                ))}
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Net banque : <strong>{formatAmount(pair.bank_total)} TND</strong></div>
+            </div>
+        </div>
+    );
+}
+
 function OpeningBalanceControl({ context, formatAmount }) {
     if (!context) return null;
     const statusLabels = {
@@ -221,7 +435,7 @@ function RapprochementBancaire({ navigationTarget }) {
     // Reconciliation results
     const [result, setResult] = useState(null);
     const [showExtractionControl, setShowExtractionControl] = useState(false);
-    const [activeTab, setActiveTab] = useState('reconciled'); // 'reconciled' | 'discrepancies' | 'bank_only' | 'sage_only'
+    const [activeTab, setActiveTab] = useState('reconciled'); // 'reconciled' | 'discrepancies' | 'bank_only' | 'sage_only' | 'manual'
     const refreshTotal = () => {
         if (!canRead) return;
         ApiService.getReconciliationHistory({ page: 1, pageSize: 1 })
@@ -330,6 +544,19 @@ function RapprochementBancaire({ navigationTarget }) {
             return () => clearTimeout(timer);
         }
     }, [error]);
+
+    // Validation d'un rapprochement manuel : la paire est persistée puis le
+    // résultat renvoyé par le serveur (listes et soldes recalculés) remplace l'état.
+    const handleManualReconciliation = async ({ bank, sage }) => {
+        if (!result?.id) throw new Error('Enregistrez d’abord le rapprochement avant une validation manuelle.');
+        const updated = await ApiService.validateManualReconciliation(result.id, { bank, sage });
+        setResult(updated);
+        refreshTotal();
+        setSuccess(
+            `Rapprochement manuel validé : ${bank.length} mouvement(s) banque et ${sage.length} écriture(s) Sage.`
+        );
+        setActiveTab('reconciled');
+    };
 
     const handleDragSage = (e) => {
         e.preventDefault();
@@ -893,7 +1120,7 @@ function RapprochementBancaire({ navigationTarget }) {
                             className={`btn ${activeTab === 'reconciled' ? 'btn-primary' : 'btn-secondary'}`}
                             style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
                         >
-                            Rapprochés ({result.reconciled.length})
+                            Rapprochés ({result.reconciled.length + (result.manual_reconciliations?.length || 0)})
                         </button>
                         <button
                             onClick={() => setActiveTab('discrepancies')}
@@ -916,8 +1143,15 @@ function RapprochementBancaire({ navigationTarget }) {
                         >
                             Sage uniquement ({result.sage_only.length})
                         </button>
+                        <button
+                            onClick={() => setActiveTab('manual')}
+                            className={`btn ${activeTab === 'manual' ? 'btn-primary' : 'btn-secondary'}`}
+                            style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
+                        >
+                            Rapprochement manuel ({result.bank_only.length + result.sage_only.length})
+                        </button>
                     </div>
-                    
+
                     {/* Search box */}
                     <div style={{ minWidth: '250px' }}>
                         <input
@@ -931,6 +1165,19 @@ function RapprochementBancaire({ navigationTarget }) {
                     </div>
                 </div>
 
+                {/* Onglet de travail : sélection croisée Sage ↔ Banque */}
+                {activeTab === 'manual' && (
+                    <ManualReconciliationTab
+                        result={result}
+                        readOnly={!canRun}
+                        onValidate={handleManualReconciliation}
+                        formatAmount={formatAmount}
+                        formatDate={formatDate}
+                    />
+                )}
+
+                {activeTab !== 'manual' && (
+                <>
                 {/* Side-by-Side split layout headers */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 40px 1fr', gap: '0.5rem', background: 'var(--bg-muted)', padding: '0.75rem 1rem', borderRadius: 'var(--radius-sm)', fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-primary)', marginBottom: '0.5rem' }}>
                     <div style={{ textAlign: 'left' }}> COMPTABILITÉ SAGE (Écritures)</div>
@@ -1081,8 +1328,13 @@ function RapprochementBancaire({ navigationTarget }) {
                         </div>
                     ))}
 
+                    {/* Les paires manuelles apparaissent aussi dans « Rapprochés » */}
+                    {activeTab === 'reconciled' && (result.manual_reconciliations || []).map((pair, idx) => (
+                        <ManualPairRow key={`manual-${idx}`} pair={pair} formatAmount={formatAmount} formatDate={formatDate} />
+                    ))}
+
                     {/* Empty state within active tab */}
-                    {((activeTab === 'reconciled' && filterItems(result.reconciled, 'reconciled').length === 0) ||
+                    {((activeTab === 'reconciled' && filterItems(result.reconciled, 'reconciled').length === 0 && (result.manual_reconciliations || []).length === 0) ||
                       (activeTab === 'discrepancies' && filterItems(result.discrepancies, 'discrepancies').length === 0) ||
                       (activeTab === 'bank_only' && filterItems(result.bank_only, 'bank_only').length === 0) ||
                       (activeTab === 'sage_only' && filterItems(result.sage_only, 'sage_only').length === 0)) && (
@@ -1092,8 +1344,9 @@ function RapprochementBancaire({ navigationTarget }) {
                     )}
 
                 </div>
+                </>
+                )}
             </div>
-            
         </div>
     );
 
