@@ -990,33 +990,34 @@ def reconcile(
             bank_idx += 1
 
     # --- Étape 2 : Détection des Écarts de Montant sur les restes ---
-    # Même date (dans la limite) et libellé similaire, mais montants différents
+    # Un écart suppose la même date exacte des deux côtés (date d'écriture Sage et
+    # date d'opération bancaire), sans tolérance, et un libellé similaire.
     bank_idx = 0
     while bank_idx < len(remaining_bank):
         bm = remaining_bank[bank_idx]
         found_match = False
-        
+
         for sage_idx, sm in enumerate(remaining_sage):
             if bm.carryover_origin_result_id is not None and sm.carryover_origin_result_id is not None:
                 continue
-            diff_days = abs((bm.date_operation - sm.date_ecriture).days)
-            if diff_days <= options.date_tolerance_days:
-                norm_b = normalize_libelle(bm.libelle)
-                norm_s = normalize_libelle(sm.libelle_ecriture)
-                
-                # Détection des libellés à sens similaire (ex: seuil de 55% de ressemblance)
-                if get_similarity_ratio(norm_b, norm_s) >= 0.55:
-                    diff = abs(bm.amount - sm.amount)
-                    discrepancies.append(DiscrepancyPair(
-                        bank=bm,
-                        sage=sm,
-                        difference=diff
-                    ))
-                    remaining_bank.pop(bank_idx)
-                    remaining_sage.pop(sage_idx)
-                    found_match = True
-                    break
-                    
+            if bm.date_operation != sm.date_ecriture:
+                continue
+            norm_b = normalize_libelle(bm.libelle)
+            norm_s = normalize_libelle(sm.libelle_ecriture)
+
+            # Détection des libellés à sens similaire (ex: seuil de 55% de ressemblance)
+            if get_similarity_ratio(norm_b, norm_s) >= 0.55:
+                diff = abs(bm.amount - sm.amount)
+                discrepancies.append(DiscrepancyPair(
+                    bank=bm,
+                    sage=sm,
+                    difference=diff
+                ))
+                remaining_bank.pop(bank_idx)
+                remaining_sage.pop(sage_idx)
+                found_match = True
+                break
+
         if not found_match:
             bank_idx += 1
 
