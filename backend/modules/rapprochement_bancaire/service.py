@@ -755,8 +755,48 @@ def calculate_reconciliation_balances(
     }
 
 
+# Natures d'opération reconnues dans les libellés. Deux mouvements de nature
+# différente ne s'annulent pas, même à montant égal : un virement n'est pas un
+# versement, un versement n'est pas une indemnité. Les variantes couvrent les
+# graphies usuelles (VIEREMENT, VIR, dépôt...) pour toutes les sources.
+_OPERATION_NATURES = {
+    "virement": ("virement", "vierement", "virem", "viremt", "vir", "virs", "vire", "transfert", "transferts"),
+    "versement": ("versement", "versem", "versemt", "verse", "verses", "depot", "depots", "encaissement", "encaissements"),
+    "indemnite": ("indemnite", "indemnites", "indemnisation", "indemnisations", "indem"),
+}
+
+
+def _movement_label(movement) -> str:
+    """Retourne le libellé d'un mouvement, quel que soit le type de source."""
+    return str(getattr(movement, "libelle", None) or getattr(movement, "libelle_ecriture", None) or "")
+
+
+def _detect_operation_natures(libelle: str) -> set:
+    """Détecte les natures d'opération d'un libellé, insensible à la casse et aux accents."""
+    tokens = _normalize_text(libelle).split()
+    natures = set()
+    for token in tokens:
+        singular = token[:-1] if token.endswith("s") else token
+        for nature, keywords in _OPERATION_NATURES.items():
+            if token in keywords or singular in keywords:
+                natures.add(nature)
+    return natures
+
+
+def _are_different_operation_types(first_libelle: str, second_libelle: str) -> bool:
+    """Vrai si les deux libellés désignent des natures d'opération incompatibles."""
+    first_natures = _detect_operation_natures(first_libelle)
+    second_natures = _detect_operation_natures(second_libelle)
+    return bool(first_natures and second_natures and not (first_natures & second_natures))
+
+
 def cancel_equal_opposite_movements(movements):
-    """Remove opposite-side pairs of equal amount, regardless of their dates."""
+    """Remove opposite-side pairs of equal amount, regardless of their dates.
+
+    Les libellés doivent désigner la même nature d'opération : un virement et un
+    versement de même montant, ou un versement et une indemnité de même montant,
+    ne sont pas neutralisés.
+    """
     debit_indexes = {}
     credit_indexes = {}
     for index, movement in enumerate(movements):
@@ -772,15 +812,19 @@ def cancel_equal_opposite_movements(movements):
     for amount in debit_indexes:
         if amount not in credit_indexes:
             continue
-        count = min(len(debit_indexes[amount]), len(credit_indexes[amount]))
-        debit_pair_indexes = debit_indexes[amount][:count]
-        credit_pair_indexes = credit_indexes[amount][:count]
-        cancelled.update(debit_pair_indexes)
-        cancelled.update(credit_pair_indexes)
-        cancellation_pairs.extend(
-            (movements[debit_index], movements[credit_index])
-            for debit_index, credit_index in zip(debit_pair_indexes, credit_pair_indexes)
-        )
+        credit_candidates = list(credit_indexes[amount])
+        for debit_index in debit_indexes[amount]:
+            for position, credit_index in enumerate(credit_candidates):
+                if _are_different_operation_types(
+                    _movement_label(movements[debit_index]),
+                    _movement_label(movements[credit_index]),
+                ):
+                    continue
+                cancelled.add(debit_index)
+                cancelled.add(credit_index)
+                cancellation_pairs.append((movements[debit_index], movements[credit_index]))
+                credit_candidates.pop(position)
+                break
 
     remaining = [movement for index, movement in enumerate(movements) if index not in cancelled]
     return remaining, cancellation_pairs
