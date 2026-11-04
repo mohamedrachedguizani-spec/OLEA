@@ -30,6 +30,11 @@ from modules.saisie_bancaire.service import (
 )
 
 
+# Les écarts de montant sont désactivés pour le moment : une ligne banque et une
+# ligne Sage de montants différents ne sont plus appariées, chacune reste dans sa
+# liste « uniquement ». Repasser à True pour réactiver l'étape 2 de reconcile().
+DETECT_AMOUNT_DISCREPANCIES = False
+
 SAGE_OPENING_LABELS = ("solde initial", "cumul avant", "solde ouverture", "report a nouveau")
 BANK_OPENING_LABELS = (
     "solde depart",
@@ -990,36 +995,38 @@ def reconcile(
             bank_idx += 1
 
     # --- Étape 2 : Détection des Écarts de Montant sur les restes ---
-    # Un écart suppose la même date exacte des deux côtés (date d'écriture Sage et
-    # date d'opération bancaire), sans tolérance, et un libellé similaire.
-    bank_idx = 0
-    while bank_idx < len(remaining_bank):
-        bm = remaining_bank[bank_idx]
-        found_match = False
+    # Désactivée pour le moment : les lignes non appariées par montant restent
+    # séparées dans « Banque uniquement » / « Sage uniquement ».
+    # Pour réactiver, passer DETECT_AMOUNT_DISCREPANCIES à True.
+    if DETECT_AMOUNT_DISCREPANCIES:
+        bank_idx = 0
+        while bank_idx < len(remaining_bank):
+            bm = remaining_bank[bank_idx]
+            found_match = False
 
-        for sage_idx, sm in enumerate(remaining_sage):
-            if bm.carryover_origin_result_id is not None and sm.carryover_origin_result_id is not None:
-                continue
-            if bm.date_operation != sm.date_ecriture:
-                continue
-            norm_b = normalize_libelle(bm.libelle)
-            norm_s = normalize_libelle(sm.libelle_ecriture)
+            for sage_idx, sm in enumerate(remaining_sage):
+                if bm.carryover_origin_result_id is not None and sm.carryover_origin_result_id is not None:
+                    continue
+                if bm.date_operation != sm.date_ecriture:
+                    continue
+                norm_b = normalize_libelle(bm.libelle)
+                norm_s = normalize_libelle(sm.libelle_ecriture)
 
-            # Détection des libellés à sens similaire (ex: seuil de 55% de ressemblance)
-            if get_similarity_ratio(norm_b, norm_s) >= 0.55:
-                diff = abs(bm.amount - sm.amount)
-                discrepancies.append(DiscrepancyPair(
-                    bank=bm,
-                    sage=sm,
-                    difference=diff
-                ))
-                remaining_bank.pop(bank_idx)
-                remaining_sage.pop(sage_idx)
-                found_match = True
-                break
+                # Détection des libellés à sens similaire (ex: seuil de 55% de ressemblance)
+                if get_similarity_ratio(norm_b, norm_s) >= 0.55:
+                    diff = abs(bm.amount - sm.amount)
+                    discrepancies.append(DiscrepancyPair(
+                        bank=bm,
+                        sage=sm,
+                        difference=diff
+                    ))
+                    remaining_bank.pop(bank_idx)
+                    remaining_sage.pop(sage_idx)
+                    found_match = True
+                    break
 
-        if not found_match:
-            bank_idx += 1
+            if not found_match:
+                bank_idx += 1
 
     # Métriques
     total_bank = len(bank_list)

@@ -48,8 +48,8 @@ function ReconciliationSummary({ stats, cancellations, carryovers, formatAmount,
                     <span className="reco-opening-eyebrow">Vue de contrôle</span>
                     <h3 id="reco-summary-title">Synthèse du rapprochement</h3>
                 </div>
-                <span className={stats.discrepancies_count ? 'reco-summary-status warning' : 'reco-summary-status success'}>
-                    {stats.discrepancies_count ? `${stats.discrepancies_count} écart(s) à traiter` : 'Aucun écart de montant'}
+                <span className="reco-summary-status success">
+                    Rapprochement par montant
                 </span>
             </div>
             <div className="reco-summary-body">
@@ -67,10 +67,6 @@ function ReconciliationSummary({ stats, cancellations, carryovers, formatAmount,
                         <div className="reco-progress" role="progressbar" aria-valuenow={automationRate} aria-valuemin="0" aria-valuemax="100">
                             <span style={{ width: `${automationRate}%` }} />
                         </div>
-                    </div>
-                    <div className="reco-discrepancy-line">
-                        <div><span>Écarts de montant</span><strong>{stats.discrepancies_count}</strong></div>
-                        <div><span>Montant cumulé</span><strong>{formatAmount(stats.total_discrepancy_amount)} TND</strong></div>
                     </div>
                     {carryoverMovements.length > 0 && (
                         <div className="reco-carryover-block">
@@ -468,7 +464,7 @@ function RapprochementBancaire({ navigationTarget }) {
         const requestedView = navigationTarget?.params?.view;
         const requestedResultId = Number(navigationTarget?.params?.result);
 
-        if (['reconciled', 'discrepancies', 'bank_only', 'sage_only'].includes(requestedView)) {
+        if (['reconciled', 'bank_only', 'sage_only'].includes(requestedView)) {
             setActiveTab(requestedView);
         }
         if (!Number.isInteger(requestedResultId) || requestedResultId <= 0) return undefined;
@@ -1123,13 +1119,6 @@ function RapprochementBancaire({ navigationTarget }) {
                             Rapprochés ({result.reconciled.length + (result.manual_reconciliations?.length || 0)})
                         </button>
                         <button
-                            onClick={() => setActiveTab('discrepancies')}
-                            className={`btn ${activeTab === 'discrepancies' ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
-                        >
-                            Écarts ({result.discrepancies.length})
-                        </button>
-                        <button
                             onClick={() => setActiveTab('bank_only')}
                             className={`btn ${activeTab === 'bank_only' ? 'btn-primary' : 'btn-secondary'}`}
                             style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
@@ -1335,7 +1324,6 @@ function RapprochementBancaire({ navigationTarget }) {
 
                     {/* Empty state within active tab */}
                     {((activeTab === 'reconciled' && filterItems(result.reconciled, 'reconciled').length === 0 && (result.manual_reconciliations || []).length === 0) ||
-                      (activeTab === 'discrepancies' && filterItems(result.discrepancies, 'discrepancies').length === 0) ||
                       (activeTab === 'bank_only' && filterItems(result.bank_only, 'bank_only').length === 0) ||
                       (activeTab === 'sage_only' && filterItems(result.sage_only, 'sage_only').length === 0)) && (
                         <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)', background: 'var(--bg-card)', border: '1px dashed var(--border-light)', borderRadius: 'var(--radius-md)' }}>
