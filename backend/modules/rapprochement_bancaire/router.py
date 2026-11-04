@@ -51,6 +51,31 @@ router = APIRouter(
 )
 
 
+def carryover_identity(movement, source_type):
+    """Identité d'une ligne reportée depuis un résultat antérieur, ou None."""
+    if (
+        movement.carryover_origin_result_id is None
+        or movement.carryover_origin_item_index is None
+    ):
+        return None
+    return (
+        int(movement.carryover_origin_result_id),
+        movement.carryover_origin_source_type or source_type,
+        int(movement.carryover_origin_item_index),
+    )
+
+
+def carryover_consumption_keys(bank_movements, sage_movements) -> set:
+    """Lignes reportées d'origine à marquer comme consommées par ce résultat."""
+    keys = set()
+    for source_type, movements in (("bank", bank_movements), ("sage", sage_movements)):
+        for movement in movements or []:
+            identity = carryover_identity(movement, source_type)
+            if identity is not None:
+                keys.add(identity)
+    return keys
+
+
 def _load_carryover_movements(cursor, journal: str, account_code: str, period_start: date):
     """Load unresolved movements and discrepancy pairs from earlier results."""
     cursor.execute(
@@ -278,18 +303,6 @@ def compare_files(
         bank_details=[CancelledBankPair(debit=debit, credit=credit) for debit, credit in bank_cancellation_pairs],
         sage_details=[CancelledSagePair(debit=debit, credit=credit) for debit, credit in sage_cancellation_pairs],
     )
-
-    def carryover_identity(movement, source_type):
-        if (
-            movement.carryover_origin_result_id is None
-            or movement.carryover_origin_item_index is None
-        ):
-            return None
-        return (
-            int(movement.carryover_origin_result_id),
-            movement.carryover_origin_source_type or source_type,
-            int(movement.carryover_origin_item_index),
-        )
 
     carryover_outcomes = {}
 
@@ -752,6 +765,19 @@ def validate_manual_reconciliation(
                 result_id,
             ),
         )
+
+        # Les lignes rapprochées manuellement qui provenaient d'un résultat antérieur
+        # doivent y être marquées comme consommées : sans cela, le mois suivant les
+        # recharge depuis « bank_only » / « sage_only » et elles réapparaissent.
+        for origin_result_id, source_type, item_index in carryover_consumption_keys(
+            payload.bank, payload.sage
+        ):
+            cursor.execute(
+                "INSERT IGNORE INTO bank_reconciliation_carryovers "
+                "(origin_result_id, source_type, source_item_index, consumed_by_result_id) "
+                "VALUES (%s, %s, %s, %s)",
+                (origin_result_id, source_type, item_index, result_id),
+            )
 
     log_audit_action(
         user=user,
