@@ -20,6 +20,7 @@ class TestAccessCatalog(unittest.TestCase):
         self.assertIn("CONSULTANT", PROFILES)
         self.assertEqual(PROFILES["CONSULTANT"][2], {
             "dashboard.read", "sage_bfc.read", "forecast.read", "reporting.read",
+            "tresorerie.read", "tresorerie.report",
         })
         self.assertEqual(RoleEnum.consultant.value, "consultant")
         self.assertEqual(DEFAULT_PROFILE_BY_USER_ROLE["consultant"], "CONSULTANT")

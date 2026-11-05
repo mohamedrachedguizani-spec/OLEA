@@ -456,6 +456,106 @@ class ApiService {
         return response.json();
     }
 
+    // ===================== Trésorerie =====================
+
+    static async getTresorerieBanques() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/banques`);
+        if (!response.ok) throw new Error('Impossible de charger les banques');
+        return response.json();
+    }
+
+    static async getTresorerieSummary() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/summary`);
+        if (!response.ok) throw new Error('Erreur lors du chargement des compteurs');
+        return response.json();
+    }
+
+    static async uploadTresorerieExtrait(formData) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/imports`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: "Erreur lors de l'import" }));
+            throw new Error(err.detail || "Erreur lors de l'import");
+        }
+        return response.json();
+    }
+
+    static async getTresorerieImports(params = {}) {
+        const query = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/imports?${query}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des imports' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des imports');
+        }
+        return response.json();
+    }
+
+    static async getTresorerieImport(importId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/imports/${importId}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Import introuvable' }));
+            throw new Error(err.detail || 'Import introuvable');
+        }
+        return response.json();
+    }
+
+    static async deleteTresorerieImport(importId) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/imports/${importId}`, {
+            method: 'DELETE',
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la suppression' }));
+            throw new Error(err.detail || 'Erreur lors de la suppression');
+        }
+        return response.json();
+    }
+
+    static async getTresorerieMovements(params = {}) {
+        const query = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/movements?${query}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des mouvements' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des mouvements');
+        }
+        return response.json();
+    }
+
+    static async classerTresorerieMouvement(movementId, nature) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/movements/${movementId}/nature`, {
+            method: 'PUT',
+            body: JSON.stringify({ nature }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du classement' }));
+            throw new Error(err.detail || 'Erreur lors du classement');
+        }
+        return response.json();
+    }
+
+    static async classerTresorerieMouvements(movementIds, nature) {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/movements/bulk-nature`, {
+            method: 'PUT',
+            body: JSON.stringify({ movement_ids: movementIds, nature }),
+        });
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du classement' }));
+            throw new Error(err.detail || 'Erreur lors du classement');
+        }
+        return response.json();
+    }
+
+    static async getTresorerieReporting(params = {}) {
+        const query = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/reporting?${query}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement du reporting' }));
+            throw new Error(err.detail || 'Erreur lors du chargement du reporting');
+        }
+        return response.json();
+    }
+
     // ===================== Rapprochement Bancaire =====================
     static async getReconciliationBankAccounts() {
         const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/bank-accounts`);

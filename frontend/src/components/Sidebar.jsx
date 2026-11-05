@@ -63,6 +63,7 @@ function Sidebar({
                 { id: 'rapprochement_bancaire', label: 'Rapprochement Bancaire', icon: 'compare', module: 'rapprochement_bancaire' },
             ],
         },
+        { id: 'tresorerie', label: 'Trésorerie', icon: 'tresorerie', module: 'tresorerie' },
         { id: 'sage-bfc', label: 'SAGE → BFC', icon: 'transform', module: 'sage_bfc' },
         { id: 'reporting', label: 'Reporting', icon: 'reporting', module: 'reporting' },
         {
@@ -187,6 +188,13 @@ function Sidebar({
                     <path d="M14 10v8"/>
                     <path d="M18 10v8"/>
                     <path d="M4 18h16"/>
+                </svg>
+            ),
+            tresorerie: (
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <rect x="2" y="6" width="20" height="12" rx="2"/>
+                    <circle cx="12" cy="12" r="2.5"/>
+                    <path d="M6 12h.01M18 12h.01"/>
                 </svg>
             ),
             compare: (

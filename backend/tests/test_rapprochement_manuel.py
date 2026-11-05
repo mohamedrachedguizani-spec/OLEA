@@ -10,9 +10,12 @@ from modules.rapprochement_bancaire.models import (
     ReconciliationStats,
     SageMovement,
 )
+from modules.rapprochement_bancaire.router import carryover_consumption_keys
+from modules.rapprochement_bancaire.models import ReconciliationOptions
 from modules.rapprochement_bancaire.service import (
     apply_manual_reconciliations,
     movement_identity,
+    reconcile,
 )
 
 
@@ -163,6 +166,32 @@ class ManualReconciliationTests(unittest.TestCase):
         second = bank("VIR", debit=100, reference="R1", day=11)
         self.assertNotEqual(movement_identity(first), movement_identity(second))
 
+    def test_manual_pair_consumes_its_originating_carryover(self):
+        """Une ligne reportée puis rapprochée manuellement ne doit pas revenir le mois suivant."""
+        carried_bank = bank("VIR REPORTE", credit=30000)
+        carried_bank.carryover_origin_result_id = 11
+        carried_bank.carryover_origin_item_index = 3
+        carried_bank.carryover_origin_source_type = "bank"
+
+        carried_sage = sage("SAGE REPORTE", debit=30000)
+        carried_sage.carryover_origin_result_id = 11
+        carried_sage.carryover_origin_item_index = 5
+        carried_sage.carryover_origin_source_type = "sage"
+
+        # Ligne courante (sans origine) : ne doit produire aucune clé de consommation.
+        current_bank = bank("VIR DU MOIS", debit=100)
+        current_sage = sage("SAGE DU MOIS", credit=100)
+        current_bank.carryover_origin_result_id = None
+        current_bank.carryover_origin_item_index = None
+        current_sage.carryover_origin_result_id = None
+        current_sage.carryover_origin_item_index = None
+
+        keys = carryover_consumption_keys(
+            [carried_bank, current_bank], [carried_sage, current_sage]
+        )
+
+        self.assertEqual(keys, {(11, "bank", 3), (11, "sage", 5)})
+
     def test_only_the_selected_lines_are_hidden(self):
         bank_movements = [bank("A", debit=100, reference="R1"), bank("B", debit=200, reference="R2")]
         sage_movements = [sage("X", debit=100, piece="P1")]
@@ -174,6 +203,35 @@ class ManualReconciliationTests(unittest.TestCase):
         apply_manual_reconciliations(result)
 
         self.assertEqual([item.libelle for item in result.bank_only], ["B"])
+
+
+class AmountDiscrepancyDetectionTests(unittest.TestCase):
+    def test_same_date_different_amounts_stay_separate(self):
+        """La détection d'écart est désactivée : les deux lignes restent non rapprochées."""
+        options = ReconciliationOptions(date_tolerance_days=3)
+        result = reconcile(
+            [bank("VIR DUPONT", debit=1000)],
+            [sage("VIR DUPONT", debit=900)],
+            options,
+        )
+
+        self.assertEqual(result.discrepancies, [])
+        self.assertEqual(len(result.bank_only), 1)
+        self.assertEqual(len(result.sage_only), 1)
+        self.assertEqual(result.stats.discrepancies_count, 0)
+        self.assertEqual(result.stats.total_discrepancy_amount, 0.0)
+
+    def test_equal_amounts_still_reconcile(self):
+        """La désactivation des écarts ne touche pas le rapprochement par montant."""
+        options = ReconciliationOptions(date_tolerance_days=3)
+        result = reconcile(
+            [bank("VIR X", debit=500)],
+            [sage("VIR X", debit=500)],
+            options,
+        )
+
+        self.assertEqual(len(result.reconciled), 1)
+        self.assertEqual(result.discrepancies, [])
 
 
 if __name__ == "__main__":

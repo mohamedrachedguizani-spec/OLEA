@@ -28,10 +28,12 @@ SAGE_BFC_PERMISSION_REPLACEMENTS = {
 NEW_PROFILE_PERMISSIONS = {
     "COMPTABLE": {"rapprochement_bancaire.read", "balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
                  "balance_fournisseur.generate", "balance_fournisseur.read", "balance_fournisseur.export_pdf",
-                 "balance_fournisseur.print", "balance_agee.delete", "balance_fournisseur.delete"},
+                 "balance_fournisseur.print", "balance_agee.delete", "balance_fournisseur.delete",
+                 "tresorerie.read", "tresorerie.import", "tresorerie.classify", "tresorerie.delete", "tresorerie.report"},
     "FINANCIER": {"balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
                  "balance_fournisseur.generate", "balance_fournisseur.read", "balance_fournisseur.export_pdf",
-                 "balance_fournisseur.print", "balance_agee.delete", "balance_fournisseur.delete"},
+                 "balance_fournisseur.print", "balance_agee.delete", "balance_fournisseur.delete",
+                 "tresorerie.read", "tresorerie.classify", "tresorerie.report"},
 }
 
 # « balance_*.read » permettait jusqu'ici de GÉNÉRER la balance. Il devient « consultation » et le droit de génération

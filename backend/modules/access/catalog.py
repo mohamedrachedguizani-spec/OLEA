@@ -19,6 +19,14 @@ PERMISSIONS = {
     "rapprochement_bancaire.run": ("Lancer un rapprochement bancaire", "Rapprochement bancaire"),
     "rapprochement_bancaire.read": ("Consulter les rapprochements bancaires générés", "Rapprochement bancaire"),
     "rapprochement_bancaire.export_pdf": ("Exporter le rapprochement en PDF", "Rapprochement bancaire"),
+    "tresorerie.read": ("Consulter les mouvements bancaires de trésorerie", "Trésorerie"),
+    "tresorerie.import": ("Importer les extraits bancaires de la trésorerie", "Trésorerie"),
+    "tresorerie.classify": (
+        "Classer les mouvements (exploitation, hors exploitation, commission)",
+        "Trésorerie",
+    ),
+    "tresorerie.delete": ("Supprimer un import de trésorerie", "Trésorerie"),
+    "tresorerie.report": ("Consulter et exporter le reporting de trésorerie", "Trésorerie"),
     "sage_bfc.read": ("Consulter toutes les parties d'analyse SAGE → BFC", "SAGE → BFC"),
     "sage_bfc.import": ("Importer une balance SAGE", "SAGE → BFC"),
     "sage_bfc.month.delete": ("Supprimer une période", "SAGE → BFC"),
@@ -76,6 +84,7 @@ PROFILES = {
             "saisie_bancaire.sessions.read", "saisie_bancaire.entries.manage",
             "saisie_bancaire.sage.generate", "saisie_bancaire.sage.export",
             "rapprochement_bancaire.run", "rapprochement_bancaire.read", "rapprochement_bancaire.export_pdf",
+            "tresorerie.read", "tresorerie.import", "tresorerie.classify", "tresorerie.delete", "tresorerie.report",
             "sage_bfc.read", "sage_bfc.import",
             "balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
             "balance_fournisseur.generate", "balance_fournisseur.read", "balance_fournisseur.export_pdf", "balance_fournisseur.print",
@@ -91,6 +100,7 @@ PROFILES = {
             "forecast.generate", "forecast.cycle.run", "forecast.manual.update",
             "forecast.history.import", "forecast.history.sync", "reporting.read",
             "reporting.export_excel", "reporting.export_pdf", "reporting.print",
+            "tresorerie.read", "tresorerie.classify", "tresorerie.report",
             "configuration.accounts.read", "configuration.third_parties.read",
             "configuration.mapping.read",
             "balance_agee.generate", "balance_agee.read", "balance_agee.export_pdf", "balance_agee.print",
@@ -104,6 +114,7 @@ PROFILES = {
         {
             "dashboard.read", "sage_bfc.read", "forecast.read", "reporting.read",
             "reporting.export_excel", "reporting.export_pdf", "reporting.print",
+            "tresorerie.read", "tresorerie.report",
         },
     ),
     "CONSULTANT": (
@@ -111,6 +122,7 @@ PROFILES = {
         "Consultation en lecture seule des indicateurs, analyses et rapports.",
         {
             "dashboard.read", "sage_bfc.read", "forecast.read", "reporting.read",
+            "tresorerie.read", "tresorerie.report",
         },
     ),
     "ADMIN_FONCTIONNEL": (

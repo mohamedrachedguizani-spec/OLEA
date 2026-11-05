@@ -28,6 +28,7 @@ from modules.access import router as access_router, init_access_tables
 from modules.balance import router as balance_router
 from modules.balance_fournisseur import router as balance_fournisseur_router
 from modules.balance import router as balance_router, init_balance_tables
+from modules.tresorerie import router as tresorerie_router, init_tresorerie_tables
 
 
 IS_PRODUCTION = os.getenv("ENVIRONMENT", "development").lower() == "production"
@@ -103,6 +104,7 @@ init_audit_tables()
 init_saisie_bancaire_tables()
 init_notifications_tables()
 init_balance_tables()   # à côté des autres init_*_tables()
+init_tresorerie_tables()
 
 # ─── Enregistrement des routers ───
 app.include_router(auth_router)
@@ -121,6 +123,7 @@ app.include_router(rapprochement_bancaire_router)
 app.include_router(notifications_router)
 app.include_router(balance_router)
 app.include_router(balance_fournisseur_router)
+app.include_router(tresorerie_router)
 
 
 # ─── Enregistrer la boucle asyncio au démarrage ───

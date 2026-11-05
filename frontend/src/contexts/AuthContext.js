@@ -10,6 +10,7 @@ const MODULE_PERMISSION_PREFIXES = {
     export_csv: ['export_csv.'],
     saisie_bancaire: ['saisie_bancaire.'],
     rapprochement_bancaire: ['rapprochement_bancaire.'],
+    tresorerie: ['tresorerie.'],
     sage_bfc: ['sage_bfc.', 'forecast.'],
     reporting: ['reporting.'],
     configuration: ['configuration.'],

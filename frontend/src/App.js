@@ -19,13 +19,14 @@ import SaisieBancaire from './components/SaisieBancaire';
 import RapprochementBancaire from './components/RapprochementBancaire';
 import BalanceAgee from './components/BalanceAgee';
 import BalanceAgeeFournisseur from './components/BalanceAgeeFournisseur';
+import Tresorerie from './components/Tresorerie';
 import NotificationBell from './components/NotificationBell';
 import oleaLogo from './assets/olea-logo.svg';
 
 const ACTIVE_TAB_STORAGE_KEY = 'olea-active-module';
 const APP_TABS = [
     'dashboard', 'saisie', 'export', 'rapprochement',
-    'rapprochement_bancaire', 'sage-bfc', 'reporting',
+    'rapprochement_bancaire', 'tresorerie', 'sage-bfc', 'reporting',
     'balance-agee', 'balance-fournisseur', 'configuration', 'users', 'roles', 'audit',
 ];
 
@@ -35,6 +36,7 @@ const TAB_PATHS = {
     export: '/export',
     rapprochement: '/saisie-bancaire',
     rapprochement_bancaire: '/rapprochement-bancaire',
+    tresorerie: '/tresorerie',
     'sage-bfc': '/sage-bfc',
     reporting: '/reporting',
     'balance-agee': '/balance-agee',
@@ -76,6 +78,7 @@ function App() {
     const [sageBfcRefresh, setSageBfcRefresh] = useState(0);
     const [forecastRefresh, setForecastRefresh] = useState(0);
     const [reportingRefresh, setReportingRefresh] = useState(0);
+    const [tresorerieRefresh, setTresorerieRefresh] = useState(0);
     const [configurationRefresh, setConfigurationRefresh] = useState(0);
     const [configurationInitialTab, setConfigurationInitialTab] = useState('comptes');
     const [notificationTarget, setNotificationTarget] = useState(null);
@@ -135,6 +138,7 @@ function App() {
         configuration: hasPermission('configuration'),
         rapprochement: hasPermission('saisie_bancaire'),
         rapprochement_bancaire: hasPermission('rapprochement_bancaire'),
+        tresorerie: hasPermission('tresorerie'),
         'balance-agee': hasPermission('balance_agee'),
         'balance-fournisseur': hasPermission('balance_fournisseur'),
         users: has('admin.users.read'),
@@ -230,6 +234,9 @@ function App() {
         forecast: () => {
             setForecastRefresh(prev => prev + 1);
             setReportingRefresh(prev => prev + 1);
+        },
+        tresorerie: () => {
+            setTresorerieRefresh(prev => prev + 1);
         },
         configuration: () => {
             setConfigurationRefresh(prev => prev + 1);
@@ -333,6 +340,7 @@ function App() {
                     {activeTab === 'configuration' && hasPermission('configuration', 'read') && <Configuration initialTab={configurationInitialTab} />}
                     {activeTab === 'rapprochement' && hasPermission('saisie_bancaire', 'read') && <SaisieBancaire navigationTarget={notificationTarget?.tab === 'rapprochement' ? notificationTarget : null} />}
                     {activeTab === 'rapprochement_bancaire' && hasPermission('rapprochement_bancaire', 'read') && <RapprochementBancaire navigationTarget={notificationTarget?.tab === 'rapprochement_bancaire' ? notificationTarget : null} />}
+                    {activeTab === 'tresorerie' && hasPermission('tresorerie', 'read') && <Tresorerie refreshTrigger={tresorerieRefresh} />}
                     {activeTab === 'balance-agee' && hasPermission('balance_agee') && <BalanceAgee navigationTarget={balanceTarget?.tab === 'balance-agee' ? balanceTarget : null} onNavigationConsumed={consumeBalanceTarget} />}
                     {activeTab === 'balance-fournisseur' && hasPermission('balance_fournisseur') && <BalanceAgeeFournisseur navigationTarget={balanceTarget?.tab === 'balance-fournisseur' ? balanceTarget : null} onNavigationConsumed={consumeBalanceTarget} />}
                     {activeTab === 'users' && has('admin.users.read') && <UserManagement />}
