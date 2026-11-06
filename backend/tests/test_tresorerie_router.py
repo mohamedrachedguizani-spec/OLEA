@@ -388,6 +388,55 @@ class TestImportChevauchement(unittest.TestCase):
         self.assertEqual(resultat["total_mouvements"], 1)
 
 
+class TestSuppressionImport(unittest.TestCase):
+    """Supprimer un import doit aussi effacer l'ancre de solde qu'il a créée."""
+
+    def test_suppression_efface_l_ancre_issue_de_l_import(self):
+        cursor = SequencedCursor([
+            {"id": 7, "compte_banque": "BI1", "file_name": "janvier.pdf"},   # entête
+            [],                                                              # DELETE ancre
+            [],                                                              # DELETE import
+        ])
+        cursor.rowcount = 1
+        with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)), \
+             patch.object(treso_router, "log_audit_action"), \
+             patch.object(treso_router, "ws_manager"):
+            resultat = treso_router.supprimer_import(
+                import_id=7, request=None, user={"id": 1, "username": "test"},
+            )
+        requetes = " | ".join(cursor.queries)
+        # L'ancre est supprimée avant l'import (elle pointe encore vers lui).
+        index_ancre = next(i for i, q in enumerate(cursor.queries) if "DELETE FROM tresorerie_soldes_ouverture" in q)
+        index_import = next(i for i, q in enumerate(cursor.queries) if "DELETE FROM tresorerie_imports" in q)
+        self.assertLess(index_ancre, index_import)
+        self.assertEqual(cursor.params[index_ancre], (7,))
+        self.assertIn("source_import_id = %s", requetes)
+        self.assertEqual(resultat["ancres_supprimees"], 1)
+
+    def test_suppression_conserve_une_ancre_saisie_manuellement(self):
+        # Aucune ancre ne référence cet import : rien à supprimer.
+        cursor = SequencedCursor([
+            {"id": 8, "compte_banque": "BI2", "file_name": "manuel.pdf"},
+            [],
+            [],
+        ])
+        cursor.rowcount = 0
+        with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)), \
+             patch.object(treso_router, "log_audit_action"), \
+             patch.object(treso_router, "ws_manager"):
+            resultat = treso_router.supprimer_import(
+                import_id=8, request=None, user={"id": 1, "username": "test"},
+            )
+        self.assertEqual(resultat["ancres_supprimees"], 0)
+
+    def test_import_introuvable(self):
+        cursor = SequencedCursor([None])
+        with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)):
+            with self.assertRaises(HTTPException) as raised:
+                treso_router.supprimer_import(import_id=999, request=None, user={"id": 1})
+        self.assertEqual(raised.exception.status_code, 404)
+
+
 class TestAncreSoldeImport(unittest.TestCase):
     """Le solde de départ est figé une seule fois par banque, à l'import."""
 
@@ -407,38 +456,6 @@ class TestAncreSoldeImport(unittest.TestCase):
             "a_un_solde",
         ):
             self.assertIn(attendu, champs)
-
-    def test_ancre_existante_est_renvoyee_pour_affichage(self):
-        # Ancre déjà figée : la modale doit quand même pouvoir l'afficher.
-        cursor = SequencedCursor([[], {"id": 2, "compte_banque": "BI1"}, []])
-        cursor.rowcount = 0
-        with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)), \
-             patch.object(treso_router, "_parse_csv_text", return_value=FakeDf()), \
-             patch.object(treso_router, "_extract_movements",
-                          return_value=[_mouvement(date(2026, 2, 5))]), \
-             patch.object(treso_router, "extract_bank_opening_balance",
-                          return_value=FakeOpening(9000.0, date(2026, 2, 1))), \
-             patch.object(treso_router, "log_audit_action"), \
-             patch.object(treso_router, "ws_manager"):
-            # fake fetchone pour la lecture de l'ancre existante
-            original_execute = cursor.execute
-
-            def execute(query, params=()):
-                original_execute(query, params)
-                if "SELECT solde, date_solde FROM tresorerie_soldes_ouverture" in " ".join(query.split()):
-                    cursor._current = {"solde": 5000.0, "date_solde": date(2026, 1, 1)}
-
-            cursor.execute = execute
-            resultat = treso_router.importer_extrait(
-                request=None, file=FakeUpload(), compte_banque="BI1",
-                periode_debut="2026-02-01", periode_fin="2026-02-28",
-                user={"id": 1, "username": "test"},
-            )
-        self.assertTrue(resultat["a_un_solde"])
-        self.assertEqual(resultat["solde_ouverture_actuel"], 5000.0)
-        self.assertEqual(resultat["solde_ouverture_date_actuelle"], date(2026, 1, 1))
-        # Le solde lu sur ce relevé reste disponible pour comparaison
-        self.assertEqual(resultat["solde_ouverture_lu"], 9000.0)
 
     def _importer(self, cursor, ouverture, ouverture_date=None):
         with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)), \
@@ -638,6 +655,95 @@ class TestReportingEndpoint(unittest.TestCase):
             rapport = treso_router.get_reporting(date_debut=None, date_fin=None, compte_banque="BI1")
         self.assertEqual([b["compte_banque"] for b in rapport["banques"]], ["BI1"])
         self.assertIn("i.compte_banque = %s", cursor.queries[0])
+
+    def test_periode_inversee_rejetee(self):
+        with self.assertRaises(HTTPException) as ctx:
+            treso_router.get_reporting(
+                date_debut=date(2026, 5, 31), date_fin=date(2026, 5, 1), compte_banque=None
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+
+class TestExportPdfEndpoint(unittest.TestCase):
+    """L'export PDF doit réutiliser le calcul de GET /reporting."""
+
+    def _cursor(self):
+        return SequencedCursor([
+            [
+                {"compte_banque": "BI1", "nature": "exploitation", "debit": 0, "credit": 100},
+                {"compte_banque": "BI1", "nature": None, "debit": 20, "credit": 0},
+            ],
+            [{"nb": 2, "debit": 20, "credit": 100}],
+            [],   # aucune ancre de solde
+        ])
+
+    def test_le_pdf_recoit_les_memes_donnees_que_lecran(self):
+        from modules.tresorerie import pdf_export
+
+        captures = []
+
+        def faux_build(**kwargs):
+            captures.append(kwargs)
+            return io.BytesIO(b"%PDF-1.4 contenu factice")
+
+        # 1) ce que renvoie l'écran
+        with patch.object(treso_router.db, "get_cursor", _cursor_context(self._cursor())):
+            ecran = treso_router.get_reporting(
+                date_debut=None, date_fin=None, compte_banque=None
+            )
+
+        # 2) ce que reçoit le générateur de PDF pour la même période
+        with patch.object(treso_router.db, "get_cursor", _cursor_context(self._cursor())), \
+             patch.object(pdf_export, "build_tresorerie_pdf", faux_build):
+            reponse = treso_router.export_reporting_pdf(
+                date_debut=None, date_fin=None, compte_banque=None
+            )
+
+        self.assertEqual(len(captures), 1)
+        pdf = captures[0]
+        self.assertEqual(pdf["banques"], ecran["banques"])
+        self.assertEqual(pdf["totaux"], ecran["totaux"])
+        self.assertEqual(pdf["controle"]["statut"], "INCOMPLET")
+        self.assertEqual(reponse.media_type, "application/pdf")
+        self.assertIn(
+            'filename="reporting_tresorerie_global.pdf"',
+            reponse.headers["content-disposition"],
+        )
+
+    def test_le_pdf_genere_est_un_pdf_valide(self):
+        cursor = self._cursor()
+        with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)):
+            reponse = treso_router.export_reporting_pdf(
+                date_debut=date(2026, 1, 1), date_fin=date(2026, 1, 31), compte_banque=None
+            )
+
+        contenu = b"".join(
+            morceau if isinstance(morceau, bytes) else str(morceau).encode()
+            for morceau in _consommer(reponse)
+        )
+        self.assertTrue(contenu.startswith(b"%PDF"))
+        self.assertGreater(len(contenu), 1000)
+        self.assertIn(
+            'filename="reporting_tresorerie_2026-01-01_2026-01-31.pdf"',
+            reponse.headers["content-disposition"],
+        )
+
+    def test_periode_inversee_rejetee_avant_generation(self):
+        with self.assertRaises(HTTPException) as ctx:
+            treso_router.export_reporting_pdf(
+                date_debut=date(2026, 5, 31), date_fin=date(2026, 5, 1), compte_banque=None
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
+
+
+def _consommer(reponse):
+    """Rejoue le corps d'une StreamingResponse (itérateur asynchrone) sans serveur."""
+    import asyncio
+
+    async def collecter():
+        return [morceau async for morceau in reponse.body_iterator]
+
+    return asyncio.run(collecter())
 
 
 if __name__ == "__main__":

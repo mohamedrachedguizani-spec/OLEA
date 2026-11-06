@@ -28,6 +28,26 @@ def _mov(compte, nature, debit=0.0, credit=0.0):
     return {"compte_banque": compte, "nature": nature, "debit": debit, "credit": credit}
 
 
+def _textes_du_pdf(contenu: bytes):
+    """Relit le texte réellement dessiné dans le PDF (flux décompressés)."""
+    import base64
+    import re
+    import zlib
+
+    textes = []
+    for bloc in re.finditer(rb"<<(.*?)>>\s*stream\r?\n", contenu, re.S):
+        en_tete = bloc.group(1)
+        debut = bloc.end()
+        fin = contenu.find(b"endstream", debut)
+        flux = contenu[debut:fin]
+        if b"ASCII85Decode" in en_tete:
+            flux = base64.a85decode(flux.strip().rstrip(b"~>"), adobe=False)
+        if b"FlateDecode" in en_tete:
+            flux = zlib.decompress(flux)
+        textes.extend(re.findall(r"\((.*?)\) Tj", flux.decode("latin-1", "replace")))
+    return textes
+
+
 class TestReglesReporting(unittest.TestCase):
     def test_commission_debit_comptee_dans_depense_exploitation(self):
         rapport = construire_reporting([
@@ -295,6 +315,69 @@ class TestControleExtraction(unittest.TestCase):
         self.assertEqual(controle["statut"], "WARNING")
         self.assertEqual(controle["lignes_ignorees"], 4)
         self.assertTrue(controle["messages"])
+
+
+class TestPdfExport(unittest.TestCase):
+    """Le PDF doit rester lisible : glyphes imprimables et montants formatés."""
+    def _banques(self, montant=125000.5):
+        return [{
+            "compte_banque": "UB1",
+            "recette_exploitation": montant,
+            "dont_recette_commission": 1200,
+            "depense_exploitation": 98300.25,
+            "dont_depense_commission": 850,
+            "tresorerie_nette_exploitation": -7000.25,
+            "recette_hors_exploitation": 15000,
+            "depense_hors_exploitation": 22000,
+            "tresorerie_nette_hors_exploitation": -7000,
+            "non_classe_count": 3,
+            "total_debit": 120300,
+            "total_credit": 140000,
+            "nb_mouvements": 42,
+            "solde": 152000.75,
+            "solde_ouverture": 120000,
+            "solde_ouverture_date": None,
+        }]
+
+    def _pdf(self, statut="OK", montant=125000.5):
+        from modules.tresorerie.pdf_export import build_tresorerie_pdf
+
+        banques = self._banques(montant)
+        totaux = dict(banques[0], compte_banque="TOUTES")
+        return build_tresorerie_pdf(
+            banques=banques,
+            totaux=totaux,
+            controle={"statut": statut, "non_classes": 3, "ecart_debit": 0, "ecart_credit": 0},
+        ).getvalue()
+
+    def test_pdf_non_vide_et_valide(self):
+        contenu = self._pdf()
+        self.assertTrue(contenu.startswith(b"%PDF"))
+        self.assertGreater(len(contenu), 1000)
+
+    def test_aucun_glyphe_de_substitution_dans_les_notes(self):
+        """« ⚠ » n'existe pas en WinAnsi : ReportLab le remplaçait par un carré noir."""
+        for statut in ("OK", "INCOMPLET", "ERREUR"):
+            textes = _textes_du_pdf(self._pdf(statut=statut))
+            self.assertNotIn("⚠", "".join(textes), f"glyphe non imprimable en {statut}")
+
+        self.assertTrue(any("Reporting complet" in t for t in _textes_du_pdf(self._pdf("OK"))))
+        self.assertTrue(any("Attention" in t for t in _textes_du_pdf(self._pdf("INCOMPLET"))))
+        self.assertTrue(any("Attention" in t for t in _textes_du_pdf(self._pdf("ERREUR"))))
+
+    def test_montants_au_format_francais(self):
+        from modules.tresorerie.pdf_export import _money
+
+        self.assertEqual(_money(125000.5), "125 000,500")
+        self.assertEqual(_money(-7000), "-7 000,000")
+        self.assertEqual(_money(0), "0,000")
+        self.assertEqual(_money(None), "n.d.")
+
+    def test_le_logo_partage_existe(self):
+        from modules.tresorerie.pdf_export import LOGO_PATH
+
+        self.assertTrue(LOGO_PATH.exists(), f"logo introuvable : {LOGO_PATH}")
+        self.assertIn("rapprochement_bancaire", str(LOGO_PATH))
 
 
 if __name__ == "__main__":

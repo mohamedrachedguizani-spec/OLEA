@@ -577,6 +577,16 @@ class ApiService {
         return response.json();
     }
 
+    static async exportTresorerieReportingPdf(params = {}) {
+        const query = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/reporting/export-pdf?${query}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la génération du PDF' }));
+            throw new Error(err.detail || 'Erreur lors de la génération du PDF');
+        }
+        return response.blob();
+    }
+
     // ===================== Rapprochement Bancaire =====================
     static async getReconciliationBankAccounts() {
         const response = await ApiService._fetch(`${API_BASE_URL}/rapprochement/bank-accounts`);

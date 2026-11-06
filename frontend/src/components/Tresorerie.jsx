@@ -2,10 +2,9 @@
 // Module Trésorerie : import des extraits bancaires quotidiens, classement des
 // mouvements (exploitation / hors exploitation / commission) et reporting par banque.
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import ReactDOM from 'react-dom';
 import {
     FiAlertTriangle,
-    FiArchive,
-    FiBriefcase,
     FiCheck,
     FiCheckCircle,
     FiChevronLeft,
@@ -13,6 +12,7 @@ import {
     FiCreditCard,
     FiDownload,
     FiFile,
+    FiFileText,
     FiPercent,
     FiPlay,
     FiRefreshCw,
@@ -28,9 +28,9 @@ import './Tresorerie.css';
 const MAX_SIZE = 25 * 1024 * 1024;
 
 const NATURES = {
-    exploitation: { label: 'Exploitation', tag: 'exp', cls: 'on-exp', icon: FiBriefcase, aide: 'Recette ou dépense courante de l’entreprise' },
-    hors_exploitation: { label: 'Hors exploitation', tag: 'hors', cls: 'on-hors', icon: FiArchive, aide: 'Opération financière ou exceptionnelle' },
-    commission: { label: 'Commission', tag: 'comm', cls: 'on-comm', icon: FiPercent, aide: 'Frais bancaires, comptés dans l’exploitation du reporting' },
+    exploitation: { label: 'Exploitation', sigle: 'E', tag: 'exp', cls: 'on-exp', aide: 'Recette ou dépense courante de l’entreprise' },
+    hors_exploitation: { label: 'Hors exploitation', sigle: 'H', tag: 'hors', cls: 'on-hors', aide: 'Opération financière ou exceptionnelle' },
+    commission: { label: 'Commission', sigle: 'C', tag: 'comm', cls: 'on-comm', aide: 'Frais bancaires, comptés dans l’exploitation du reporting' },
 };
 
 const fmt = (n) => new Intl.NumberFormat('fr-TN', { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(Number(n) || 0);
@@ -254,10 +254,6 @@ const OngletImport = ({ banques, peut, onImporte, imports, onOuvrirImport, onSup
             const resultat = await onImporte(payload);
             setForm({ compte_banque: '', periode_debut: '', periode_fin: '', taux_conversion: '', file: null });
             if (inputRef.current) inputRef.current.value = '';
-            // Première fois pour cette banque (ou solde jamais figé) : le solde
-            // de départ se valide tout de suite, tant que l'utilisateur a le
-            // relevé sous les yeux. C'est aussi le moment de le saisir si la
-            // lecture automatique n'a rien trouvé.
             // La modale de contrôle propose toujours le solde de départ de la
             // banque : valeur lue sur ce relevé si présente, sinon valeur déjà
             // figée. L'utilisateur valide ou corrige.
@@ -625,14 +621,11 @@ const OngletMouvements = ({ banques, peut, importOuvert, onImportConsomme, refre
             {peut.classer && selection.length > 0 && (
                 <div className="tr-bulk">
                     <strong>{selection.length}</strong> mouvement(s) sélectionné(s) :
-                    {Object.entries(NATURES).map(([cle, cfg]) => {
-                        const Icone = cfg.icon;
-                        return (
-                            <button key={cle} type="button" className="btn btn-secondary btn-sm" disabled={enCours.lot} onClick={() => classifierLot(cle)}>
-                                <Icone /> {cfg.label}
-                            </button>
-                        );
-                    })}
+                    {Object.entries(NATURES).map(([cle, cfg]) => (
+                        <button key={cle} type="button" className="btn btn-secondary btn-sm" disabled={enCours.lot} onClick={() => classifierLot(cle)}>
+                            <span className={`tr-sigle ${cfg.cls}`} aria-hidden="true">{cfg.sigle}</span> {cfg.label}
+                        </button>
+                    ))}
                     <button type="button" className="btn btn-secondary btn-sm" disabled={enCours.lot} onClick={() => classifierLot(null)}>
                         <FiX /> Déclasser
                     </button>
@@ -686,24 +679,21 @@ const OngletMouvements = ({ banques, peut, importOuvert, onImportConsomme, refre
                                         <td className="tr-num-credit">{montant(m.credit)}</td>
                                         <td>
                                             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '.5rem', flexWrap: 'wrap' }}>
-                                                <div className="tr-class">
-                                                    {Object.entries(NATURES).map(([cle, cfg]) => {
-                                                        const Icone = cfg.icon;
-                                                        return (
-                                                            <button
-                                                                key={cle}
-                                                                type="button"
-                                                                className={`tr-class-btn ${m.nature === cle ? cfg.cls : ''}`}
-                                                                title={m.nature === cle ? `${cfg.label} (cliquer pour déclasser)` : `Classer en ${cfg.label.toLowerCase()} — ${cfg.aide}`}
-                                                                aria-label={cfg.label}
-                                                                aria-pressed={m.nature === cle}
-                                                                disabled={!peut.classer || enCours[m.id]}
-                                                                onClick={() => classifier(m, cle)}
-                                                            >
-                                                                <Icone />
-                                                            </button>
-                                                        );
-                                                    })}
+                                                <div className="tr-class" role="group" aria-label="Classer le mouvement">
+                                                    {Object.entries(NATURES).map(([cle, cfg]) => (
+                                                        <button
+                                                            key={cle}
+                                                            type="button"
+                                                            className={`tr-class-btn ${m.nature === cle ? cfg.cls : ''}`}
+                                                            title={m.nature === cle ? `${cfg.label} (cliquer pour déclasser)` : `Classer en ${cfg.label.toLowerCase()} — ${cfg.aide}`}
+                                                            aria-label={`${cfg.label} (${cfg.sigle})`}
+                                                            aria-pressed={m.nature === cle}
+                                                            disabled={!peut.classer || enCours[m.id]}
+                                                            onClick={() => classifier(m, cle)}
+                                                        >
+                                                            {cfg.sigle}
+                                                        </button>
+                                                    ))}
                                                 </div>
                                                 {!m.nature && m.nature_suggeree && peut.classer && (
                                                     <span className="tr-suggest">
@@ -743,6 +733,14 @@ const OngletReporting = ({ banques, peut }) => {
     const [rapport, setRapport] = useState(null);
     const [charge, setCharge] = useState(false);
     const [erreur, setErreur] = useState('');
+    const [exportingPdf, setExportingPdf] = useState(false);
+    const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', blob: null, filename: '' });
+
+    // Libérer l'URL objet quand la modale se ferme
+    useEffect(() => {
+        if (!pdfPreview.url) return undefined;
+        return () => { if (pdfPreview.url) URL.revokeObjectURL(pdfPreview.url); };
+    }, [pdfPreview.url]);
 
     const charger = useCallback(async () => {
         setCharge(true);
@@ -789,10 +787,47 @@ const OngletReporting = ({ banques, peut }) => {
             .join('\n');
         const suffixe = plage.date_debut && plage.date_fin ? `${plage.date_debut}_${plage.date_fin}` : 'global';
         const a = document.createElement('a');
-        a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+        a.href = URL.createObjectURL(new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' }));
         a.download = `reporting_tresorerie_${suffixe}.csv`;
         a.click();
         URL.revokeObjectURL(a.href);
+    };
+
+    const ouvrirPdfPreview = async () => {
+        if (!rapport || exportingPdf) return;
+        setErreur('');
+        setExportingPdf(true);
+        try {
+            const params = {};
+            if (plage.date_debut) params.date_debut = plage.date_debut;
+            if (plage.date_fin) params.date_fin = plage.date_fin;
+            const blob = await ApiService.exportTresorerieReportingPdf(params);
+            const url = URL.createObjectURL(blob);
+            const suffixe = plage.date_debut && plage.date_fin
+                ? `${plage.date_debut}_${plage.date_fin}`
+                : 'global';
+            setPdfPreview({ open: true, url, blob, filename: `reporting_tresorerie_${suffixe}.pdf` });
+        } catch (err) {
+            setErreur(err.message || 'Erreur lors de la génération du PDF.');
+        } finally {
+            setExportingPdf(false);
+        }
+    };
+
+    const fermerPdfPreview = () => {
+        if (pdfPreview.url) URL.revokeObjectURL(pdfPreview.url);
+        setPdfPreview({ open: false, url: '', blob: null, filename: '' });
+    };
+
+    const telechargerPdf = () => {
+        if (!pdfPreview.blob) return;
+        const link = document.createElement('a');
+        link.href = pdfPreview.url;
+        link.download = pdfPreview.filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        fermerPdfPreview();
     };
 
     const nomBanque = (code) => banques.find((b) => b.code === code)?.libelle || code;
@@ -820,13 +855,49 @@ const OngletReporting = ({ banques, peut }) => {
                     {controle.statut === 'INCOMPLET' && <span className="tr-chip warn"><FiAlertTriangle /> {controle.non_classes} mouvement(s) non classé(s)</span>}
                     {controle.statut === 'ERREUR' && <span className="tr-chip warn"><FiAlertTriangle /> Écart de contrôle détecté</span>}
                     {peut && (
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={exporter} disabled={!rapport}>
-                            <FiDownload /> Exporter CSV
-                        </button>
+                        <>
+                            <button type="button" className="btn btn-secondary btn-sm" onClick={exporter} disabled={!rapport}>
+                                <FiDownload /> Exporter CSV
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-primary btn-sm"
+                                onClick={ouvrirPdfPreview}
+                                disabled={!rapport || exportingPdf}
+                                title="Prévisualiser et télécharger le rapport PDF"
+                            >
+                                {exportingPdf
+                                    ? <><span className="tr-spinner" style={{ borderTopColor: '#fff', borderColor: 'rgba(255,255,255,.35)' }} /> Préparation…</>
+                                    : <><FiFileText /> Export PDF</>}
+                            </button>
+                        </>
                     )}
                 </div>
                 {erreur && <div className="tr-alert"><FiAlertTriangle /><span>{erreur}</span></div>}
             </div>
+
+            {/* ── Modale de prévisualisation PDF (identique au style RapprochementBancaire) ── */}
+            {pdfPreview.open && ReactDOM.createPortal(
+                <div className="reco-pdf-modal" role="dialog" aria-modal="true" aria-labelledby="tr-pdf-title">
+                    <div className="reco-pdf-dialog">
+                        <div className="reco-pdf-header">
+                            <div>
+                                <span className="reco-opening-eyebrow">Aperçu avant export</span>
+                                <h3 id="tr-pdf-title">Rapport de trésorerie</h3>
+                            </div>
+                            <button type="button" className="reco-modal-close" onClick={fermerPdfPreview} aria-label="Fermer la prévisualisation"><FiX /></button>
+                        </div>
+                        <div className="reco-pdf-preview">
+                            <iframe src={pdfPreview.url} title="Prévisualisation du rapport PDF de trésorerie" />
+                        </div>
+                        <div className="reco-pdf-footer">
+                            <button type="button" className="btn btn-secondary" onClick={fermerPdfPreview}>Annuler</button>
+                            <button type="button" className="btn btn-primary" onClick={telechargerPdf}><FiDownload aria-hidden="true" /> Télécharger le PDF</button>
+                        </div>
+                    </div>
+                </div>,
+                document.body,
+            )}
 
             {charge && !rapport ? (
                 <div className="tr-card"><p className="tr-empty"><span className="tr-loading"><span className="tr-spinner" /> Calcul des ratios…</span></p></div>

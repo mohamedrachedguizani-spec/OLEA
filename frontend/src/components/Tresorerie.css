@@ -346,14 +346,36 @@
     cursor: pointer;
     color: var(--text-muted);
     border: 1px solid transparent;
+    font-size: .78rem;
+    font-weight: 800;
+    line-height: 1;
+    letter-spacing: .01em;
+    user-select: none;
     transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 .tr-class-btn svg { width: 15px; height: 15px; }
 .tr-class-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tr-class-btn:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 1px; }
 .tr-class-btn:disabled { opacity: .45; cursor: not-allowed; }
 .tr-class-btn.on-exp { background: rgba(31, 157, 85, .15); color: var(--tr-exp); border-color: rgba(31, 157, 85, .35); }
 .tr-class-btn.on-comm { background: rgba(212, 165, 40, .18); color: #8a6a10; border-color: rgba(212, 165, 40, .45); }
 .tr-class-btn.on-hors { background: rgba(106, 114, 123, .16); color: var(--tr-hors); border-color: rgba(106, 114, 123, .35); }
+/* Pastille du sigle dans les actions groupées (E / H / C) */
+.tr-sigle {
+    display: inline-grid;
+    place-items: center;
+    width: 18px;
+    height: 18px;
+    border-radius: var(--radius-sm);
+    font-size: .68rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--text-muted);
+    border: 1px solid currentColor;
+}
+.tr-sigle.on-exp { color: var(--tr-exp); }
+.tr-sigle.on-comm { color: #8a6a10; }
+.tr-sigle.on-hors { color: var(--tr-hors); }
 .tr-suggest {
     display: inline-flex;
     align-items: center;

@@ -6,6 +6,7 @@ import math
 
 import pandas as pd
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import StreamingResponse
 
 from database import db
 from ws_manager import manager as ws_manager
@@ -421,6 +422,12 @@ def importer_extrait(
         if remplacer_import_id:
             cursor.execute("SELECT id FROM tresorerie_imports WHERE id = %s", (remplacer_import_id,))
             if cursor.fetchone():
+                # L'ancre issue de l'import remplacé est retirée elle aussi : le
+                # nouveau relevé doit pouvoir fixer son propre solde de départ.
+                cursor.execute(
+                    "DELETE FROM tresorerie_soldes_ouverture WHERE source_import_id = %s",
+                    (remplacer_import_id,),
+                )
                 cursor.execute("DELETE FROM tresorerie_imports WHERE id = %s", (remplacer_import_id,))
 
         messages = []
@@ -643,6 +650,16 @@ def supprimer_import(import_id: int, request: Request, user: dict = Depends(get_
         entete = _import_avec_totaux(cursor, import_id)
         if not entete:
             raise HTTPException(status_code=404, detail="Import introuvable")
+
+        # L'ancre de solde créée par cet import disparaît avec lui : sans son
+        # relevé d'origine, le solde de départ n'a plus de justification. Une
+        # ancre saisie manuellement (source_import_id vide) est conservée.
+        cursor.execute(
+            "DELETE FROM tresorerie_soldes_ouverture WHERE source_import_id = %s",
+            (import_id,),
+        )
+        ancres_supprimees = cursor.rowcount
+
         cursor.execute("DELETE FROM tresorerie_imports WHERE id = %s", (import_id,))
 
     log_audit_action(
@@ -651,11 +668,15 @@ def supprimer_import(import_id: int, request: Request, user: dict = Depends(get_
         module="tresorerie",
         entity_type="tresorerie_import",
         entity_id=str(import_id),
-        detail={"file_name": entete.get("file_name"), "compte_banque": entete.get("compte_banque")},
+        detail={
+            "file_name": entete.get("file_name"),
+            "compte_banque": entete.get("compte_banque"),
+            "ancres_solde_supprimees": ancres_supprimees,
+        },
         request=request,
     )
     ws_manager.broadcast("tresorerie", "delete", {"id": import_id})
-    return {"message": "Import supprimé", "id": import_id}
+    return {"message": "Import supprimé", "id": import_id, "ancres_supprimees": ancres_supprimees}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -861,16 +882,28 @@ def classer_mouvement(
 # Reporting
 # ═══════════════════════════════════════════════════════════
 
-@router.get(
-    "/reporting",
-    response_model=TresorerieReportingResponse,
-    dependencies=[Depends(require_permission_code("tresorerie.report"))],
-)
-def get_reporting(
+def _verifier_periode(date_debut: Optional[date], date_fin: Optional[date]) -> None:
+    """« Du » ne peut pas être postérieur à « Au » (400 sinon)."""
+    if date_debut and date_fin and date_debut > date_fin:
+        raise HTTPException(
+            status_code=400,
+            detail="La date de début doit précéder la date de fin",
+        )
+
+
+def _calculer_reporting(
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
     compte_banque: Optional[str] = None,
-):
+) -> dict:
+    """Calcul unique du reporting trésorerie (écran et export PDF).
+
+    C'est la seule source de vérité pour les ratios, les soldes et le contrôle :
+    GET /reporting et GET /reporting/export-pdf passent tous les deux par ici,
+    de sorte que le PDF ne peut pas diverger de l'écran.
+    """
+    _verifier_periode(date_debut, date_fin)
+
     conditions = ["1=1"]
     params = []
     if compte_banque:
@@ -1005,3 +1038,69 @@ def get_reporting(
             "nb_mouvements_agreges": totaux["nb_mouvements"],
         },
     }
+
+
+@router.get(
+    "/reporting",
+    response_model=TresorerieReportingResponse,
+    dependencies=[Depends(require_permission_code("tresorerie.report"))],
+)
+def get_reporting(
+    date_debut: Optional[date] = None,
+    date_fin: Optional[date] = None,
+    compte_banque: Optional[str] = None,
+):
+    return _calculer_reporting(date_debut, date_fin, compte_banque)
+
+
+# ═══════════════════════════════════════════════════════════
+# Export PDF du reporting trésorerie
+# ═══════════════════════════════════════════════════════════
+
+@router.get(
+    "/reporting/export-pdf",
+    response_class=StreamingResponse,
+    summary="Génère et télécharge le rapport PDF du reporting trésorerie",
+    dependencies=[Depends(require_permission_code("tresorerie.report"))],
+)
+def export_reporting_pdf(
+    date_debut: Optional[date] = None,
+    date_fin: Optional[date] = None,
+    compte_banque: Optional[str] = None,
+):
+    """
+    Réutilise le calcul de GET /reporting (`_calculer_reporting`) puis génère
+    le PDF via reportlab et le renvoie en streaming.
+    """
+    from .pdf_export import build_tresorerie_pdf
+
+    rapport = _calculer_reporting(date_debut, date_fin, compte_banque)
+
+    # ── Génération PDF ──
+    try:
+        pdf_buffer = build_tresorerie_pdf(
+            banques=rapport["banques"],
+            totaux=rapport["totaux"],
+            controle=rapport["controle"],
+            date_debut=date_debut,
+            date_fin=date_fin,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du PDF : {exc}") from exc
+
+    # ── Nom du fichier ──
+    if date_debut and date_fin:
+        suffixe = f"{date_debut}_{date_fin}"
+    elif date_debut:
+        suffixe = f"depuis_{date_debut}"
+    elif date_fin:
+        suffixe = f"jusquau_{date_fin}"
+    else:
+        suffixe = "global"
+    filename = f"reporting_tresorerie_{suffixe}.pdf"
+
+    return StreamingResponse(
+        pdf_buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
