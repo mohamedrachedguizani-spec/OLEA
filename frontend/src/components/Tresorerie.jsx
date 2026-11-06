@@ -95,8 +95,95 @@ const Entete = ({ resume, onglet, setOnglet, peut, nbImports, nbMouvements }) =>
     </>
 );
 
+/* Bloc : solde de départ, affiché dans la modale de contrôle d'extraction.
+   L'import est déjà enregistré ; ce bloc valide ou corrige l'ancre de la banque. */
+const BlocSoldeDepart = ({ lecture, onValider }) => {
+    const [solde, setSolde] = useState(
+        lecture.solde_ouverture_lu != null ? String(lecture.solde_ouverture_lu) : '',
+    );
+    const [dateSolde, setDateSolde] = useState(
+        longDate(lecture.solde_ouverture_date_lue) || longDate(lecture.periode_debut),
+    );
+    const [erreur, setErreur] = useState('');
+    const [charge, setCharge] = useState(false);
+    const [enregistre, setEnregistre] = useState(false);
+
+    const valider = async () => {
+        if (solde === '' || !dateSolde) {
+            return setErreur('Renseignez le montant et la date du solde de départ.');
+        }
+        setCharge(true);
+        setErreur('');
+        try {
+            await onValider(lecture.compte_banque, Number(solde), dateSolde);
+            setEnregistre(true);
+        } catch (err) {
+            setErreur(err.message || 'Erreur lors de l’enregistrement du solde.');
+        } finally {
+            setCharge(false);
+        }
+    };
+
+    return (
+        <article className="ba-extraction-control tr-solde-bloc">
+            <div className="ba-extraction-control-header">
+                <div>
+                    <span className="ba-extraction-control-label">
+                        {lecture.deja_fige ? 'Solde figé' : 'Premier import'} · {lecture.compte_banque}
+                    </span>
+                    <strong>Solde de départ du compte</strong>
+                    <small>
+                        {lecture.deja_fige
+                            ? 'Valeur actuellement figée pour cette banque. Corrigez-la si l’extraction s’est trompée.'
+                            : 'Montant imprimé sur le relevé, figé ensuite pour cette banque.'}
+                    </small>
+                </div>
+                <span className={`ba-extraction-status ${enregistre ? '' : 'tr-status-pending'}`}>
+                    {enregistre ? 'Enregistré' : lecture.deja_fige ? 'Figé' : 'À valider'}
+                </span>
+            </div>
+
+            <div className="tr-form" style={{ gridTemplateColumns: '1fr 1fr', marginTop: '.9rem' }}>
+                <div className="tr-field">
+                    <label htmlFor="tr-solde-montant">Montant</label>
+                    <input
+                        id="tr-solde-montant" type="number" step="0.001"
+                        value={solde}
+                        onChange={(e) => { setSolde(e.target.value); setEnregistre(false); }}
+                        placeholder="Solde non détecté : saisissez-le"
+                        disabled={enregistre}
+                    />
+                </div>
+                <div className="tr-field">
+                    <label htmlFor="tr-solde-date">Arrêté au</label>
+                    <input
+                        id="tr-solde-date" type="date"
+                        value={dateSolde}
+                        onChange={(e) => { setDateSolde(e.target.value); setEnregistre(false); }}
+                        disabled={enregistre}
+                    />
+                </div>
+            </div>
+
+            {lecture.solde_ouverture_lu == null && !enregistre && (
+                <div className="tr-alert" style={{ marginTop: '.7rem' }}>
+                    <FiAlertTriangle />
+                    <span>Aucun solde de départ n’a pu être lu sur ce relevé. Saisissez-le pour que le solde du reporting soit calculable.</span>
+                </div>
+            )}
+            {erreur && <div className="tr-alert" style={{ marginTop: '.7rem' }}><FiAlertTriangle /><span>{erreur}</span></div>}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '.8rem' }}>
+                <button type="button" className="btn btn-primary btn-sm" disabled={charge || enregistre} onClick={valider}>
+                    {enregistre ? '✓ Solde validé' : charge ? 'Enregistrement…' : 'Valider le solde'}
+                </button>
+            </div>
+        </article>
+    );
+};
+
 /* ───────── Onglet Import ───────── */
-const OngletImport = ({ banques, peut, onImporte, imports, onOuvrirImport, onSupprimerImport }) => {
+const OngletImport = ({ banques, peut, onImporte, imports, onOuvrirImport, onSupprimerImport, onSoldeAValider }) => {
     const [form, setForm] = useState({ compte_banque: '', periode_debut: '', periode_fin: '', taux_conversion: '', file: null });
     const [drag, setDrag] = useState(false);
     const [erreur, setErreur] = useState('');
@@ -167,6 +254,20 @@ const OngletImport = ({ banques, peut, onImporte, imports, onOuvrirImport, onSup
             const resultat = await onImporte(payload);
             setForm({ compte_banque: '', periode_debut: '', periode_fin: '', taux_conversion: '', file: null });
             if (inputRef.current) inputRef.current.value = '';
+            // Première fois pour cette banque (ou solde jamais figé) : le solde
+            // de départ se valide tout de suite, tant que l'utilisateur a le
+            // relevé sous les yeux. C'est aussi le moment de le saisir si la
+            // lecture automatique n'a rien trouvé.
+            // La modale de contrôle propose toujours le solde de départ de la
+            // banque : valeur lue sur ce relevé si présente, sinon valeur déjà
+            // figée. L'utilisateur valide ou corrige.
+            onSoldeAValider({
+                compte_banque: resultat.import_batch?.compte_banque,
+                periode_debut: resultat.import_batch?.periode_debut,
+                solde_ouverture_lu: resultat.solde_ouverture_lu ?? resultat.solde_ouverture_actuel,
+                solde_ouverture_date_lue: resultat.solde_ouverture_date_lue ?? resultat.solde_ouverture_date_actuelle,
+                deja_fige: Boolean(resultat.a_un_solde),
+            });
             return resultat;
         } catch (err) {
             setErreur(err.message || 'Erreur lors de l’import.');
@@ -674,12 +775,14 @@ const OngletReporting = ({ banques, peut }) => {
             'Dont commissions (dépense)', 'Trésorerie nette exploitation',
             'Recette hors exploitation', 'Dépense hors exploitation', 'Trésorerie nette hors exploitation',
             'Non classés', 'Débit total', 'Crédit total',
+            'Solde de départ', 'Date du solde de départ', 'Solde',
         ];
         const ligne = (b) => [
             b.compte_banque, b.recette_exploitation, b.dont_recette_commission, b.depense_exploitation,
             b.dont_depense_commission, b.tresorerie_nette_exploitation,
             b.recette_hors_exploitation, b.depense_hors_exploitation, b.tresorerie_nette_hors_exploitation,
             b.non_classe_count, b.total_debit, b.total_credit,
+            b.solde_ouverture ?? '', b.solde_ouverture_date ?? '', b.solde ?? '',
         ];
         const csv = [entetes, ...lignes.map(ligne), ...(totaux ? [ligne(totaux)] : [])]
             .map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""').replace('.', ',')}"`).join(';'))
@@ -783,6 +886,7 @@ const OngletReporting = ({ banques, peut }) => {
                                         <th rowSpan="2">Banque</th>
                                         <th colSpan="5" className="tr-grp-exp">Exploitation (commissions incluses)</th>
                                         <th colSpan="3" className="tr-grp-hors">Hors exploitation</th>
+                                        <th colSpan="2" className="tr-grp-solde">Solde du compte</th>
                                         <th rowSpan="2">Non classés</th>
                                     </tr>
                                     <tr>
@@ -794,8 +898,9 @@ const OngletReporting = ({ banques, peut }) => {
                                         <th>Recette</th>
                                         <th>Dépense</th>
                                         <th>Trésorerie nette</th>
-                                    </tr>
-                                </thead>
+                                        <th>Solde de départ</th>
+                                        <th>Solde</th>
+                                    </tr>                                </thead>
                                 <tbody>
                                     {lignes.map((b) => (
                                         <tr key={b.compte_banque}>
@@ -815,6 +920,19 @@ const OngletReporting = ({ banques, peut }) => {
                                             <td className={`tr-col-hors tr-strong ${b.tresorerie_nette_hors_exploitation < 0 ? 'tr-num-debit' : ''}`}>
                                                 {montant(b.tresorerie_nette_hors_exploitation)}
                                             </td>
+                                            <td className="tr-col-solde tr-nil" title={b.solde_ouverture_date ? `Solde au ${jour(b.solde_ouverture_date)} (veille de la période)` : 'Solde de départ non calculable pour cette période'}>
+                                                {b.solde_ouverture != null ? (
+                                                    <>
+                                                        {fmt(b.solde_ouverture)}
+                                                        {b.solde_ouverture_date && (
+                                                            <div className="tr-solde-date">{jour(b.solde_ouverture_date)}</div>
+                                                        )}
+                                                    </>
+                                                ) : 'n.d.'}
+                                            </td>
+                                            <td className={`tr-col-solde tr-strong ${b.solde != null && b.solde < 0 ? 'tr-num-debit' : ''}`}>
+                                                {b.solde != null ? fmt(b.solde) : <span className="tr-nil">n.d.</span>}
+                                            </td>
                                             <td>{b.non_classe_count > 0 ? <span className="tr-tag non">{b.non_classe_count}</span> : <span className="tr-nil">–</span>}</td>
                                         </tr>
                                     ))}
@@ -830,6 +948,8 @@ const OngletReporting = ({ banques, peut }) => {
                                         <td className="tr-col-hors">{fmt(totaux.recette_hors_exploitation)}</td>
                                         <td className="tr-col-hors">{fmt(totaux.depense_hors_exploitation)}</td>
                                         <td className="tr-col-hors">{fmt(totaux.tresorerie_nette_hors_exploitation)}</td>
+                                        <td className="tr-col-solde">{totaux.solde_ouverture != null ? fmt(totaux.solde_ouverture) : <span className="tr-nil">n.d.</span>}</td>
+                                        <td className="tr-col-solde">{totaux.solde != null ? fmt(totaux.solde) : <span className="tr-nil">n.d.</span>}</td>
                                         <td>{totaux.non_classe_count > 0 ? <span className="tr-tag non">{totaux.non_classe_count}</span> : '–'}</td>
                                     </tr>
                                 </tfoot>
@@ -850,7 +970,13 @@ const OngletReporting = ({ banques, peut }) => {
                                 </span>
                             </div>
                         )}
+
+                        <p className="tr-formula" style={{ marginTop: '.6rem' }}>
+                            Solde de départ = solde figé projeté à la veille du {rapport.date_debut ? jour(rapport.date_debut) : 'début de période'} ·
+                            Solde = solde figé + mouvements jusqu’au {rapport.date_fin ? jour(rapport.date_fin) : 'jour'}
+                        </p>
                     </div>
+
                 </>
             )}
         </>
@@ -873,6 +999,7 @@ const Tresorerie = ({ refreshTrigger = 0 }) => {
     const [resume, setResume] = useState(null);
     const [imports, setImports] = useState([]);
     const [importOuvert, setImportOuvert] = useState(null);
+    const [soldeAValider, setSoldeAValider] = useState(null);
     const [controleExtraction, setControleExtraction] = useState(null);
     const [message, setMessage] = useState('');
     const [erreur, setErreur] = useState('');
@@ -892,6 +1019,12 @@ const Tresorerie = ({ refreshTrigger = 0 }) => {
         }
     }, []);
 
+    const enregistrerSolde = async (compteBanque, solde, dateSolde) => {
+        await ApiService.setTresorerieSoldeOuverture(compteBanque, solde, dateSolde);
+        setMessage(`Solde de départ de ${compteBanque} enregistré.`);
+        await chargerContexte();
+    };
+
     useEffect(() => { chargerContexte(); }, [chargerContexte]);
     // Un autre poste a importé ou classé des mouvements : on réactualise les entêtes.
     useEffect(() => { if (refreshTrigger) chargerContexte(); }, [refreshTrigger]);
@@ -904,7 +1037,10 @@ const Tresorerie = ({ refreshTrigger = 0 }) => {
     const importer = async (payload) => {
         const resultat = await ApiService.uploadTresorerieExtrait(payload);
         setControleExtraction(resultat?.controle_extraction || null);
-        setMessage(`${resultat.total_mouvements} mouvement(s) extraits pour ${resultat.import_batch.compte_banque}.`);
+        const figement = resultat?.solde_ouverture_fige
+            ? ' Solde de départ de la banque figé à partir de ce relevé.'
+            : '';
+        setMessage(`${resultat.total_mouvements} mouvement(s) extraits pour ${resultat.import_batch.compte_banque}.${figement}`);
         await chargerContexte();
         if (peut.lire) {
             setImportOuvert(resultat.import_batch);
@@ -944,6 +1080,7 @@ const Tresorerie = ({ refreshTrigger = 0 }) => {
                     imports={imports}
                     onOuvrirImport={ouvrirImport}
                     onSupprimerImport={supprimerImport}
+                    onSoldeAValider={setSoldeAValider}
                 />
             )}
             {onglet === 'mouvements' && peut.lire && (
@@ -955,14 +1092,24 @@ const Tresorerie = ({ refreshTrigger = 0 }) => {
                     refreshSignal={refreshTrigger}
                 />
             )}
-            {onglet === 'reporting' && peut.rapport && <OngletReporting banques={banques} peut={peut.rapport} />}
+            {onglet === 'reporting' && peut.rapport && (
+                <OngletReporting banques={banques} peut={peut.rapport} />
+            )}
 
             {controleExtraction && (
                 <ExtractionControlModal
                     controls={controleExtraction}
                     title="Contrôle de l’extraction de l’extrait bancaire"
-                    onClose={() => setControleExtraction(null)}
-                />
+                    onClose={() => { setControleExtraction(null); setSoldeAValider(null); }}
+                    primaryLabel="Poursuivre"
+                >
+                    {soldeAValider && (
+                        <BlocSoldeDepart
+                            lecture={soldeAValider}
+                            onValider={enregistrerSolde}
+                        />
+                    )}
+                </ExtractionControlModal>
             )}
         </div>
     );

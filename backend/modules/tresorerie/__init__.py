@@ -17,6 +17,8 @@ def init_tresorerie_tables():
                 file_type VARCHAR(32) NOT NULL,
                 taux_conversion DOUBLE NULL DEFAULT NULL,
                 devise_source VARCHAR(8) NULL DEFAULT NULL,
+                solde_ouverture DOUBLE NULL DEFAULT NULL,
+                solde_ouverture_date DATE NULL DEFAULT NULL,
                 status VARCHAR(32) NOT NULL DEFAULT 'extracted',
                 created_by_user_id INT NULL DEFAULT NULL,
                 created_by_username VARCHAR(64) NULL DEFAULT NULL,
@@ -25,6 +27,40 @@ def init_tresorerie_tables():
                 INDEX idx_treso_import_compte (compte_banque),
                 INDEX idx_treso_import_periode (periode_debut, periode_fin),
                 INDEX idx_treso_import_created (created_at)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            """
+        )
+
+        # Migration : ajouter les colonnes de solde aux installations existantes.
+        for colonne, definition in [
+            ("solde_ouverture", "DOUBLE NULL DEFAULT NULL"),
+            ("solde_ouverture_date", "DATE NULL DEFAULT NULL"),
+        ]:
+            cursor.execute(
+                """
+                SELECT COUNT(*) AS cnt FROM information_schema.columns
+                WHERE table_schema = DATABASE()
+                  AND table_name = 'tresorerie_imports'
+                  AND column_name = %s
+                """,
+                (colonne,),
+            )
+            if cursor.fetchone()["cnt"] == 0:
+                cursor.execute(f"ALTER TABLE tresorerie_imports ADD COLUMN {colonne} {definition}")
+
+        # ─── Ancre de solde : solde de départ figé, une ligne par banque ───
+        # Lue une seule fois sur le premier extrait importé, elle survit à la
+        # suppression des imports et ne dépend plus d'un relevé particulier.
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS tresorerie_soldes_ouverture (
+                compte_banque VARCHAR(32) NOT NULL PRIMARY KEY,
+                solde DOUBLE NOT NULL,
+                date_solde DATE NOT NULL,
+                source_import_id INT NULL DEFAULT NULL,
+                source_file_name VARCHAR(255) NULL DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """
         )

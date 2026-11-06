@@ -447,9 +447,20 @@
 .tr-report th.tr-grp-hors { color: var(--tr-hors); }
 .tr-report td.tr-col-exp { background: rgba(31, 157, 85, .045); }
 .tr-report td.tr-col-hors { background: rgba(106, 114, 123, .05); }
+.tr-report td.tr-col-solde { background: rgba(183, 72, 43, .06); }
+.tr-report th.tr-grp-solde { color: var(--primary-700); }
 .tr-report td.tr-strong { font-weight: 700; }
 .tr-report tfoot td.tr-col-exp { background: rgba(31, 157, 85, .1); }
 .tr-report tfoot td.tr-col-hors { background: rgba(106, 114, 123, .1); }
+.tr-report tfoot td.tr-col-solde { background: rgba(183, 72, 43, .1); }
+.tr-solde-date { font-size: .68rem; color: var(--text-muted); font-weight: 500; }
+
+/* ───────── Bloc solde de départ dans la modale de contrôle ───────── */
+.tr-solde-bloc { border-left-color: var(--primary-500); background: var(--bg-muted); }
+.tr-solde-bloc .tr-field input:disabled { opacity: .75; }
+.tr-status-pending { background: rgba(212, 165, 40, .2); color: #8a6a10; }
+
+/* ───────── Formule du rapport ───────── */
 .tr-formula {
     display: inline-flex;
     align-items: center;

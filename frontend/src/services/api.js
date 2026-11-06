@@ -470,6 +470,27 @@ class ApiService {
         return response.json();
     }
 
+    static async getTresorerieSoldesOuverture() {
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/soldes-ouverture`);
+        if (!response.ok) throw new Error('Erreur lors du chargement des soldes de départ');
+        return response.json();
+    }
+
+    static async setTresorerieSoldeOuverture(compteBanque, solde, dateSolde) {
+        const response = await ApiService._fetch(
+            `${API_BASE_URL}/tresorerie/soldes-ouverture/${encodeURIComponent(compteBanque)}`,
+            {
+                method: 'PUT',
+                body: JSON.stringify({ solde, date_solde: dateSolde }),
+            },
+        );
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors de la saisie du solde' }));
+            throw new Error(err.detail || 'Erreur lors de la saisie du solde');
+        }
+        return response.json();
+    }
+
     static async uploadTresorerieExtrait(formData) {
         const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/imports`, {
             method: 'POST',

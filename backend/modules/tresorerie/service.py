@@ -43,6 +43,9 @@ def nouveau_agregat(compte_banque: str) -> dict:
         "total_debit": 0.0,
         "total_credit": 0.0,
         "nb_mouvements": 0,
+        "solde_ouverture": None,
+        "solde_ouverture_date": None,
+        "solde": None,
     }
 
 
@@ -77,6 +80,10 @@ def _finaliser_agregat(agregat: dict) -> dict:
     agregat["tresorerie_nette_hors_exploitation"] = _arrondir(
         agregat["recette_hors_exploitation"] - agregat["depense_hors_exploitation"]
     )
+    if agregat.get("solde") is not None:
+        agregat["solde"] = _arrondir(agregat["solde"])
+    if agregat.get("solde_ouverture") is not None:
+        agregat["solde_ouverture"] = _arrondir(agregat["solde_ouverture"])
     return agregat
 
 
@@ -111,10 +118,26 @@ def totaliser(agregats: List[dict]) -> dict:
     """Somme des agrégats de toutes les banques (ratio « toutes banques »)."""
     total = nouveau_agregat("TOUTES")
     total["libelle_banque"] = "Toutes banques"
+    # Champs calculés à part : le solde se cumule uniquement sur les banques qui
+    # en ont un, et sa date n'a pas de sens au niveau global.
+    hors_somme = {"compte_banque", "solde", "solde_ouverture", "solde_ouverture_date"}
+    soldes, ouvertures = [], []
     for agregat in agregats:
         for cle, valeur in agregat.items():
-            if isinstance(valeur, (int, float)) and cle != "compte_banque":
+            if cle in hors_somme:
+                continue
+            if isinstance(valeur, (int, float)) and not isinstance(valeur, bool):
                 total[cle] += valeur
+        if agregat.get("compte_banque") in ("TOUTES", "Autre"):
+            continue
+        if agregat.get("solde") is not None:
+            soldes.append(agregat["solde"])
+        if agregat.get("solde_ouverture") is not None:
+            ouvertures.append(agregat["solde_ouverture"])
+    # Solde total : les comptes en devises sont déjà convertis en TND à l'import,
+    # la somme est donc homogène. `solde` reste None si aucune banque n'a de solde.
+    total["solde"] = round(sum(soldes), 3) if soldes else None
+    total["solde_ouverture"] = round(sum(ouvertures), 3) if ouvertures else None
     return _finaliser_agregat(total)
 
 
@@ -213,4 +236,92 @@ def filtrer_mouvements_par_periode(mouvements: List[dict], date_debut, date_fin)
         else:
             hors.append(mouvement)
     return dans, hors
+
+
+# ─── Solde par banque ───
+
+def ancre_de_banque(ancres: List[dict], compte_banque: str, date_reference=None) -> Optional[dict]:
+    """Ancre de solde d'une banque, si elle est déjà valable à `date_reference`.
+
+    L'ancre fige le solde de départ d'une banque : elle est lue une seule fois
+    sur le premier extrait importé, puis conservée indépendamment des imports.
+    Une ancre postérieure à la date du rapport ne permet pas de calculer un
+    solde pour cette période : mieux vaut « non disponible » qu'un chiffre faux.
+    """
+    code = (compte_banque or "").strip()
+    for ancre in ancres:
+        if (ancre.get("compte_banque") or "").strip() != code:
+            continue
+        date_solde = ancre.get("date_solde")
+        if date_reference and date_solde and date_solde > date_reference:
+            return None
+        return ancre
+    return None
+
+
+def choisir_ancre_solde(imports: List[dict], date_fin=None) -> dict:
+    """Rétrocompatibilité : ancre déduite de l'ancien stockage par import.
+
+    N'est plus utilisée pour le calcul (voir ancre_de_banque), mais reste
+    disponible pour d'éventuels scripts de reprise des soldes existants.
+    """
+    par_banque: Dict[str, dict] = {}
+    for imp in imports:
+        code = (imp.get("compte_banque") or "").strip()
+        if not code or imp.get("solde_ouverture") is None:
+            continue
+        debut = imp.get("periode_debut")
+        if date_fin and debut and debut > date_fin:
+            continue
+        courant = par_banque.get(code)
+        if courant is None:
+            par_banque[code] = imp
+            continue
+        debut_courant = courant.get("periode_debut")
+        if debut is not None and (debut_courant is None or debut < debut_courant):
+            par_banque[code] = imp
+    return par_banque
+
+
+def demarrer_couverture(ancre: dict):
+    """Date à partir de laquelle le solde de départ est valable."""
+    return ancre.get("date_solde") or ancre.get("solde_ouverture_date") or ancre.get("periode_debut")
+
+
+def calculer_solde(solde_ouverture, mouvements_nets) -> "float | None":
+    """Solde = solde de départ de l'ancre + mouvements (crédits − débits) depuis lors."""
+    if solde_ouverture is None:
+        return None
+    try:
+        return round(float(solde_ouverture) + float(mouvements_nets or 0), 3)
+    except (TypeError, ValueError):
+        return None
+
+
+def totaliser_commissions(banques: List[dict]) -> dict:
+    """Synthèse des commissions bancaires, banque par banque puis au total."""
+    par_banque = []
+    total_encaissees = 0.0
+    total_payees = 0.0
+    for banque in banques:
+        encaissees = round(float(banque.get("dont_recette_commission") or 0), 3)
+        payees = round(float(banque.get("dont_depense_commission") or 0), 3)
+        total_encaissees += encaissees
+        total_payees += payees
+        par_banque.append({
+            "compte_banque": banque.get("compte_banque"),
+            "libelle_banque": banque.get("libelle_banque"),
+            "commissions_encaissees": encaissees,
+            "commissions_payees": payees,
+            "total_commissions": round(encaissees + payees, 3),
+            "commissions_nettes": round(encaissees - payees, 3),
+            "nb_mouvements": int(banque.get("nb_mouvements") or 0),
+        })
+    return {
+        "par_banque": par_banque,
+        "total_encaissees": round(total_encaissees, 3),
+        "total_payees": round(total_payees, 3),
+        "total_commissions": round(total_encaissees + total_payees, 3),
+        "total_nettes": round(total_encaissees - total_payees, 3),
+    }
 

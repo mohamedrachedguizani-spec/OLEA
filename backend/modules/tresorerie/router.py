@@ -17,6 +17,7 @@ from modules.saisie_bancaire.service import (
     _parse_date,
     _parse_pdf,
 )
+from modules.rapprochement_bancaire.service import extract_bank_opening_balance
 from .constants import (
     BANQUES_TRESORERIE,
     DEVISES_TRESORERIE,
@@ -27,6 +28,7 @@ from .models import (
     BulkNatureUpdateRequest,
     NatureUpdateRequest,
     NatureUpdateResponse,
+    SoldeOuvertureRequest,
     TresorerieBanqueReporting,
     TresorerieImport,
     TresorerieImportResponse,
@@ -35,12 +37,16 @@ from .models import (
     TresorerieReportingResponse,
 )
 from .service import (
+    ancre_de_banque,
+    calculer_solde,
     construire_controle_extraction,
     construire_reporting,
+    demarrer_couverture,
     filtrer_mouvements_par_periode,
     periodes_chevauchent,
     preparer_mouvements_extraits,
     totaliser,
+    totaliser_commissions,
 )
 
 router = APIRouter(
@@ -141,6 +147,75 @@ def get_banques():
         }
         for code, config in BANQUES_TRESORERIE.items()
     ]
+
+
+@router.get("/soldes-ouverture", dependencies=[Depends(require_permission_code("tresorerie.read"))])
+def lister_soldes_ouverture():
+    """Ancres de solde de départ, une par banque."""
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT compte_banque, solde, date_solde, source_file_name, created_at
+            FROM tresorerie_soldes_ouverture
+            ORDER BY compte_banque
+            """
+        )
+        ancres = cursor.fetchall()
+    for ancre in ancres:
+        banque = BANQUES_TRESORERIE.get(ancre["compte_banque"])
+        ancre["libelle_banque"] = banque["libelle"] if banque else None
+    return ancres
+
+
+@router.put("/soldes-ouverture/{compte_banque}")
+def definir_solde_ouverture(
+    compte_banque: str,
+    payload: SoldeOuvertureRequest,
+    request: Request,
+    user: dict = Depends(require_permission_code("tresorerie.import")),
+):
+    """Corrige l'ancre d'une banque dont la lecture automatique s'est trompée."""
+    code_banque = (compte_banque or "").strip().upper()
+    if code_banque not in BANQUES_TRESORERIE:
+        raise HTTPException(status_code=400, detail="Compte bancaire invalide")
+
+    with db.get_cursor() as cursor:
+        cursor.execute("SELECT compte_banque FROM tresorerie_soldes_ouverture WHERE compte_banque = %s", (code_banque,))
+        existe = cursor.fetchone() is not None
+        if existe:
+            cursor.execute(
+                """
+                UPDATE tresorerie_soldes_ouverture
+                SET solde = %s, date_solde = %s, source_file_name = %s
+                WHERE compte_banque = %s
+                """,
+                (payload.solde, payload.date_solde, "Correction manuelle", code_banque),
+            )
+        else:
+            cursor.execute(
+                """
+                INSERT INTO tresorerie_soldes_ouverture
+                (compte_banque, solde, date_solde, source_import_id, source_file_name)
+                VALUES (%s, %s, %s, NULL, %s)
+                """,
+                (code_banque, payload.solde, payload.date_solde, "Saisie manuelle"),
+            )
+
+    log_audit_action(
+        user=user,
+        action="update" if existe else "create",
+        module="tresorerie",
+        entity_type="tresorerie_solde_ouverture",
+        entity_id=code_banque,
+        detail={"solde": payload.solde, "date_solde": str(payload.date_solde)},
+        request=request,
+    )
+    ws_manager.broadcast("tresorerie", "solde", {"compte_banque": code_banque})
+    return {
+        "compte_banque": code_banque,
+        "solde": payload.solde,
+        "date_solde": payload.date_solde,
+    }
 
 
 @router.get("/summary", dependencies=[Depends(require_permission_code("tresorerie.read"))])
@@ -274,6 +349,25 @@ def importer_extrait(
             mouvement["debit"] = round(float(mouvement["debit"]) * taux_conversion, 3)
             mouvement["credit"] = round(float(mouvement["credit"]) * taux_conversion, 3)
 
+    # ─── Solde de départ : figé une seule fois par banque ───
+    # Il est lu sur le premier extrait importé, puis conservé dans une ancre
+    # propre à la banque. Les relevés suivants ne le modifient plus.
+    solde_ouverture = None
+    solde_ouverture_date = None
+    try:
+        info_solde = extract_bank_opening_balance(raw_bytes, file.filename, file_type)
+        solde_ouverture = info_solde.amount
+        solde_ouverture_date = info_solde.balance_date
+    except Exception:
+        info_solde = None
+        solde_ouverture = None
+        solde_ouverture_date = None
+    if solde_ouverture is not None and devise_source:
+        solde_ouverture = round(float(solde_ouverture) * taux_conversion, 3)
+    if solde_ouverture is None:
+        # Repli raisonnable : le relevé commence au début de la période demandée.
+        solde_ouverture_date = date_debut
+
     mouvements = preparer_mouvements_extraits(mouvements)
 
     # Un Grand Livre Sage ou une mise en page non reconnue peut produire des
@@ -287,20 +381,6 @@ def importer_extrait(
                 "d'un relevé bancaire (débit/crédit) et non d'un grand livre comptable."
             ),
         )
-
-    messages = []
-    if hors_periode:
-        messages.append(
-            f"{len(hors_periode)} mouvement(s) hors période ignoré(s) "
-            f"(relevé en contenant davantage)."
-        )
-    controle = construire_controle_extraction(
-        fichier=file.filename,
-        format_detecte=extension,
-        lignes_source=lignes_source,
-        mouvements=mouvements,
-        messages=messages,
-    )
 
     with db.get_cursor() as cursor:
         # ─── Contrôle anti-doublon : une période déjà importée pour cette banque ───
@@ -343,12 +423,27 @@ def importer_extrait(
             if cursor.fetchone():
                 cursor.execute("DELETE FROM tresorerie_imports WHERE id = %s", (remplacer_import_id,))
 
+        messages = []
+        if hors_periode:
+            messages.append(
+                f"{len(hors_periode)} mouvement(s) hors période ignoré(s) "
+                f"(relevé en contenant davantage)."
+            )
+        controle = construire_controle_extraction(
+            fichier=file.filename,
+            format_detecte=extension,
+            lignes_source=lignes_source,
+            mouvements=mouvements,
+            messages=messages,
+        )
+
         cursor.execute(
             """
             INSERT INTO tresorerie_imports
             (compte_banque, periode_debut, periode_fin, file_name, file_type,
-             taux_conversion, devise_source, created_by_user_id, created_by_username)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+             taux_conversion, devise_source, solde_ouverture, solde_ouverture_date,
+             created_by_user_id, created_by_username)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 code_banque,
@@ -358,6 +453,8 @@ def importer_extrait(
                 extension,
                 taux_conversion if devise_source else None,
                 devise_source,
+                solde_ouverture,
+                solde_ouverture_date,
                 user.get("id"),
                 user.get("username"),
             ),
@@ -385,6 +482,36 @@ def importer_extrait(
         )
 
         entete = _import_avec_totaux(cursor, import_id)
+
+        # ─── Figement de l'ancre de solde ───
+        # INSERT IGNORE : l'ancre d'une banque n'est jamais réécrite par un
+        # relevé ultérieur. Une banque sans ancre n'en reçoit une que si ce
+        # relevé porte un solde réellement lu (jamais un zéro inventé).
+        ancre_creee = False
+        if solde_ouverture is not None and info_solde is not None and info_solde.amount is not None:
+            cursor.execute(
+                """
+                INSERT IGNORE INTO tresorerie_soldes_ouverture
+                (compte_banque, solde, date_solde, source_import_id, source_file_name)
+                VALUES (%s, %s, %s, %s, %s)
+                """,
+                (
+                    code_banque,
+                    solde_ouverture,
+                    solde_ouverture_date or date_debut,
+                    import_id,
+                    file.filename,
+                ),
+            )
+            ancre_creee = cursor.rowcount == 1
+
+        # Une ancre existe-t-elle pour la banque après cet import ?
+        cursor.execute(
+            "SELECT solde, date_solde FROM tresorerie_soldes_ouverture WHERE compte_banque = %s",
+            (code_banque,),
+        )
+        ancre_banque = cursor.fetchone()
+
         cursor.execute(
             """
             SELECT id, import_id, date_operation, reference, libelle, debit, credit,
@@ -409,6 +536,7 @@ def importer_extrait(
             "compte_banque": code_banque,
             "total_mouvements": len(mouvements),
             "remplace_import_id": remplacer_import_id,
+            "solde_ouverture_fige": ancre_creee,
         },
         request=request,
     )
@@ -419,6 +547,15 @@ def importer_extrait(
         "total_mouvements": len(mouvements),
         "preview": preview,
         "controle_extraction": controle,
+        # Solde de départ à valider/corriger dans la modale de contrôle :
+        # on renvoie toujours l'état courant de l'ancre de la banque, qu'elle
+        # vienne d'être créée par cet import ou qu'elle existe déjà.
+        "solde_ouverture_fige": ancre_creee,
+        "solde_ouverture_lu": solde_ouverture if info_solde is not None and info_solde.amount is not None else None,
+        "solde_ouverture_date_lue": solde_ouverture_date if info_solde is not None and info_solde.amount is not None else None,
+        "solde_ouverture_actuel": float(ancre_banque["solde"]) if ancre_banque else None,
+        "solde_ouverture_date_actuelle": ancre_banque["date_solde"] if ancre_banque else None,
+        "a_un_solde": ancre_banque is not None,
     }
 
 
@@ -770,10 +907,80 @@ def get_reporting(
         )
         controle_sql = cursor.fetchone() or {}
 
+    # ─── Solde par banque ───
+    # L'ancre de solde est figée par banque (lue une seule fois sur le premier
+    # import). Le solde affiché reste un cumul : ancre + mouvements jusqu'à la
+    # borne « Au ». Le filtre « Du » ne sert qu'aux ratios de la période.
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT compte_banque, solde, date_solde, source_file_name
+            FROM tresorerie_soldes_ouverture
+            """
+        )
+        ancres = cursor.fetchall()
+
     banques = construire_reporting(rows)
     if compte_banque:
         banques = [b for b in banques if b["compte_banque"] == compte_banque.strip().upper()]
+
+    with db.get_cursor() as cursor:
+        for banque in banques:
+            code = banque["compte_banque"]
+            ancre = ancre_de_banque(ancres, code, date_fin)
+            if not ancre:
+                continue
+            depart = demarrer_couverture(ancre)
+            if depart is None:
+                continue
+
+            borne_fin = " AND m.date_operation <= %s" if date_fin else ""
+            borne_fin_params = [date_fin] if date_fin else []
+
+            # Solde de départ de la période = ancre projetée à la veille de « Du ».
+            # Sans filtre « Du », c'est l'ancre elle-même. Une période qui commence
+            # avant l'ancre n'a pas de solde de départ calculable (n.d.), mais le
+            # solde à « Au » reste calculable.
+            ouverture = ancre.get("solde")
+            ouverture_date = depart
+            if date_debut and date_debut < depart:
+                ouverture = None
+            elif date_debut and date_debut > depart:
+                cursor.execute(
+                    f"""
+                    SELECT COALESCE(SUM(CASE WHEN m.date_operation < %s
+                                             THEN m.credit - m.debit ELSE 0 END), 0) AS net_avant
+                    FROM tresorerie_movements m
+                    JOIN tresorerie_imports i ON i.id = m.import_id
+                    WHERE i.compte_banque = %s
+                      AND m.date_operation >= %s
+                      {borne_fin}
+                    """,
+                    [date_debut, code, depart] + borne_fin_params,
+                )
+                net_avant = float((cursor.fetchone() or {}).get("net_avant") or 0)
+                ouverture = calculer_solde(ancre.get("solde"), net_avant)
+                ouverture_date = date_debut
+
+            # Solde à « Au » : ancre + mouvements depuis l'ancre jusqu'à cette date.
+            cursor.execute(
+                f"""
+                SELECT COALESCE(SUM(m.credit - m.debit), 0) AS net
+                FROM tresorerie_movements m
+                JOIN tresorerie_imports i ON i.id = m.import_id
+                WHERE i.compte_banque = %s
+                  AND m.date_operation >= %s
+                  {borne_fin}
+                """,
+                [code, depart] + borne_fin_params,
+            )
+            net = float((cursor.fetchone() or {}).get("net") or 0)
+            banque["solde_ouverture"] = ouverture
+            banque["solde_ouverture_date"] = ouverture_date
+            banque["solde"] = calculer_solde(ancre.get("solde"), net)
+
     totaux = totaliser(banques)
+    commissions = totaliser_commissions(banques)
 
     ecart_debit = round(float(controle_sql.get("debit") or 0) - totaux["total_debit"], 3)
     ecart_credit = round(float(controle_sql.get("credit") or 0) - totaux["total_credit"], 3)
@@ -788,6 +995,7 @@ def get_reporting(
         "date_fin": date_fin,
         "banques": banques,
         "totaux": totaux,
+        "commissions": commissions,
         "controle": {
             "statut": statut,
             "non_classes": totaux["non_classe_count"],

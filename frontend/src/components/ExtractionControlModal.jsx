@@ -5,7 +5,15 @@ const fmt = (value) => value === null || value === undefined
   ? '—'
   : new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }).format(Number(value) || 0);
 
-const ExtractionControlModal = ({ controls, title = 'Contrôle d’extraction', onClose }) => {
+const ExtractionControlModal = ({
+  controls,
+  title = 'Contrôle d’extraction',
+  onClose,
+  // Bloc optionnel inséré sous le contrôle (ex. saisie du solde de départ).
+  children,
+  footerActions = null,
+  primaryLabel = 'Poursuivre',
+}) => {
   const normalized = useMemo(() => (Array.isArray(controls) ? controls : controls ? [controls] : []), [controls]);
   const [openDetails, setOpenDetails] = useState({});
   const hasWarning = normalized.some((control) => control.statut !== 'OK');
@@ -73,9 +81,11 @@ const ExtractionControlModal = ({ controls, title = 'Contrôle d’extraction', 
               </article>
             );
           })}
+          {children}
         </div>
         <footer className="ba-extraction-modal-footer">
-          <button type="button" className="ba-extraction-modal-primary" onClick={onClose}>Poursuivre</button>
+          {footerActions}
+          <button type="button" className="ba-extraction-modal-primary" onClick={onClose}>{primaryLabel}</button>
         </footer>
       </section>
     </div>,
