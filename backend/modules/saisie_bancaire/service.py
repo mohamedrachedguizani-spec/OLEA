@@ -492,6 +492,366 @@ def _parse_pdf_atb_text(file_bytes: bytes) -> pd.DataFrame:
 
 
 # =============================================================================
+# PARSER PDF ATB « RELEVÉ DE COMPTE » BILINGUE (mise en page 2026)
+# =============================================================================
+# Ce format ne porte AUCUN en-tête de colonnes en texte : le bandeau
+# « N° | Jour | LIBELLE | DATE VALEUR | DEBIT | CREDIT » est une image, et les
+# libellés de colonnes arabes sont dessinés en glyphes non extractibles. Les
+# colonnes se lisent donc par POSITION :
+#   Jour (JJ) | Libellé | Référence TT/FT… | Date valeur JJ/MM/AA | Montant
+# Le sens débit/crédit vient de l'alignement à droite du montant :
+#   Débit  → x1 ≈ 358,4  |  Crédit → x1 ≈ 419,6   (écart de 61,2 pt)
+# Les milliers sont séparés par un point et les milliers/décimales par une
+# virgule ('216.778,739'), avec un suffixe CR/DR possible sur les soldes.
+# Les opérations sont triées par DATE VALEUR (non monotone) : le contrôle de
+# clôture se fait sur les totaux imprimés, pas sur un cumul chronologique.
+
+_ATB_BILINGUAL_MONTHS = {
+    "janvier": 1, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
+    "juillet": 7, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11,
+    "decembre": 12,
+}
+
+_ATB_BILINGUAL_AMOUNT_RE = re.compile(
+    r"^-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{3}(?:CR|DR)?$"
+)
+_ATB_BILINGUAL_ROW_RE = re.compile(
+    r"^(?P<jour>\d{2})\s+(?P<libelle>.*?)\s+"
+    r"(?P<reference>(?:TT|FT)[A-Z0-9]+)\s+"
+    r"(?P<valeur>\d{2}/\d{2}/\d{2})\s+"
+    r"(?P<montant>-?(?:\d{1,3}(?:\.\d{3})+|\d+),\d{3})$"
+)
+_ATB_BILINGUAL_OPENING_RE = re.compile(
+    r"^Solde\s+Au\s+(\d{2}/\d{2}/\d{4})\s+(-?\d[\d.,]*(?:CR|DR)?)$", re.IGNORECASE
+)
+_ATB_BILINGUAL_CLOSING_RE = re.compile(
+    r"(?:^|\s)Solde\s+Au\s+(\d{2}/\d{2}/\d{4})\s+(-?\d[\d.,]*(?:CR|DR)?)$", re.IGNORECASE
+)
+_ATB_BILINGUAL_TOTALS_RE = re.compile(
+    r"^Totaux\s+(-?\d[\d.,]*)\s+(-?\d[\d.,]*)$", re.IGNORECASE
+)
+_ATB_BILINGUAL_PERIOD_RE = re.compile(
+    r"^(?P<mois>[A-Za-zÀ-ſ]+)\s+(?P<annee>20\d{2})\b"
+)
+
+
+def _atb_bilingual_normalize(text: str) -> str:
+    """Retire accents et casse pour comparer mots-clés et mois."""
+    raw = unicodedata.normalize("NFKD", text or "")
+    return "".join(ch for ch in raw if not unicodedata.combining(ch)).lower().strip()
+
+
+def _atb_bilingual_amount(txt: str) -> float:
+    """'216.778,739' -> 216778.739 ; suffixe CR/DR ignoré (le sens vient de la colonne)."""
+    value = (txt or "").strip().upper().replace("CR", "").replace("DR", "")
+    value = re.sub(r"[\s .]", "", value).replace(",", ".")
+    return float(value)
+
+
+def _atb_bilingual_date(txt: str) -> Optional[date]:
+    try:
+        d, m, y = (txt or "").strip().split("/")
+        year = int(y)
+        if year < 100:
+            year += 2000
+        return date(year, int(m), int(d))
+    except Exception:
+        return None
+
+
+def _atb_bilingual_resolve_date(day: str, period_year: Optional[int],
+                                period_month: Optional[int], value_date: Optional[date]) -> Optional[date]:
+    """
+    Reconstruit la date d'opération à partir du seul JOUR de la colonne « Jour ».
+
+    L'opération et la valeur peuvent être dans deux mois différents (opération
+    du 30 puis 01 avec valeur au mois suivant), et la page suivante peut
+    reprendre des jours en arrière : le mois se déduit de la date de valeur.
+    """
+    try:
+        day_number = int(str(day).strip())
+    except (TypeError, ValueError):
+        return None
+
+    if value_date is not None:
+        candidates = []
+        for year, month in (
+            (value_date.year, value_date.month - 1) if value_date.month > 1 else (value_date.year - 1, 12),
+            (value_date.year, value_date.month),
+            (value_date.year, value_date.month + 1) if value_date.month < 12 else (value_date.year + 1, 1),
+        ):
+            try:
+                candidates.append(date(year, month, day_number))
+            except ValueError:
+                continue
+        if candidates:
+            # La valeur peut précéder ou suivre l'opération de quelques jours :
+            # on retient la date d'opération la plus proche.
+            return min(candidates, key=lambda c: abs((c - value_date).days))
+
+    if period_year and period_month:
+        try:
+            return date(period_year, period_month, day_number)
+        except ValueError:
+            return None
+    return None
+
+
+def _is_atb_bilingual_format(raw_text: str) -> bool:
+    """
+    Détecte la mise en page « Relevé de compte » ATB 2026 : en-tête de colonnes
+    absent (image), soldes « Solde Au JJ/MM/AAAA », références TT/FT, montants
+    « 1.234,567 » et éventuel bloc « Totaux ».
+    """
+    if not raw_text:
+        return False
+    text = raw_text
+    has_solde = bool(re.search(r"Solde\s+Au\s+\d{2}/\d{2}/\d{4}", text, re.IGNORECASE))
+    has_iban = "TN59 0105 3094 1100 0030 8410" in text or "IBAN" in text.upper()
+    has_swift = "ATBKTNTT" in text.upper()
+    has_totaux = bool(re.search(r"^\s*Totaux\s+", text, re.MULTILINE | re.IGNORECASE))
+    # Références TT/FT et montants à virgule décimale sur la même ligne
+    nb_rows = 0
+    for line in text.splitlines():
+        if _ATB_BILINGUAL_ROW_RE.match(line.strip()):
+            nb_rows += 1
+            if nb_rows >= 3:
+                break
+    return has_solde and nb_rows >= 3 and (has_swift or has_iban or has_totaux)
+
+
+def _parse_pdf_atb_bilingual(file_bytes: bytes) -> pd.DataFrame:
+    """
+    Extrait le relevé ATB bilingue (mise en page 2026) par POSITION des colonnes.
+
+    - lignes ancrées : « JJ libellé RÉFÉRENCE JJ/MM/AA montant » ;
+    - libellés éventuellement répartis sur plusieurs lignes : les continuations
+      sont rattachées à l'opération précédente ;
+    - sens débit/crédit déduit de l'alignement à droite du montant (bord droit
+      le plus proche du gabarit Débit ou Crédit observé sur la page) ;
+    - « Solde Au … » en tête = solde d'ouverture, « Totaux » + « Solde Au … CR »
+      en pied = totaux et solde de clôture : contrôle final obligatoire.
+    """
+    rows = []
+    opening = closing = None
+    opening_word = None
+    totals_printed = None
+
+    with pdfplumber.open(io.BytesIO(file_bytes)) as pdf:
+        # Bord droit des montants relevé sur tout le document : il sépare les
+        # colonnes Débit (alignés à gauche) et Crédit (alignés plus à droite).
+        amount_edges = []
+        closing_word = None
+        page_words = []
+
+        for page in pdf.pages:
+            text = page.extract_text() or ""
+            words = page.extract_words(keep_blank_chars=False, use_text_flow=False)
+            if not words:
+                continue
+            page_words.append((page, text, words))
+            for line in _atb_group_words(words):
+                amounts = [w for w in line if _ATB_BILINGUAL_AMOUNT_RE.match(w["text"])]
+                amount_edges.extend(w["x1"] for w in amounts)
+                joined = " ".join(w["text"] for w in line).strip()
+                if amounts and _ATB_BILINGUAL_OPENING_RE.match(joined) and opening_word is None:
+                    opening_word = amounts[-1]
+                if amounts and _ATB_BILINGUAL_CLOSING_RE.search(joined):
+                    closing_word = amounts[-1]
+
+        split_x = _atb_bilingual_split_edge(
+            amount_edges,
+            # Le solde est imprimé dans la colonne Crédit : il donne le gabarit
+            # de cette colonne même sur un relevé sans aucun crédit.
+            credit_hint=(opening_word or closing_word or {}).get("x1"),
+        )
+
+        period_year = period_month = None
+        for page, text, words in page_words:
+            if period_year is None:
+                m = _ATB_BILINGUAL_PERIOD_RE.match((text.splitlines() or [""])[0].strip())
+                if m:
+                    month_name = _atb_bilingual_normalize(m.group("mois"))
+                    period_month = _ATB_BILINGUAL_MONTHS.get(month_name)
+                    period_year = int(m.group("annee"))
+
+            lines = _atb_group_words(words)
+            current = None
+            for line in lines:
+                joined = " ".join(w["text"] for w in line).strip()
+                if not joined:
+                    continue
+
+                m_open = _ATB_BILINGUAL_OPENING_RE.match(joined)
+                if m_open:
+                    # Un « Solde Au » après des mouvements, ou suivi d'un suffixe
+                    # CR/DR, est le solde de clôture et non celui d'ouverture.
+                    suffixe = re.search(r"(CR|DR)$", m_open.group(2), re.IGNORECASE)
+                    if suffixe or rows:
+                        closing = _atb_bilingual_amount(m_open.group(2))
+                    elif opening is None:
+                        opening = _atb_bilingual_amount(m_open.group(2))
+                    current = None
+                    continue
+
+                m_total = _ATB_BILINGUAL_TOTALS_RE.match(joined)
+                if m_total:
+                    totals_printed = (
+                        _atb_bilingual_amount(m_total.group(1)),
+                        _atb_bilingual_amount(m_total.group(2)),
+                    )
+                    current = None
+                    continue
+
+                m_close = _ATB_BILINGUAL_CLOSING_RE.search(joined)
+                if m_close and re.search(r"\bSolde\s+Au\b", joined, re.IGNORECASE):
+                    closing = _atb_bilingual_amount(m_close.group(2))
+                    current = None
+                    continue
+
+                m_row = _ATB_BILINGUAL_ROW_RE.match(joined)
+                if m_row:
+                    amount_word = next(
+                        (w for w in reversed(line) if _ATB_BILINGUAL_AMOUNT_RE.match(w["text"])),
+                        None,
+                    )
+                    if amount_word is None:
+                        current = None
+                        continue
+                    value_date = _atb_bilingual_date(m_row.group("valeur"))
+                    current = {
+                        "jour": m_row.group("jour"),
+                        "libelle": [m_row.group("libelle").strip()],
+                        "reference": m_row.group("reference"),
+                        "value_date": value_date,
+                        "amount": amount_word,
+                    }
+                    rows.append(current)
+                    continue
+
+                # Continuation de libellé : une ligne du corps sans date de valeur.
+                if current is not None and not re.search(r"\d{2}/\d{2}/\d{2}", joined):
+                    current["libelle"].append(joined)
+                    continue
+                current = None
+
+    if not rows:
+        raise HTTPException(
+            status_code=400, detail="Aucun mouvement détecté dans le relevé ATB"
+        )
+
+    out = []
+    for r in rows:
+        value_date = r["value_date"]
+        date_op = _atb_bilingual_resolve_date(
+            r["jour"], period_year, period_month, value_date
+        )
+        if date_op is None and value_date is not None:
+            date_op = value_date
+        if date_op is None:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Ligne ATB illisible : {} {}".format(
+                        r["jour"], " ".join(r["libelle"])
+                    )
+                ),
+            )
+        amount = abs(_atb_bilingual_amount(r["amount"]["text"]))
+        is_credit = split_x is not None and r["amount"]["x1"] > split_x
+        out.append({
+            "date_operation": date_op,
+            "date_valeur": value_date,
+            "reference": (r["reference"] or "").strip() or None,
+            "libelle": " ".join(x for x in r["libelle"] if x).strip() or "(sans libellé)",
+            "debit": 0.0 if is_credit else amount,
+            "credit": amount if is_credit else 0.0,
+        })
+
+    df = pd.DataFrame(out)
+
+    # Contrôle de clôture. Le relevé est trié par date de valeur (non
+    # chronologique), mais les sommes débit/crédit sont indépendantes de l'ordre.
+    total_debit = round(df["debit"].sum(), 3)
+    total_credit = round(df["credit"].sum(), 3)
+    if totals_printed is not None:
+        printed_debit, printed_credit = totals_printed
+        if (
+            abs(total_debit - printed_debit) > 0.01
+            or abs(total_credit - printed_credit) > 0.01
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Écart de contrôle ATB : débits extraits {:.3f} vs relevé {:.3f}, "
+                    "crédits extraits {:.3f} vs relevé {:.3f} ({} mouvements)"
+                ).format(
+                    total_debit, printed_debit, total_credit, printed_credit, len(df)
+                ),
+            )
+    if opening is not None and closing is not None:
+        expected = round(opening + total_credit - total_debit, 3)
+        if abs(expected - closing) > 0.01:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Écart de contrôle ATB : solde final calculé {:.3f} vs relevé {:.3f} "
+                    "({} mouvements extraits)"
+                ).format(expected, closing, len(df)),
+            )
+    return df
+
+
+def _atb_bilingual_split_edge(amount_edges: list, credit_hint=None):
+    """
+    Frontière entre la colonne Débit (montants arrêtés plus à gauche) et la
+    colonne Crédit (montants arrêtés plus à droite).
+
+    Les bords droits sont regroupés : les deux groupes les plus peuplés sont
+    les gabarits des deux colonnes. Le solde imprimé sert de repère pour la
+    colonne Crédit lorsqu'elle ne contient aucun mouvement.
+    """
+    edges = sorted(amount_edges)
+    if credit_hint is not None:
+        edges.append(float(credit_hint))
+    if not edges:
+        return None
+
+    groups = []
+    for edge in edges:
+        if groups and edge - groups[-1][-1] <= 3:
+            groups[-1].append(edge)
+        else:
+            groups.append([edge])
+    if len(groups) < 2:
+        return None
+
+    groups.sort(key=len, reverse=True)
+    first, second = sorted((groups[0], groups[1]), key=lambda g: g[0])
+    low_edge = max(first)
+    high_edge = min(second)
+    if high_edge - low_edge <= 2:
+        return high_edge + 1
+    return (low_edge + high_edge) / 2
+
+
+def _atb_group_words(words: list, tolerance: float = 3.5) -> list:
+    """Regroupe les mots d'une page en lignes (tolérance verticale en points)."""
+    ordered = sorted(words, key=lambda w: (w["top"], w["x0"]))
+    lines, cur, cur_top = [], [], None
+    for w in ordered:
+        if cur_top is None or abs(w["top"] - cur_top) <= tolerance:
+            cur.append(w)
+            cur_top = w["top"] if cur_top is None else cur_top
+        else:
+            lines.append(sorted(cur, key=lambda x: x["x0"]))
+            cur, cur_top = [w], w["top"]
+    if cur:
+        lines.append(sorted(cur, key=lambda x: x["x0"]))
+    return lines
+
+
+# =============================================================================
 # PARSER PDF BIAT (texte brut + tableaux)
 # =============================================================================
 
@@ -1560,6 +1920,13 @@ def _parse_pdf(file_bytes: bytes) -> pd.DataFrame:
                 raw_text += pt + "\n"
 
     raw_lines = [line.strip() for line in raw_text.splitlines() if line.strip()]
+
+    if _is_atb_bilingual_format(raw_text):
+        try:
+            return _parse_pdf_atb_bilingual(file_bytes)
+        except HTTPException as exc:
+            if "Écart de contrôle" in str(exc.detail):
+                raise
 
     if _is_ubank_format(raw_text):
         try:
