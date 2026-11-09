@@ -5,7 +5,7 @@
 
 .tr {
     width: 100%;
-    max-width: 1400px;
+    max-width: 1600px;
     min-width: 0;
     margin: 0 auto;
     padding: 0 0 1.5rem;
@@ -281,6 +281,20 @@
 }
 .tr-input:focus { outline: none; border-color: var(--primary-500); box-shadow: var(--focus-ring); }
 .tr-input.search { flex: 1; min-width: 180px; max-width: 320px; }
+/* Filtre de période : « Du » et « Au » restent groupés sur une seule ligne,
+   même quand la barre de filtres passe sur plusieurs lignes. */
+.tr-daterange {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    flex: none;
+    white-space: nowrap;
+}
+.tr-daterange label { font-size: .78rem; color: var(--text-secondary); }
+.tr-daterange .tr-input { padding: .38rem .5rem; font-size: .8rem; }
+/* Bouton posé à côté de champs qui portent un libellé au-dessus : il s'aligne
+   sur la ligne des champs, pas sur celle des libellés. */
+.tr-toolbar-btn { align-self: flex-end; white-space: nowrap; }
 .tr-spacer { margin-left: auto; }
 
 /* ───────── Tableaux ───────── */
@@ -451,18 +465,35 @@
 .tr-pager button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ───────── Reporting ───────── */
-.tr-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+/* Les KPI restent sur une seule ligne : ils se partagent la largeur disponible
+   (flex 1 1 0) et se compriment au lieu de passer à la ligne. */
+.tr-kpis {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 1.25rem;
+}
 .tr-kpi {
+    flex: 1 1 0;
+    min-width: 0;
     background: var(--bg-card);
     border: 1px solid var(--border-light);
     border-top: 4px solid var(--k, var(--border-default));
     border-radius: var(--radius-md);
-    padding: .85rem 1rem;
+    padding: .8rem .65rem;
 }
-.tr-kpi-label { font-size: .71rem; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
-.tr-kpi-value { margin: .25rem 0 .1rem; font-size: 1.32rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tr-kpi-label { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: var(--text-muted); }
+.tr-kpi-value { margin: .25rem 0 .1rem; font-size: 1.18rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tr-kpi-value.neg { color: var(--tr-non); }
-.tr-kpi-sub { font-size: .76rem; color: var(--text-muted); }
+.tr-kpi-value.tr-nil { color: var(--text-muted); opacity: .55; }
+.tr-kpi-sub { font-size: .72rem; color: var(--text-muted); }
+/* KPI « Solde des banques » : mis en avant par rapport aux ratios de flux */
+.tr-kpi-solde { box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, .08)); }
+.tr-kpi-solde .tr-kpi-value { font-size: 1.3rem; }
+/* Sous 1100 px, la rangée défile horizontalement plutôt que d'écraser les libellés */
+@media (max-width: 1100px) {
+    .tr-kpis { overflow-x: auto; padding-bottom: .35rem; }
+    .tr-kpi { flex: 0 0 178px; }
+}
 
 .tr-report th[colspan] { text-align: center; border-left: 1px solid var(--border-light); }
 .tr-report th.tr-grp-exp { color: #168047; }

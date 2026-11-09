@@ -15,7 +15,6 @@ import {
     FiFileText,
     FiPercent,
     FiPlay,
-    FiRefreshCw,
     FiTrash2,
     FiUploadCloud,
     FiX,
@@ -611,11 +610,18 @@ const OngletMouvements = ({ banques, peut, importOuvert, onImportConsomme, refre
                     <option value="">Toutes les banques</option>
                     {banques.map((b) => <option key={b.code} value={b.code}>{b.code}</option>)}
                 </select>
-                <input className="tr-input" type="date" value={filtres.date_debut} onChange={(e) => majFiltre('date_debut', e.target.value)} title="Du" />
-                <input className="tr-input" type="date" value={filtres.date_fin} onChange={(e) => majFiltre('date_fin', e.target.value)} title="Au" />
-                <button type="button" className="btn btn-secondary btn-sm" onClick={charger} title="Rafraîchir">
-                    <FiRefreshCw /> {charge ? 'Chargement…' : 'Actualiser'}
-                </button>
+                <div className="tr-daterange" role="group" aria-label="Filtrer par période">
+                    <label htmlFor="tr-date-debut">Du</label>
+                    <input
+                        id="tr-date-debut" className="tr-input" type="date"
+                        value={filtres.date_debut} onChange={(e) => majFiltre('date_debut', e.target.value)}
+                    />
+                    <label htmlFor="tr-date-fin">Au</label>
+                    <input
+                        id="tr-date-fin" className="tr-input" type="date"
+                        value={filtres.date_fin} onChange={(e) => majFiltre('date_fin', e.target.value)}
+                    />
+                </div>
             </div>
 
             {peut.classer && selection.length > 0 && (
@@ -766,6 +772,14 @@ const OngletReporting = ({ banques, peut }) => {
     const totaux = rapport?.totaux;
     const controle = rapport?.controle || {};
 
+    // Solde actuel de l'ensemble des banques : repris du total du tableau
+    // « Ratios par banque », qui ne somme que les banques dont le solde est
+    // calculable. Les banques sans solde sont signalées pour ne pas laisser
+    // croire que le montant couvre tout le référentiel.
+    const soldeTotal = totaux?.solde ?? null;
+    const banquesAvecSolde = lignes.filter((b) => b.solde != null).length;
+    const banquesSansSolde = lignes.length - banquesAvecSolde;
+
     const exporter = () => {
         if (!rapport) return;
         const entetes = [
@@ -846,10 +860,13 @@ const OngletReporting = ({ banques, peut }) => {
                         <input id="tr-rep-fin" className="tr-input" type="date" value={plage.date_fin}
                             onChange={(e) => setPlage((p) => ({ ...p, date_fin: e.target.value }))} />
                     </div>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => setPlage({ date_debut: '', date_fin: '' })}>
+                    <button
+                        type="button"
+                        className="btn btn-secondary btn-sm tr-toolbar-btn"
+                        onClick={() => setPlage({ date_debut: '', date_fin: '' })}
+                    >
                         Réinitialiser
                     </button>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={charger}><FiRefreshCw /> Actualiser</button>
                     <div className="tr-spacer" />
                     {controle.statut === 'OK' && <span className="tr-chip ok"><FiCheckCircle /> Reporting complet</span>}
                     {controle.statut === 'INCOMPLET' && <span className="tr-chip warn"><FiAlertTriangle /> {controle.non_classes} mouvement(s) non classé(s)</span>}
@@ -904,6 +921,29 @@ const OngletReporting = ({ banques, peut }) => {
             ) : totaux && (
                 <>
                     <div className="tr-kpis">
+                        <div
+                            className="tr-kpi tr-kpi-solde"
+                            style={{ '--k': soldeTotal != null && soldeTotal < 0 ? 'var(--tr-non)' : 'var(--primary-500)' }}
+                            title={
+                                soldeTotal == null
+                                    ? 'Aucune banque n’a de solde calculable sur cette période'
+                                    : `Solde figé + mouvements jusqu’au ${rapport.date_fin ? jour(rapport.date_fin) : 'jour'} · ${banquesAvecSolde} banque(s)`
+                            }
+                        >
+                            <div className="tr-kpi-label">Solde des banques</div>
+                            {soldeTotal != null ? (
+                                <div className={`tr-kpi-value ${soldeTotal < 0 ? 'neg' : ''}`}>{fmt(soldeTotal)}</div>
+                            ) : (
+                                <div className="tr-kpi-value tr-nil">n.d.</div>
+                            )}
+                            <div className="tr-kpi-sub">
+                                {soldeTotal == null
+                                    ? 'Aucun solde de départ figé'
+                                    : banquesSansSolde > 0
+                                        ? `Toutes banques · ${banquesSansSolde} banque(s) sans solde`
+                                        : 'Toutes banques · au ' + jour(rapport.date_fin)}
+                            </div>
+                        </div>
                         <div className="tr-kpi" style={{ '--k': 'var(--tr-exp)' }}>
                             <div className="tr-kpi-label">Recette exploitation</div>
                             <div className="tr-kpi-value">{fmt(totaux.recette_exploitation)}</div>
@@ -971,7 +1011,8 @@ const OngletReporting = ({ banques, peut }) => {
                                         <th>Trésorerie nette</th>
                                         <th>Solde de départ</th>
                                         <th>Solde</th>
-                                    </tr>                                </thead>
+                                    </tr>
+                                </thead>
                                 <tbody>
                                     {lignes.map((b) => (
                                         <tr key={b.compte_banque}>

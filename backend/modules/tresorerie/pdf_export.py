@@ -117,16 +117,38 @@ def _page_callback(canvas, doc):
 
 # ── KPI summary table ─────────────────────────────────────────────────────────
 
-def _build_kpi_table(totaux: dict, styles: dict):
+def _build_kpi_table(totaux: dict, banques=None, styles: dict = None):
     """
-    Présentation en 6 cartes / cellules KPI en ligne (comme sur l'écran et la balance âgée),
+    Présentation en 7 cartes / cellules KPI en ligne (comme l'écran et la balance âgée),
     au lieu de tables imbriquées superposées.
-    Total utile en paysage A4 : ~268 mm (6 x 44.6 mm).
+    Total utile en paysage A4 : ~273 mm (7 x 39 mm).
     """
     exp_net = totaux.get("tresorerie_nette_exploitation") or 0
     hors_net = totaux.get("tresorerie_nette_hors_exploitation") or 0
+    solde_total = totaux.get("solde")
+
+    # Banques dont le solde n'a pas pu être calculé : le total ne les couvre pas,
+    # le sous-titre doit le dire plutôt que de laisser croire à un total complet.
+    banques_sans_solde = [
+        b for b in (banques or [])
+        if b.get("solde") is None and b.get("compte_banque") != "Autre"
+    ]
+
+    if solde_total is None:
+        solde_sub = "Aucun solde figé"
+    elif banques_sans_solde:
+        solde_sub = f"{len(banques_sans_solde)} banque(s) sans solde"
+    else:
+        solde_sub = "Toutes banques"
 
     kpis = [
+        {
+            "label": "Solde des banques",
+            "val": solde_total,
+            "sub": solde_sub,
+            "color": OLEA_TERRACOTTA_DARK,
+            "neg": solde_total is not None and solde_total < 0,
+        },
         {
             "label": "Recette exploitation",
             "val": totaux.get("recette_exploitation"),
@@ -198,8 +220,8 @@ def _build_kpi_table(totaux: dict, styles: dict):
         value_cells.append(Paragraph(escape(_money(item["val"])), val_style))
         sub_cells.append(Paragraph(escape(item["sub"]), sub_style))
 
-    # Largeur colonne : 268 mm / 6 = 44.66 mm
-    col_w = [44.66 * mm] * 6
+    # Largeur colonne : 273 mm / 7 = 39 mm
+    col_w = [39 * mm] * len(kpis)
     kpi_table = Table([header_cells, value_cells, sub_cells], colWidths=col_w, hAlign="LEFT")
 
     t_styles = [
@@ -506,7 +528,7 @@ def build_tresorerie_pdf(
 
     # ── KPIs ──
     story.append(Paragraph("Synthèse globale", styles["section"]))
-    story.append(_build_kpi_table(totaux, styles))
+    story.append(_build_kpi_table(totaux, banques, styles))
     story.append(Spacer(1, 4 * mm))
 
     # ── Tableau détaillé ──
