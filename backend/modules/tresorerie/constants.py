@@ -5,7 +5,7 @@
 # afin qu'un même relevé puisse être exploité dans les deux modules.
 BANQUES_TRESORERIE = {
     "BI1 TRAPSA": {"libelle": "BIAT – compte 1", "compte_comptable": "5320000T"},
-    "BI2 649 ": {"libelle": "BIAT – compte 2", "compte_comptable": "5320003T"},
+    "BI2 649": {"libelle": "BIAT – compte 2", "compte_comptable": "5320003T"},
     "BI3 643": {"libelle": "BIAT – compte 3", "compte_comptable": "5320002T"},
     "TN-ATB1": {"libelle": "ATB – compte 1", "compte_comptable": "5320001T"},
     "UB1": {"libelle": "UBCI – compte 1", "compte_comptable": "5320007T"},
