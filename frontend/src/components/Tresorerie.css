@@ -465,6 +465,25 @@
 .tr-pager button:disabled { opacity: .4; cursor: not-allowed; }
 
 /* ───────── Reporting ───────── */
+/* Bandeau « Situation arrêtée au » : rappelle la date à laquelle les soldes
+   affichés sont arrêtés (borne « Au », sinon dernier mouvement importé). */
+.tr-arret {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    text-align: center;
+    flex-wrap: wrap;
+    gap: .5rem;
+    padding: .55rem .9rem;
+    margin-bottom: .9rem;
+    background: var(--bg-muted);
+    border: 1px solid var(--border-light);
+    border-left: 3px solid var(--primary-500);
+    border-radius: var(--radius-sm);
+}
+.tr-arret-label { font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--text-secondary); }
+.tr-arret-date { font-size: 1rem; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.tr-arret-note { font-size: .74rem; color: var(--text-muted); }
 /* Les KPI restent sur une seule ligne : ils se partagent la largeur disponible
    (flex 1 1 0) et se compriment au lieu de passer à la ligne. */
 .tr-kpis {

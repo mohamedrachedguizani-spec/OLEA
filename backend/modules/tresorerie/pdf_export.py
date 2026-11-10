@@ -376,6 +376,7 @@ def build_tresorerie_pdf(
     controle: dict,
     date_debut: Optional[date] = None,
     date_fin: Optional[date] = None,
+    date_arret: Optional[date] = None,
 ) -> BytesIO:
     """
     Génère le PDF du reporting trésorerie et renvoie un BytesIO prêt à streamer.
@@ -484,7 +485,12 @@ def build_tresorerie_pdf(
     elif date_fin:
         periode_txt = f"Jusqu'au {_date(date_fin)}"
     else:
-        periode_txt = "Toutes périodes"
+        # Aucun filtre de période : le rapport couvre tout l'historique, mais les
+        # soldes restent arrêtés à une date précise — c'est elle qui fait foi.
+        periode_txt = (
+            f"Toutes périodes arrêtée au {_date(date_arret)}"
+            if date_arret else "Toutes périodes"
+        )
 
     # ── Bloc contexte (entête informatif) ──
     context_data = [

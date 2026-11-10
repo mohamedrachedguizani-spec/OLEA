@@ -771,6 +771,9 @@ const OngletReporting = ({ banques, peut }) => {
     );
     const totaux = rapport?.totaux;
     const controle = rapport?.controle || {};
+    // Situation arrêtée : date à laquelle les soldes sont arrêtés, calculée par
+    // le backend (borne « Au » si saisie, sinon dernière date de mouvement).
+    const dateArret = rapport?.date_arret ?? null;
 
     // Solde actuel de l'ensemble des banques : repris du total du tableau
     // « Ratios par banque », qui ne somme que les banques dont le solde est
@@ -920,6 +923,18 @@ const OngletReporting = ({ banques, peut }) => {
                 <div className="tr-card"><p className="tr-empty"><span className="tr-loading"><span className="tr-spinner" /> Calcul des ratios…</span></p></div>
             ) : totaux && (
                 <>
+                    <div className="tr-arret" role="status">
+                        <span className="tr-arret-label">Situation arrêtée au</span>
+                        <span className="tr-arret-date">{dateArret ? jour(dateArret) : '—'}</span>
+                        <span className="tr-arret-note">
+                            {dateArret
+                                ? (rapport.date_fin
+                                    ? 'Borne « Au » du filtre de période'
+                                    : 'Dernier mouvement importé')
+                                : 'Aucun mouvement sur la période'}
+                        </span>
+                    </div>
+
                     <div className="tr-kpis">
                         <div
                             className="tr-kpi tr-kpi-solde"

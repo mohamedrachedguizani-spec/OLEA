@@ -931,7 +931,8 @@ def _calculer_reporting(
             f"""
             SELECT COUNT(*) AS nb,
                    COALESCE(SUM(m.debit), 0) AS debit,
-                   COALESCE(SUM(m.credit), 0) AS credit
+                   COALESCE(SUM(m.credit), 0) AS credit,
+                   MAX(m.date_operation) AS derniere_date
             FROM tresorerie_movements m
             JOIN tresorerie_imports i ON i.id = m.import_id
             WHERE {where}
@@ -1023,9 +1024,17 @@ def _calculer_reporting(
     elif totaux["non_classe_count"] > 0:
         statut = "INCOMPLET"
 
+    # ─── Situation arrêtée au ───
+    # Date à laquelle les soldes du rapport sont arrêtés. C'est la borne « Au »
+    # lorsqu'elle est saisie ; sinon le rapport porte sur tout l'historique et
+    # s'arrête donc à la dernière date de mouvement effectivement importée.
+    # Sans mouvement du tout, aucune situation ne peut être arrêtée.
+    date_arret = date_fin or controle_sql.get("derniere_date")
+
     return {
         "date_debut": date_debut,
         "date_fin": date_fin,
+        "date_arret": date_arret,
         "banques": banques,
         "totaux": totaux,
         "commissions": commissions,
@@ -1084,6 +1093,7 @@ def export_reporting_pdf(
             controle=rapport["controle"],
             date_debut=date_debut,
             date_fin=date_fin,
+            date_arret=rapport.get("date_arret"),
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Erreur lors de la génération du PDF : {exc}") from exc

@@ -174,6 +174,9 @@ class TresorerieCommissions(BaseModel):
 class TresorerieReportingResponse(BaseModel):
     date_debut: Optional[date] = None
     date_fin: Optional[date] = None
+    # Date à laquelle les soldes sont arrêtés : borne « Au » si saisie, sinon
+    # dernière date de mouvement importée. None si le rapport est vide.
+    date_arret: Optional[date] = None
     banques: List[TresorerieBanqueReporting] = Field(default_factory=list)
     totaux: TresorerieBanqueReporting
     commissions: TresorerieCommissions = Field(default_factory=TresorerieCommissions)
