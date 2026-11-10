@@ -22,6 +22,11 @@ import {
 import ApiService from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import ExtractionControlModal from './ExtractionControlModal';
+import {
+    ChoixGranularite,
+    GraphiqueFlux,
+    GraphiqueSoldes,
+} from './TresorerieGraphiques';
 import './Tresorerie.css';
 
 const MAX_SIZE = 25 * 1024 * 1024;
@@ -742,6 +747,13 @@ const OngletReporting = ({ banques, peut }) => {
     const [exportingPdf, setExportingPdf] = useState(false);
     const [pdfPreview, setPdfPreview] = useState({ open: false, url: '', blob: null, filename: '' });
 
+    // Analyse graphique (écran uniquement) : granularité, banque filtrée, séries.
+    const [granularite, setGranularite] = useState('jour');
+    const [banqueGraphique, setBanqueGraphique] = useState('');
+    const [analytics, setAnalytics] = useState(null);
+    const [chargeAnalytics, setChargeAnalytics] = useState(false);
+    const [erreurAnalytics, setErreurAnalytics] = useState('');
+
     // Libérer l'URL objet quand la modale se ferme
     useEffect(() => {
         if (!pdfPreview.url) return undefined;
@@ -764,6 +776,25 @@ const OngletReporting = ({ banques, peut }) => {
     }, [plage]);
 
     useEffect(() => { charger(); }, [charger]);
+
+    const chargerAnalytics = useCallback(async () => {
+        setChargeAnalytics(true);
+        setErreurAnalytics('');
+        try {
+            // Le détail par banque est renvoyé pour toutes les banques : les
+            // sélecteurs des deux graphiques filtrent à l'écran, sans recharger.
+            const params = { granularite };
+            if (plage.date_debut) params.date_debut = plage.date_debut;
+            if (plage.date_fin) params.date_fin = plage.date_fin;
+            setAnalytics(await ApiService.getTresorerieAnalytics(params));
+        } catch (err) {
+            setErreurAnalytics(err.message || 'Erreur lors du chargement des graphiques.');
+        } finally {
+            setChargeAnalytics(false);
+        }
+    }, [plage, granularite]);
+
+    useEffect(() => { chargerAnalytics(); }, [chargerAnalytics]);
 
     const lignes = useMemo(
         () => (rapport?.banques || []).filter((b) => b.nb_mouvements > 0 || b.compte_banque !== 'Autre'),
@@ -1102,6 +1133,57 @@ const OngletReporting = ({ banques, peut }) => {
                             Solde de départ = solde figé projeté à la veille du {rapport.date_debut ? jour(rapport.date_debut) : 'début de période'} ·
                             Solde = solde figé + mouvements jusqu’au {rapport.date_fin ? jour(rapport.date_fin) : 'jour'}
                         </p>
+                    </div>
+
+                    {/* ── Analyse graphique (écran uniquement, absente du PDF) ── */}
+                    <div className="tr-card tr-charts-card">
+                        <div className="tr-charts-head">
+                            <h3 className="tr-card-title">
+                                Analyse graphique
+                                <small>
+                                    {rapport.date_debut || rapport.date_fin
+                                        ? `Du ${jour(rapport.date_debut)} au ${jour(rapport.date_fin)}`
+                                        : 'Toutes périodes'}
+                                </small>
+                            </h3>
+                            {/* Filtres communs aux deux graphiques : la banque et la
+                                granularité s'appliquent simultanément aux barres et
+                                à la courbe de solde. */}
+                            <div className="tr-charts-filtres">
+                                <select
+                                    className="tr-input tr-chart-select"
+                                    value={banqueGraphique}
+                                    onChange={(e) => setBanqueGraphique(e.target.value)}
+                                    aria-label="Banque analysée"
+                                >
+                                    <option value="">Toutes banques</option>
+                                    {banques.map((b) => <option key={b.code} value={b.code}>{b.code}</option>)}
+                                </select>
+                                <ChoixGranularite valeur={granularite} onChange={setGranularite} />
+                            </div>
+                        </div>
+
+                        {erreurAnalytics && <div className="tr-alert"><FiAlertTriangle /><span>{erreurAnalytics}</span></div>}
+
+                        {chargeAnalytics && !analytics ? (
+                            <p className="tr-empty"><span className="tr-loading"><span className="tr-spinner" /> Chargement des graphiques…</span></p>
+                        ) : (
+                            <>
+                                <GraphiqueFlux
+                                    flux={analytics?.flux}
+                                    granularite={granularite}
+                                    banque={banqueGraphique}
+                                    nomBanque={nomBanque}
+                                />
+                                <GraphiqueSoldes
+                                    soldes={analytics?.soldes}
+                                    soldeTotal={analytics?.solde_total}
+                                    banquesSansSolde={analytics?.banques_sans_solde}
+                                    nomBanque={nomBanque}
+                                    banque={banqueGraphique}
+                                />
+                            </>
+                        )}
                     </div>
 
                 </>

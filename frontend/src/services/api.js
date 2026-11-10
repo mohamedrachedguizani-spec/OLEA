@@ -577,6 +577,16 @@ class ApiService {
         return response.json();
     }
 
+    static async getTresorerieAnalytics(params = {}) {
+        const query = new URLSearchParams(params).toString();
+        const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/analytics/daily?${query}`);
+        if (!response.ok) {
+            const err = await response.json().catch(() => ({ detail: 'Erreur lors du chargement des graphiques' }));
+            throw new Error(err.detail || 'Erreur lors du chargement des graphiques');
+        }
+        return response.json();
+    }
+
     static async exportTresorerieReportingPdf(params = {}) {
         const query = new URLSearchParams(params).toString();
         const response = await ApiService._fetch(`${API_BASE_URL}/tresorerie/reporting/export-pdf?${query}`);

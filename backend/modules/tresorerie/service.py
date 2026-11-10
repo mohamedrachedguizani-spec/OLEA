@@ -1,6 +1,7 @@
 # modules/tresorerie/service.py
 """Calculs du module Trésorerie, sans accès base de données (testables)."""
 
+from datetime import timedelta
 from typing import Dict, List, Optional
 
 from .constants import (
@@ -325,3 +326,261 @@ def totaliser_commissions(banques: List[dict]) -> dict:
         "total_nettes": round(total_encaissees - total_payees, 3),
     }
 
+
+
+# ─── Analyse graphique (recette/dépense par période, solde par jour) ───
+
+GRANULARITES_ANALYSE = ("jour", "semaine", "mois")
+
+
+def normaliser_granularite(valeur) -> str:
+    """Retourne « jour », « semaine » ou « mois ». Lève ValueError sinon."""
+    granularite = (valeur or "jour").strip().lower()
+    if granularite not in GRANULARITES_ANALYSE:
+        raise ValueError(
+            "Granularité invalide : valeurs attendues " + ", ".join(GRANULARITES_ANALYSE)
+        )
+    return granularite
+
+
+def cle_periode(date_valeur, granularite: str):
+    """Clé de regroupement d'une date selon la granularité demandée.
+
+    Le jour est rendu tel quel ; la semaine est ramenée à son lundi (ISO) ; le
+    mois à son premier jour. Ramener chaque clé sur une date réelle permet de
+    trier et d'espacer l'axe des temps sans conversion supplémentaire.
+    """
+    if date_valeur is None:
+        return None
+    if granularite == "jour":
+        return date_valeur
+    if granularite == "semaine":
+        return date_valeur - timedelta(days=date_valeur.weekday())
+    if granularite == "mois":
+        return date_valeur.replace(day=1)
+    raise ValueError("Granularité invalide : " + str(granularite))
+
+
+def agreger_flux_par_periode(mouvements: List[dict], granularite: str = "jour",
+                             compte_banque: Optional[str] = None) -> List[dict]:
+    """Recette / dépense par période et par banque.
+
+    Un mouvement est une recette s'il porte un crédit, une dépense s'il porte un
+    débit. Les mouvements de commissions et hors exploitation comptent comme les
+    autres : les graphiques décrivent la trésorerie réelle, pas les seuls ratios
+    d'exploitation.
+    """
+    granularite = normaliser_granularite(granularite)
+    code_filtre = (compte_banque or "").strip().upper() or None
+
+    periodes: Dict[object, dict] = {}
+    for mouvement in mouvements:
+        code = (mouvement.get("compte_banque") or "").strip() or "Autre"
+        if code_filtre and code != code_filtre:
+            continue
+        cle = cle_periode(mouvement.get("date_operation"), granularite)
+        if cle is None:
+            continue
+        debit = _montant(mouvement.get("debit"))
+        credit = _montant(mouvement.get("credit"))
+
+        entree = periodes.setdefault(cle, {"periode": cle, "par_banque": {}, "total": {
+            "recette": 0.0, "depense": 0.0, "nb_mouvements": 0,
+        }})
+        banque = entree["par_banque"].setdefault(code, {
+            "recette": 0.0, "depense": 0.0, "nb_mouvements": 0,
+        })
+        banque["recette"] += credit
+        banque["depense"] += debit
+        banque["nb_mouvements"] += 1
+        entree["total"]["recette"] += credit
+        entree["total"]["depense"] += debit
+        entree["total"]["nb_mouvements"] += 1
+
+    resultat = []
+    for cle in sorted(periodes):
+        entree = periodes[cle]
+        par_banque = {
+            code: {
+                "recette": round(valeurs["recette"], 3),
+                "depense": round(valeurs["depense"], 3),
+                "net": round(valeurs["recette"] - valeurs["depense"], 3),
+                "nb_mouvements": valeurs["nb_mouvements"],
+            }
+            for code, valeurs in entree["par_banque"].items()
+        }
+        resultat.append({
+            "periode": cle,
+            "par_banque": par_banque,
+            "recette": round(entree["total"]["recette"], 3),
+            "depense": round(entree["total"]["depense"], 3),
+            "net": round(entree["total"]["recette"] - entree["total"]["depense"], 3),
+            "nb_mouvements": entree["total"]["nb_mouvements"],
+        })
+    return resultat
+
+
+def construire_serie_soldes(mouvements: List[dict], ancres: dict,
+                            date_debut=None, date_fin=None) -> dict:
+    """Solde de chaque banque, jour par jour, depuis son ancre.
+
+    Le solde suit la règle du reporting : solde figé de l'ancre + mouvements
+    cumulés depuis la date de l'ancre. Une banque sans ancre n'a pas de courbe
+    (jamais une courbe à zéro, qui laisserait croire à un compte vide).
+
+    Les jours sans mouvement reprennent la dernière valeur connue : la courbe
+    reste continue au lieu de redescendre à zéro entre deux opérations.
+
+    `ancres` est un dict {compte_banque: {"solde": float, "date_solde": date}}.
+    Retourne {"series": {banque: [{date, solde}]}, "sans_solde": [codes]}.
+    """
+    codes = sorted({
+        (m.get("compte_banque") or "").strip()
+        for m in mouvements
+        if (m.get("compte_banque") or "").strip()
+    })
+    for code in ancres:
+        code_propre = (code or "").strip()
+        if code_propre and code_propre not in codes:
+            codes.append(code_propre)
+
+    series: Dict[str, List[dict]] = {}
+    sans_solde: List[str] = []
+
+    for code in codes:
+        ancre = ancres.get(code)
+        solde_initial = ancre.get("solde") if ancre else None
+        date_ancre = ancre.get("date_solde") if ancre else None
+        if solde_initial is None or date_ancre is None:
+            sans_solde.append(code)
+            continue
+        # Ancre postérieure à la date d'arrêtée : le solde de la banque n'est pas
+        # encore connu à cette date. Mieux vaut ne pas tracer plutôt qu'afficher
+        # une courbe qui ne rejoint pas le solde du reporting.
+        if date_fin is not None and date_ancre > date_fin:
+            sans_solde.append(code)
+            continue
+
+        # Mouvements de la banque depuis l'ancre, agrégés par jour.
+        nets_par_jour: Dict[object, float] = {}
+        for mouvement in mouvements:
+            if (mouvement.get("compte_banque") or "").strip() != code:
+                continue
+            date_mouvement = mouvement.get("date_operation")
+            if date_mouvement is None or date_mouvement < date_ancre:
+                continue
+            if date_fin is not None and date_mouvement > date_fin:
+                continue
+            nets_par_jour[date_mouvement] = (
+                nets_par_jour.get(date_mouvement, 0.0)
+                + _montant(mouvement.get("credit"))
+                - _montant(mouvement.get("debit"))
+            )
+
+        if not nets_par_jour:
+            series[code] = [{"date": date_ancre, "solde": round(float(solde_initial), 3)}]
+            continue
+
+        # La courbe démarre à la date de l'ancre (point de départ), ou plus tard
+        # si le filtre « Du » commence après elle. Les mouvements antérieurs à ce
+        # point sont déjà intégrés dans le solde de départ calculé ci-dessous.
+        debut = date_ancre
+        if date_debut is not None and date_debut > debut:
+            debut = date_debut
+        # Le solde est arrêté à la borne « Au » : la courbe s'y arrête même si le
+        # dernier mouvement est antérieur, la dernière valeur y est reportée.
+        if date_fin is not None:
+            fin = max(date_fin, debut)
+        else:
+            fin = max(max(nets_par_jour), debut)
+
+        points = []
+        # Solde de fin de journée : on part de l'ancre et on applique le net du
+        # jour avant d'émettre le point, pour que le dernier jour de la courbe
+        # tombe exactement sur le solde affiché par le reporting (KPI).
+        # La boucle part de l'ancre et traverse tous les jours jusqu'à `debut` :
+        # les mouvements antérieurs au filtre « Du » sont ainsi intégrés une
+        # seule fois, en avançant jour après jour.
+        solde_courant = float(solde_initial)
+        jour_courant = date_ancre
+        while jour_courant <= fin:
+            solde_courant += nets_par_jour.get(jour_courant, 0.0)
+            if jour_courant >= debut:
+                points.append({"date": jour_courant, "solde": round(solde_courant, 3)})
+            jour_courant += timedelta(days=1)
+        series[code] = points
+
+    return {"series": series, "sans_solde": sans_solde}
+
+
+def echantillonner_serie(points: List[dict], granularite: str = "jour") -> List[dict]:
+    """Ramène une série journalière à la granularité demandée.
+
+    On conserve le **dernier** solde de chaque période : le solde d'une semaine
+    ou d'un mois est celui de sa clôture, pas celui de son premier jour. La date
+    renvoyée est la clé de période (lundi pour une semaine, 1er pour un mois),
+    exactement celle utilisée par les barres recette/dépense : les deux
+    graphiques partagent donc la même échelle de dates.
+    """
+    granularite = normaliser_granularite(granularite)
+    if granularite == "jour" or not points:
+        return list(points)
+
+    derniers = {}
+    for point in points:
+        cle = cle_periode(point.get("date"), granularite)
+        if cle is None:
+            continue
+        # Les points arrivent triés : le dernier vu pour une clé porte le solde
+        # de clôture de la période.
+        derniers[cle] = point
+    return [
+        {"date": cle, "solde": derniers[cle]["solde"]}
+        for cle in sorted(derniers)
+    ]
+
+
+def construire_serie_totale(series: Dict[str, List[dict]]) -> List[dict]:
+    """Solde cumulé de toutes les banques, jour par jour.
+
+    Chaque banque n'entre dans le total qu'à partir de sa propre date d'ancre :
+    avant cette date son solde n'est pas connu, l'additionner reviendrait à
+    inventer une valeur. Le total peut donc progresser d'un cran le jour où une
+    banque devient connue — c'est la réalité, pas un artefact.
+
+    Le dernier point égale la somme des soldes du reporting : il suffit que les
+    séries d'entrée proviennent de `construire_serie_soldes`.
+    """
+    if not series:
+        return []
+
+    # Valeur de chaque banque indexée par date + sa première date connue.
+    par_banque = {}
+    for code, points in series.items():
+        valeurs = {p["date"]: p["solde"] for p in points}
+        if not valeurs:
+            continue
+        par_banque[code] = (valeurs, min(valeurs))
+
+    toutes_les_dates = sorted({
+        date_point
+        for valeurs, _debut in par_banque.values()
+        for date_point in valeurs
+    })
+
+    # Report de la dernière valeur connue : une banque dont la série s'arrête
+    # avant une date (borne « Au » propre à son relevé) garde son dernier solde
+    # dans le total, au lieu de disparaître et de faire chuter la courbe. Une
+    # banque n'entre dans le total qu'à partir de sa première date connue.
+    total = []
+    derniere_valeur = {}
+    for date_point in toutes_les_dates:
+        for code, (valeurs, debut) in par_banque.items():
+            if date_point in valeurs:
+                derniere_valeur[code] = valeurs[date_point]
+        if derniere_valeur:
+            total.append({
+                "date": date_point,
+                "solde": round(sum(derniere_valeur.values()), 3),
+            })
+    return total

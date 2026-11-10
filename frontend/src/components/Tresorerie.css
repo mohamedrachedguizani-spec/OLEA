@@ -584,6 +584,63 @@
 .tr-modal-body { margin: 0; padding: 1.1rem 1.4rem; font-size: .86rem; color: var(--text-secondary); }
 .tr-modal-foot { display: flex; justify-content: flex-end; gap: .6rem; padding: .9rem 1.4rem; border-top: 1px solid var(--border-light); background: var(--bg-muted); }
 
+/* ───────── Analyse graphique (onglet Reporting) ───────── */
+.tr-charts-card { margin-top: 1.25rem; }
+.tr-charts-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    margin-bottom: .9rem;
+}
+/* Filtres communs aux deux graphiques : sélecteur de banque + granularité
+   restent groupés sur une seule ligne. */
+.tr-charts-filtres {
+    display: inline-flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+.tr-chart-card {
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-sm);
+    padding: .9rem 1rem 1rem;
+    margin-top: .9rem;
+    background: var(--bg-card);
+}
+.tr-chart-card:first-of-type { margin-top: 0; }
+.tr-chart-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: .8rem;
+    flex-wrap: wrap;
+    margin-bottom: .6rem;
+}
+.tr-chart-title { margin: 0; font-size: .95rem; font-weight: 700; color: var(--text-primary); }
+.tr-chart-sub { margin: .15rem 0 0; font-size: .76rem; color: var(--text-muted); }
+.tr-chart-select { min-width: 170px; padding: .35rem .55rem; font-size: .82rem; }
+.tr-chart-empty { padding: 1.2rem 0; }
+.tr-seg-sm button { padding: .3rem .6rem; font-size: .76rem; }
+/* Infobulles des graphiques */
+.tr-chart-tip {
+    background: var(--bg-card);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
+    padding: .5rem .65rem;
+    font-size: .78rem;
+    color: var(--text-secondary);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, .12);
+    min-width: 170px;
+}
+.tr-chart-tip div { display: flex; align-items: center; gap: .35rem; margin-top: .15rem; }
+.tr-chart-tip div strong { margin-left: auto; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.tr-chart-tip-title { font-weight: 700; color: var(--text-primary); margin-bottom: .2rem; }
+.tr-chart-tip-net { border-top: 1px solid var(--border-light); margin-top: .35rem; padding-top: .3rem; font-weight: 600; }
+.tr-chart-tip strong.neg { color: var(--tr-non); }
+.tr-chart-swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+
 /* ───────── Responsive ───────── */
 @media (max-width: 1100px) {
     .tr-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }

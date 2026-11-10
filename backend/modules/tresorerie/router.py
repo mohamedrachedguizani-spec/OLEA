@@ -38,12 +38,17 @@ from .models import (
     TresorerieReportingResponse,
 )
 from .service import (
+    agreger_flux_par_periode,
     ancre_de_banque,
     calculer_solde,
     construire_controle_extraction,
     construire_reporting,
+    construire_serie_soldes,
+    construire_serie_totale,
     demarrer_couverture,
+    echantillonner_serie,
     filtrer_mouvements_par_periode,
+    normaliser_granularite,
     periodes_chevauchent,
     preparer_mouvements_extraits,
     totaliser,
@@ -1060,6 +1065,144 @@ def get_reporting(
     compte_banque: Optional[str] = None,
 ):
     return _calculer_reporting(date_debut, date_fin, compte_banque)
+
+
+# ═══════════════════════════════════════════════════════════
+# Analyse graphique du module Trésorerie
+# ═══════════════════════════════════════════════════════════
+
+@router.get(
+    "/analytics/daily",
+    summary="Séries journalières (recette/dépense et soldes) pour les graphiques du reporting",
+    dependencies=[Depends(require_permission_code("tresorerie.report"))],
+)
+def get_analytics_daily(
+    date_debut: Optional[date] = None,
+    date_fin: Optional[date] = None,
+    compte_banque: Optional[str] = None,
+    granularite: str = "jour",
+):
+    """
+    Deux séries pour l'onglet Reporting :
+
+    - `flux`    : recette (crédits) et dépense (débits) par période, avec le
+                  détail par banque pour permettre le filtrage à l'écran ;
+    - `soldes`  : solde de chaque banque, jour par jour, depuis son ancre figée.
+
+    Les soldes suivent exactement la règle du reporting (`calculer_solde`) : le
+    dernier point d'une courbe égale le solde affiché dans les KPI.
+    """
+    _verifier_periode(date_debut, date_fin)
+    try:
+        granularite = normaliser_granularite(granularite)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    code_filtre = (compte_banque or "").strip().upper() or None
+
+    conditions = ["1=1"]
+    params = []
+    if code_filtre:
+        conditions.append("i.compte_banque = %s")
+        params.append(code_filtre)
+    if date_debut:
+        conditions.append("m.date_operation >= %s")
+        params.append(date_debut)
+    if date_fin:
+        conditions.append("m.date_operation <= %s")
+        params.append(date_fin)
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            f"""
+            SELECT i.compte_banque, m.date_operation, m.debit, m.credit
+            FROM tresorerie_movements m
+            JOIN tresorerie_imports i ON i.id = m.import_id
+            WHERE {" AND ".join(conditions)}
+            ORDER BY m.date_operation ASC
+            """,
+            params,
+        )
+        mouvements = cursor.fetchall() or []
+
+        # Ancres de solde : lues une fois par banque, elles seules permettent de
+        # calculer un solde (une banque sans ancre n'a pas de courbe).
+        cursor.execute(
+            "SELECT compte_banque, solde, date_solde FROM tresorerie_soldes_ouverture"
+        )
+        ancres = {
+            (ligne.get("compte_banque") or "").strip(): {
+                "solde": ligne.get("solde"),
+                "date_solde": ligne.get("date_solde"),
+            }
+            for ligne in (cursor.fetchall() or [])
+        }
+
+    flux = agreger_flux_par_periode(mouvements, granularite, code_filtre)
+
+    # Les soldes se calculent sur tout l'historique : les mouvements d'avant la
+    # période demandée sont nécessaires pour amener le solde à la bonne valeur.
+    # On relit donc les mouvements sans borne « Du ».
+    if date_debut:
+        conditions_solde = ["1=1"]
+        params_solde = []
+        if code_filtre:
+            conditions_solde.append("i.compte_banque = %s")
+            params_solde.append(code_filtre)
+        if date_fin:
+            conditions_solde.append("m.date_operation <= %s")
+            params_solde.append(date_fin)
+        with db.get_cursor() as cursor:
+            cursor.execute(
+                f"""
+                SELECT i.compte_banque, m.date_operation, m.debit, m.credit
+                FROM tresorerie_movements m
+                JOIN tresorerie_imports i ON i.id = m.import_id
+                WHERE {" AND ".join(conditions_solde)}
+                ORDER BY m.date_operation ASC
+                """,
+                params_solde,
+            )
+            mouvements_solde = cursor.fetchall() or []
+    else:
+        mouvements_solde = mouvements
+
+    soldes = construire_serie_soldes(mouvements_solde, ancres, date_debut, date_fin)
+    if code_filtre:
+        # Une requête filtrée sur une banque ne doit pas ramener les ancres des
+        # autres : on restreint les séries à la banque demandée.
+        soldes = {
+            "series": {c: v for c, v in soldes["series"].items() if c == code_filtre},
+            "sans_solde": [c for c in soldes["sans_solde"] if c == code_filtre],
+        }
+
+    # Courbe « Toutes banques » : un seul solde cumulé, affiché par défaut à la
+    # place des courbes individuelles (le détail par banque reste renvoyé).
+    # Les séries suivent la granularité, comme les barres recette/dépense.
+    series_echantillonnees = {
+        code: echantillonner_serie(points, granularite)
+        for code, points in soldes["series"].items()
+    }
+    solde_total_serie = construire_serie_totale(series_echantillonnees)
+
+    # Banques du référentiel sans aucun mouvement : elles apparaissent en légende
+    # pour que l'absence de courbe soit comprise, pas prise pour un bug.
+    banques_reference = [
+        code for code in BANQUES_TRESORERIE
+        if not code_filtre or code == code_filtre
+    ]
+
+    return {
+        "granularite": granularite,
+        "date_debut": date_debut,
+        "date_fin": date_fin,
+        "compte_banque": code_filtre,
+        "flux": flux,
+        "soldes": series_echantillonnees,
+        "solde_total": solde_total_serie,
+        "banques_sans_solde": soldes["sans_solde"],
+        "banques_reference": banques_reference,
+    }
 
 
 # ═══════════════════════════════════════════════════════════
