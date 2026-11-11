@@ -140,6 +140,9 @@ class TresorerieBanqueReporting(BaseModel):
     depense_hors_exploitation: float = 0
     tresorerie_nette_hors_exploitation: float = 0
 
+    # Net des deux blocs additionnés : recettes totales moins dépenses totales.
+    tresorerie_nette_globale: float = 0
+
     non_classe_count: int = 0
     non_classe_debit: float = 0
     non_classe_credit: float = 0

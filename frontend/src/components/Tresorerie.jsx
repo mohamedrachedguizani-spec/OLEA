@@ -1024,6 +1024,17 @@ const OngletReporting = ({ banques, peut }) => {
                             </div>
                             <div className="tr-kpi-sub">Recette − dépense hors exploitation</div>
                         </div>
+                        <div
+                            className="tr-kpi tr-kpi-globale"
+                            style={{ '--k': (totaux.tresorerie_nette_globale ?? 0) < 0 ? 'var(--tr-non)' : 'var(--primary-500)' }}
+                            title="Trésorerie nette exploitation + trésorerie nette hors exploitation"
+                        >
+                            <div className="tr-kpi-label">Trésorerie nette globale</div>
+                            <div className={`tr-kpi-value ${(totaux.tresorerie_nette_globale ?? 0) < 0 ? 'neg' : ''}`}>
+                                {fmt(totaux.tresorerie_nette_globale)}
+                            </div>
+                            <div className="tr-kpi-sub">Net exploitation + net hors exploitation</div>
+                        </div>
                     </div>
 
                     <div className="tr-card">

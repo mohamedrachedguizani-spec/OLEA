@@ -38,6 +38,8 @@ def nouveau_agregat(compte_banque: str) -> dict:
         "recette_hors_exploitation": 0.0,
         "depense_hors_exploitation": 0.0,
         "tresorerie_nette_hors_exploitation": 0.0,
+        # Cumul des deux nets : la trésorerie réellement dégagée sur la période.
+        "tresorerie_nette_globale": 0.0,
         "non_classe_count": 0,
         "non_classe_debit": 0.0,
         "non_classe_credit": 0.0,
@@ -80,6 +82,11 @@ def _finaliser_agregat(agregat: dict) -> dict:
     )
     agregat["tresorerie_nette_hors_exploitation"] = _arrondir(
         agregat["recette_hors_exploitation"] - agregat["depense_hors_exploitation"]
+    )
+    # Net global = les deux nets additionnés. C'est le total des recettes moins
+    # le total des dépenses de la période, tous types confondus.
+    agregat["tresorerie_nette_globale"] = _arrondir(
+        agregat["tresorerie_nette_exploitation"] + agregat["tresorerie_nette_hors_exploitation"]
     )
     if agregat.get("solde") is not None:
         agregat["solde"] = _arrondir(agregat["solde"])
