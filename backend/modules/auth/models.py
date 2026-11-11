@@ -8,6 +8,14 @@ import re
 
 _PASSWORD_POLICY_REGEX = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}$")
 
+# Alignées sur les colonnes de la table `users` (évite un 500 « Data too long »)
+USERNAME_MIN_LENGTH, USERNAME_MAX_LENGTH = 3, 50
+EMAIL_MAX_LENGTH = 100
+FULL_NAME_MIN_LENGTH, FULL_NAME_MAX_LENGTH = 2, 100
+
+_USERNAME_REGEX = re.compile(r"^[a-z0-9_.-]+$")
+_EMAIL_REGEX = re.compile(r"^[a-z0-9_.+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$")
+
 
 def _validate_password_policy(value: str, label: str = "Le mot de passe") -> str:
     if not _PASSWORD_POLICY_REGEX.match(value):
@@ -15,6 +23,54 @@ def _validate_password_policy(value: str, label: str = "Le mot de passe") -> str
             f"{label} doit contenir 8 caractères minimum, avec au moins 1 majuscule, 1 minuscule, 1 chiffre et 1 caractère spécial (sans espaces)"
         )
     return value
+
+
+def _normalize_username(value: str) -> str:
+    """Normalise un nom d'utilisateur : retire les espaces parasites puis valide."""
+    username = (value or "").strip().lower()
+    if len(username) < USERNAME_MIN_LENGTH:
+        raise ValueError(
+            f"Le nom d'utilisateur doit contenir au moins {USERNAME_MIN_LENGTH} caractères"
+        )
+    if len(username) > USERNAME_MAX_LENGTH:
+        raise ValueError(
+            f"Le nom d'utilisateur ne peut pas dépasser {USERNAME_MAX_LENGTH} caractères"
+        )
+    if not _USERNAME_REGEX.match(username):
+        if any(char.isspace() for char in username):
+            raise ValueError(
+                "Le nom d'utilisateur ne doit pas contenir d'espace — utilisez par exemple 'm.diallo'"
+            )
+        raise ValueError(
+            "Le nom d'utilisateur ne peut contenir que des lettres (sans accent), chiffres, '.', '-' et '_'"
+        )
+    return username
+
+
+def _normalize_email(value: str) -> str:
+    """Normalise une adresse email : retire les espaces parasites puis valide."""
+    email = (value or "").strip().lower()
+    if not email:
+        raise ValueError("L'adresse email est obligatoire")
+    if len(email) > EMAIL_MAX_LENGTH:
+        raise ValueError(f"L'adresse email ne peut pas dépasser {EMAIL_MAX_LENGTH} caractères")
+    if not _EMAIL_REGEX.match(email):
+        raise ValueError(
+            "Adresse email invalide — attendu par exemple 'prenom.nom@olea.com' (sans espace ni accent)"
+        )
+    return email
+
+
+def _normalize_full_name(value: str) -> str:
+    """Nettoie le nom complet et refuse une valeur vide."""
+    full_name = " ".join((value or "").split())
+    if len(full_name) < FULL_NAME_MIN_LENGTH:
+        raise ValueError("Le nom complet est obligatoire")
+    if len(full_name) > FULL_NAME_MAX_LENGTH:
+        raise ValueError(
+            f"Le nom complet ne peut pas dépasser {FULL_NAME_MAX_LENGTH} caractères"
+        )
+    return full_name
 
 
 # ─── Enums ───
@@ -25,6 +81,7 @@ class RoleEnum(str, Enum):
     financier = "financier"
     dirigeant = "dirigeant"
     consultant = "consultant"
+    ressources_humaines = "ressources_humaines"
 
 
 class ModuleEnum(str, Enum):
@@ -61,11 +118,7 @@ class UserCreate(BaseModel):
     @field_validator("username")
     @classmethod
     def validate_username(cls, v: str) -> str:
-        if len(v) < 3:
-            raise ValueError("Le nom d'utilisateur doit contenir au moins 3 caractères")
-        if not re.match(r"^[a-zA-Z0-9_.-]+$", v):
-            raise ValueError("Le nom d'utilisateur ne peut contenir que des lettres, chiffres, '.', '-' et '_'")
-        return v.lower()
+        return _normalize_username(v)
 
     @field_validator("password")
     @classmethod
@@ -75,9 +128,12 @@ class UserCreate(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: str) -> str:
-        if not re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", v):
-            raise ValueError("Adresse email invalide")
-        return v.lower()
+        return _normalize_email(v)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: str) -> str:
+        return _normalize_full_name(v)
 
 
 class UserUpdate(BaseModel):
@@ -89,9 +145,12 @@ class UserUpdate(BaseModel):
     @field_validator("email")
     @classmethod
     def validate_email(cls, v: Optional[str]) -> Optional[str]:
-        if v is not None and not re.match(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$", v):
-            raise ValueError("Adresse email invalide")
-        return v.lower() if v else v
+        return None if v is None else _normalize_email(v)
+
+    @field_validator("full_name")
+    @classmethod
+    def validate_full_name(cls, v: Optional[str]) -> Optional[str]:
+        return None if v is None else _normalize_full_name(v)
 
 
 class UserResponse(BaseModel):

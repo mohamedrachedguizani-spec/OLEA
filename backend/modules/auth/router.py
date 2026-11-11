@@ -563,19 +563,30 @@ def create_user(
                 "VALUES (%s, %s, %s, %s, %s)",
                 (body.username, body.email, body.full_name, hashed, body.role.value),
             )
-            conn.commit()
             user_id = cursor.lastrowid
 
+            # Profil fonctionnel : la table access_roles est alimentée au démarrage
+            # par init_access_tables(). Si elle ne l'est pas, la clé étrangère
+            # user_access_roles.role_id échouerait après l'insertion de l'utilisateur.
             profile_code = {
                 "superadmin": "SUPER_ADMIN", "financier": "FINANCIER",
                 "dirigeant": "DIRIGEANT", "consultant": "CONSULTANT",
-                "comptable": "COMPTABLE",
+                "comptable": "COMPTABLE", "ressources_humaines": "RESSOURCES_HUMAINES",
             }[body.role.value]
             cursor.execute(
                 "INSERT INTO user_access_roles (user_id, role_id) "
                 "SELECT %s, id FROM access_roles WHERE code = %s",
                 (user_id, profile_code),
             )
+            if cursor.rowcount != 1:
+                conn.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=(
+                        f"Le profil « {profile_code} » est introuvable en base. "
+                        "Redémarrez le serveur pour synchroniser les profils, puis réessayez."
+                    ),
+                )
             conn.commit()
 
             cursor.execute(
@@ -584,6 +595,9 @@ def create_user(
                 (user_id,),
             )
             new_user = cursor.fetchone()
+
+            # Le profil est lu dans la même transaction : la réponse est toujours cohérente.
+            new_user_response = _build_user_response(new_user, [], cursor=cursor)
 
     log_audit_action(
         user=admin,
@@ -597,7 +611,7 @@ def create_user(
 
     ws_manager.broadcast("users", "create", {"id": new_user["id"]})
 
-    return _build_user_response(new_user, [])
+    return new_user_response
 
 
 @router.get("/users/{user_id}", response_model=UserResponse)
@@ -684,7 +698,7 @@ def update_user(
                 profile_code = {
                     "superadmin": "SUPER_ADMIN", "financier": "FINANCIER",
                     "dirigeant": "DIRIGEANT", "consultant": "CONSULTANT",
-                    "comptable": "COMPTABLE",
+                    "comptable": "COMPTABLE", "ressources_humaines": "RESSOURCES_HUMAINES",
                 }[body.role.value]
                 cursor.execute(
                     "INSERT INTO user_access_roles (user_id, role_id) "

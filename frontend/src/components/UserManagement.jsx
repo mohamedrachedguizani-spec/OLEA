@@ -8,11 +8,41 @@ const ROLES = [
     { value: 'financier', label: 'Financier', color: '#b7482b' },
     { value: 'dirigeant', label: 'Dirigeant', color: '#d4a528' },
     { value: 'consultant', label: 'Consultant', color: '#4f6f8f' },
+    { value: 'ressources_humaines', label: 'Ressources Humaines', color: '#3f7a5c' },
     { value: 'superadmin', label: 'Super Admin', color: '#863421' },
 ];
 
 const PASSWORD_POLICY_HINT = '8+ caractères, 1 majuscule, 1 minuscule, 1 chiffre, 1 caractère spécial, sans espaces';
 const PASSWORD_POLICY_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9])\S{8,128}$/;
+const USERNAME_REGEX = /^[a-z0-9_.-]+$/;
+const EMAIL_REGEX = /^[a-z0-9_.+-]+@[a-z0-9-]+(\.[a-z0-9-]+)+$/;
+
+// Mêmes règles que le backend (modules/auth/models.py) pour bloquer avant l'envoi.
+function validateUserForm(form, { checkUsername = true } = {}) {
+    const errors = [];
+    const username = (form.username || '').trim().toLowerCase();
+    const email = (form.email || '').trim().toLowerCase();
+    const fullName = (form.full_name || '').trim().replace(/\s+/g, ' ');
+
+    if (checkUsername) {
+        if (username.length < 3 || username.length > 50) {
+            errors.push("Le nom d'utilisateur doit contenir entre 3 et 50 caractères.");
+        } else if (!USERNAME_REGEX.test(username)) {
+            errors.push(/\s/.test(username)
+                ? "Le nom d'utilisateur ne doit pas contenir d'espace — utilisez par exemple 'm.diallo'."
+                : "Le nom d'utilisateur ne peut contenir que des lettres sans accent, chiffres, '.', '-' et '_'.");
+        }
+    }
+
+    if (email.length > 100 || !EMAIL_REGEX.test(email)) {
+        errors.push("Adresse email invalide — attendu par exemple 'prenom.nom@olea.com' (sans espace ni accent).");
+    }
+
+    if (fullName.length < 2 || fullName.length > 100) {
+        errors.push('Le nom complet est obligatoire (2 à 100 caractères).');
+    }
+    return errors;
+}
 
 function UserManagement() {
     const { user: currentUser, has } = useAuth();
@@ -87,12 +117,28 @@ function UserManagement() {
     const handleCreate = async (e) => {
         e.preventDefault();
         clearMessages();
+
+        const formErrors = validateUserForm(createForm);
+        if (formErrors.length) {
+            setError(formErrors.join('\n'));
+            return;
+        }
         if (!PASSWORD_POLICY_REGEX.test(createForm.password)) {
             setError(`Mot de passe invalide: ${PASSWORD_POLICY_HINT}`);
             return;
         }
+
+        // Normalisation identique au backend : on évite les faux rejets (espaces, majuscules).
+        const payload = {
+            username: createForm.username.trim().toLowerCase(),
+            email: createForm.email.trim().toLowerCase(),
+            full_name: createForm.full_name.trim().replace(/\s+/g, ' '),
+            password: createForm.password,
+            role: createForm.role,
+        };
+
         try {
-            await ApiService.createUser(createForm);
+            await ApiService.createUser(payload);
             setSuccess('Utilisateur créé avec succès');
             setShowCreateModal(false);
             setCreateForm({ username: '', email: '', full_name: '', password: '', role: 'comptable' });
@@ -117,8 +163,20 @@ function UserManagement() {
     const handleEdit = async (e) => {
         e.preventDefault();
         clearMessages();
+        const editErrors = validateUserForm(
+            { email: editForm.email, full_name: editForm.full_name },
+            { checkUsername: false },  // l'identifiant n'est pas modifiable
+        );
+        if (editErrors.length) {
+            setError(editErrors.join('\n'));
+            return;
+        }
         try {
-            await ApiService.updateUser(selectedUser.id, editForm);
+            await ApiService.updateUser(selectedUser.id, {
+                ...editForm,
+                email: editForm.email.trim().toLowerCase(),
+                full_name: editForm.full_name.trim().replace(/\s+/g, ' '),
+            });
             setSuccess('Utilisateur modifié avec succès');
             setShowEditModal(false);
             loadUsers();
@@ -262,8 +320,8 @@ function UserManagement() {
             </div>
 
             {/* Messages */}
-            {error && <div className="um-alert um-alert-error"><span>⚠️</span> {error}</div>}
-            {success && <div className="um-alert um-alert-success"><span>✅</span> {success}</div>}
+            {error && <div className="um-alert um-alert-error"><span>⚠️</span> <span className="um-alert-text">{error}</span></div>}
+            {success && <div className="um-alert um-alert-success"><span>✅</span> <span className="um-alert-text">{success}</span></div>}
 
             {/* Table */}
             <div className="um-table-wrapper">
@@ -489,6 +547,7 @@ function UserManagement() {
                                             <option value="financier">Financier</option>
                                             <option value="dirigeant">Dirigeant</option>
                                             <option value="consultant">Consultant</option>
+                                            <option value="ressources_humaines">Ressources Humaines</option>
                                         </select>
                                     </div>
                                 </div>
@@ -528,6 +587,7 @@ function UserManagement() {
                                             <option value="financier">Financier</option>
                                             <option value="dirigeant">Dirigeant</option>
                                             <option value="consultant">Consultant</option>
+                                            <option value="ressources_humaines">Ressources Humaines</option>
                                             {currentUser?.role === 'superadmin' && <option value="superadmin">Super Admin</option>}
                                         </select>
                                     </div>

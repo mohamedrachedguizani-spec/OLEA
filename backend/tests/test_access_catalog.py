@@ -25,6 +25,17 @@ class TestAccessCatalog(unittest.TestCase):
         self.assertEqual(RoleEnum.consultant.value, "consultant")
         self.assertEqual(DEFAULT_PROFILE_BY_USER_ROLE["consultant"], "CONSULTANT")
 
+    def test_ressources_humaines_profile(self):
+        self.assertIn("RESSOURCES_HUMAINES", PROFILES)
+        name, description, permission_codes = PROFILES["RESSOURCES_HUMAINES"]
+        self.assertEqual(name, "Ressources Humaines")
+        self.assertTrue(description)
+        self.assertEqual(permission_codes, {"dashboard.read"})
+        self.assertEqual(RoleEnum.ressources_humaines.value, "ressources_humaines")
+        self.assertEqual(
+            DEFAULT_PROFILE_BY_USER_ROLE["ressources_humaines"], "RESSOURCES_HUMAINES",
+        )
+
     def test_caisse_mutations_use_one_permission(self):
         manage_code = "saisie_caisse.crud_ecriture_caisse_manage"
         self.assertIn(manage_code, PERMISSIONS)

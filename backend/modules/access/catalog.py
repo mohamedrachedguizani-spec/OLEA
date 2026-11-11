@@ -125,6 +125,11 @@ PROFILES = {
             "tresorerie.read", "tresorerie.report",
         },
     ),
+    "RESSOURCES_HUMAINES": (
+        "Ressources Humaines",
+        "Gestion des ressources humaines : accès au tableau de bord.",
+        {"dashboard.read"},
+    ),
     "ADMIN_FONCTIONNEL": (
         "Administrateur fonctionnel",
         "Administration des référentiels et mappings métier.",

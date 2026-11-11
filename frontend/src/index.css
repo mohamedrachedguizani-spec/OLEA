@@ -7314,6 +7314,12 @@ body {
     color: var(--primary-700);
 }
 
+/* Messages de validation multi-lignes */
+.um-alert-text {
+    white-space: pre-line;
+    line-height: 1.5;
+}
+
 .um-alert-success {
     background: rgba(31, 157, 85, 0.12);
     border: 1px solid rgba(31, 157, 85, 0.35);

@@ -1,11 +1,72 @@
 // src/services/api.js
 export const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:8000`;
 
+const FIELD_LABELS = {
+    username: "Nom d'utilisateur",
+    email: 'Email',
+    full_name: 'Nom complet',
+    password: 'Mot de passe',
+    new_password: 'Nouveau mot de passe',
+    role: 'Rôle',
+    is_active: 'Statut',
+};
+
+const FIELD_MESSAGES = {
+    missing: (label) => `Le champ « ${label} » est obligatoire.`,
+    string_too_short: (label) => `Le champ « ${label} » est trop court.`,
+    string_too_long: (label) => `Le champ « ${label} » est trop long.`,
+    string_type: (label) => `Le champ « ${label} » doit être du texte.`,
+    enum: (label) => `La valeur du champ « ${label} » n'est pas autorisée.`,
+    bool_type: (label) => `Le champ « ${label} » doit être vrai ou faux.`,
+};
+
+/**
+ * Transforme un corps d'erreur FastAPI en message lisible.
+ * `detail` peut être une chaîne, une liste d'erreurs Pydantic
+ * ({loc, msg, type}) ou un objet — sans ce formatage, l'interface
+ * affiche « [object Object] ».
+ */
+export function formatApiError(detail, fallback = 'Une erreur est survenue') {
+    if (!detail) return fallback;
+    if (typeof detail === 'string') return detail;
+
+    if (Array.isArray(detail)) {
+        const messages = detail.map((item) => {
+            if (typeof item === 'string') return item;
+            if (!item || typeof item !== 'object') return null;
+            const field = Array.isArray(item.loc) ? item.loc[item.loc.length - 1] : null;
+            const label = FIELD_LABELS[field] || field;
+            const builder = FIELD_MESSAGES[item.type];
+            if (builder) return builder(label || 'requête');
+            const raw = String(item.msg || '').replace(/^Value error,\s*/i, '').trim();
+            if (!raw) return null;
+            return label ? `${label} : ${raw}` : raw;
+        }).filter(Boolean);
+        const unique = [...new Set(messages)];
+        return unique.length ? unique.join('\n') : fallback;
+    }
+
+    if (typeof detail === 'object') {
+        return detail.message || detail.msg || fallback;
+    }
+    return fallback;
+}
+
 class ApiService {
 
     // ===================== Helper : fetch avec credentials (cookies) =====================
     static _loggingOut = false;
     static _refreshPromise = null;
+
+    /** Lit le corps d'erreur d'une réponse non-OK et retourne un message exploitable. */
+    static async _errorMessage(response, fallback) {
+        try {
+            const body = await response.json();
+            return formatApiError(body?.detail ?? body, fallback);
+        } catch {
+            return fallback;
+        }
+    }
 
     static async _fetch(url, options = {}) {
         const defaultOptions = {
@@ -135,8 +196,7 @@ class ApiService {
             body: JSON.stringify(userData),
         });
         if (!response.ok) {
-            const err = await response.json().catch(() => ({ detail: 'Erreur' }));
-            throw new Error(err.detail || 'Erreur lors de la création');
+            throw new Error(await ApiService._errorMessage(response, 'Erreur lors de la création'));
         }
         return response.json();
     }
@@ -147,8 +207,7 @@ class ApiService {
             body: JSON.stringify(userData),
         });
         if (!response.ok) {
-            const err = await response.json().catch(() => ({ detail: 'Erreur' }));
-            throw new Error(err.detail || 'Erreur lors de la mise à jour');
+            throw new Error(await ApiService._errorMessage(response, 'Erreur lors de la mise à jour'));
         }
         return response.json();
     }

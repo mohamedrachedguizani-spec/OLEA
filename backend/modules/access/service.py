@@ -8,6 +8,7 @@ DEFAULT_PROFILE_BY_USER_ROLE = {
     "dirigeant": "DIRIGEANT",
     "consultant": "CONSULTANT",
     "comptable": "COMPTABLE",
+    "ressources_humaines": "RESSOURCES_HUMAINES",
 }
 
 CAISSE_LEGACY_MANAGE_PERMISSIONS = (

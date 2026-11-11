@@ -3,7 +3,7 @@
 Module d'authentification et d'autorisation OLEA.
 
 Tables créées automatiquement :
-  - users : utilisateurs avec rôles (superadmin, comptable, financier, dirigeant, consultant)
+  - users : utilisateurs avec rôles (superadmin, comptable, financier, dirigeant, consultant, ressources_humaines)
   - user_permissions : droits d'accès par module et par action
 
 Sécurité :
@@ -16,6 +16,11 @@ Sécurité :
 from database import db
 from .security import hash_password
 from .router import router
+
+
+DEFAULT_ROLE_ENUM_VALUES = (
+    "superadmin", "comptable", "financier", "dirigeant", "consultant", "ressources_humaines",
+)
 
 
 def init_auth_tables():
@@ -38,7 +43,7 @@ def init_auth_tables():
                     email VARCHAR(100) NOT NULL UNIQUE,
                     full_name VARCHAR(100) NOT NULL,
                     hashed_password VARCHAR(255) NOT NULL,
-                    role ENUM('superadmin', 'comptable', 'financier', 'dirigeant', 'consultant') NOT NULL DEFAULT 'comptable',
+                    role ENUM('superadmin', 'comptable', 'financier', 'dirigeant', 'consultant', 'ressources_humaines') NOT NULL DEFAULT 'comptable',
                     is_active BOOLEAN DEFAULT TRUE,
                     token_version INT DEFAULT 0,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -46,14 +51,17 @@ def init_auth_tables():
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
 
-            # Étendre les installations existantes avec le rôle Consultant.
+            # Étendre les installations existantes avec les rôles ajoutés
+            # (Consultant, Ressources Humaines…).
             cursor.execute("SHOW COLUMNS FROM users LIKE 'role'")
             role_column = cursor.fetchone()
-            if role_column and "consultant" not in str(role_column.get("Type", "")).lower():
+            current_type = str(role_column.get("Type", "")).lower() if role_column else ""
+            if role_column and any(
+                value not in current_type for value in DEFAULT_ROLE_ENUM_VALUES
+            ):
+                enum_values = ", ".join(f"'{value}'" for value in DEFAULT_ROLE_ENUM_VALUES)
                 cursor.execute(
-                    "ALTER TABLE users MODIFY role "
-                    "ENUM('superadmin', 'comptable', 'financier', 'dirigeant', 'consultant') "
-                    "NOT NULL DEFAULT 'comptable'"
+                    f"ALTER TABLE users MODIFY role ENUM({enum_values}) NOT NULL DEFAULT 'comptable'"
                 )
 
             # ─── Table user_permissions ───
