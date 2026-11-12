@@ -16,6 +16,8 @@ from modules.tresorerie.service import (
     construire_serie_soldes,
     construire_serie_totale,
     echantillonner_serie,
+    empreinte_mouvement,
+    separer_mouvements_nouveaux,
     normaliser_granularite,
 )
 
@@ -224,6 +226,87 @@ class TestEchantillonnage(unittest.TestCase):
 
     def test_serie_vide(self):
         self.assertEqual(echantillonner_serie([], "mois"), [])
+
+
+class TestDeduplication(unittest.TestCase):
+    """Import incrémental : un relevé de fin de journée complète le matin.
+
+    Le contrôle historique bloquait dès que deux relevés couvraient le même
+    jour, ce qui obligeait à supprimer l'import précédent — et donc à perdre le
+    classement déjà fait. La déduplication porte désormais sur chaque mouvement.
+    """
+
+    BANQUE = "BI3 643"
+
+    def _mv(self, reference, jour=date(2026, 11, 10), debit=0.0, credit=0.0,
+            banque=None, libelle="Opération"):
+        return {
+            "compte_banque": banque or self.BANQUE,
+            "date_operation": jour,
+            "reference": reference,
+            "debit": debit,
+            "credit": credit,
+            "libelle": libelle,
+        }
+
+    def test_releve_de_fin_de_journee_n_ajoute_que_le_delta(self):
+        matin = [self._mv(f"TT2631{i:04d}", credit=100.0 * i) for i in range(1, 21)]
+        fin_journee = matin + [
+            self._mv("TT26319999", credit=250.0),
+            self._mv("TT26319AAA", debit=75.5),
+            self._mv("FT26319BBB", debit=1200.0),
+        ]
+        base = [empreinte_mouvement(self.BANQUE, m) for m in matin]
+
+        resultat = separer_mouvements_nouveaux(fin_journee, base)
+        self.assertEqual(len(resultat["ignores"]), 20)
+        self.assertEqual(len(resultat["nouveaux"]), 3)
+        self.assertEqual(
+            [m["reference"] for m in resultat["nouveaux"]],
+            ["TT26319999", "TT26319AAA", "FT26319BBB"],
+        )
+
+    def test_re_upload_identique_ne_produit_rien(self):
+        mouvements = [self._mv("TT1", credit=10.0), self._mv("TT2", debit=5.0)]
+        base = [empreinte_mouvement(self.BANQUE, m) for m in mouvements]
+        resultat = separer_mouvements_nouveaux(mouvements, base)
+        self.assertEqual(resultat["nouveaux"], [])
+        self.assertEqual(len(resultat["ignores"]), 2)
+
+    def test_import_sur_base_vide(self):
+        mouvements = [self._mv("TT1", credit=10.0)]
+        resultat = separer_mouvements_nouveaux(mouvements, [])
+        self.assertEqual(len(resultat["nouveaux"]), 1)
+        self.assertEqual(resultat["ignores"], [])
+
+    def test_deux_operations_identiques_le_meme_jour(self):
+        # Une seule est déjà en base : la seconde doit être conservée.
+        mv = self._mv("TT2631DUP", credit=500.0)
+        base = [empreinte_mouvement(self.BANQUE, mv)]
+        resultat = separer_mouvements_nouveaux([mv, mv], base)
+        self.assertEqual(len(resultat["nouveaux"]), 1)
+        self.assertEqual(len(resultat["ignores"]), 1)
+
+    def test_empreinte_insensible_a_la_casse(self):
+        a = empreinte_mouvement("bi3 643", self._mv("tt26310001", credit=100))
+        b = empreinte_mouvement("BI3 643", self._mv("TT26310001", credit=100.0))
+        self.assertEqual(a, b)
+
+    def test_montant_different_est_une_nouvelle_operation(self):
+        # La banque corrige un montant : ce n'est plus la même opération.
+        a = empreinte_mouvement(self.BANQUE, self._mv("TT1", credit=100))
+        b = empreinte_mouvement(self.BANQUE, self._mv("TT1", credit=101))
+        self.assertNotEqual(a, b)
+
+    def test_date_differente_est_une_nouvelle_operation(self):
+        a = empreinte_mouvement(self.BANQUE, self._mv("TT1", credit=100))
+        b = empreinte_mouvement(self.BANQUE, self._mv("TT1", credit=100, jour=date(2026, 11, 11)))
+        self.assertNotEqual(a, b)
+
+    def test_banques_differentes_ne_se_melangent_pas(self):
+        a = empreinte_mouvement("BI2 649", self._mv("TT1", credit=100))
+        b = empreinte_mouvement("BI3 643", self._mv("TT1", credit=100))
+        self.assertNotEqual(a, b)
 
 
 if __name__ == "__main__":

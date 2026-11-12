@@ -591,3 +591,52 @@ def construire_serie_totale(series: Dict[str, List[dict]]) -> List[dict]:
                 "solde": round(sum(derniere_valeur.values()), 3),
             })
     return total
+
+
+# ─── Déduplication des mouvements (imports incrémentaux) ───
+
+def empreinte_mouvement(compte_banque, mouvement: dict) -> tuple:
+    """Clé d'identité d'un mouvement bancaire, stable d'un relevé à l'autre.
+
+    Un relevé de fin de journée répète les opérations du matin et y ajoute les
+    nouvelles : c'est la référence de l'opération (TT…, FT…) accompagnée de sa
+    date et de ses montants qui l'identifie, jamais la période du relevé.
+    La clé ne dépend pas du fichier importé, ce qui permet de reconnaître un
+    mouvement déjà en base quel que soit le PDF qui le contient.
+    """
+    date_operation = mouvement.get("date_operation")
+    date_texte = date_operation.isoformat() if hasattr(date_operation, "isoformat") else str(date_operation or "")
+    return (
+        (compte_banque or "").strip().upper(),
+        date_texte,
+        (mouvement.get("reference") or "").strip().upper(),
+        round(_montant(mouvement.get("debit")), 3),
+        round(_montant(mouvement.get("credit")), 3),
+    )
+
+
+def separer_mouvements_nouveaux(mouvements: List[dict], deja_importes) -> dict:
+    """Sépare les mouvements inédits de ceux déjà présents en base.
+
+    `deja_importes` est un itérable d'empreintes (voir `empreinte_mouvement`).
+    Un mouvement déjà connu est ignoré sans être modifié : son classement en
+    base (nature, auteur) doit survivre à un nouvel import du même relevé.
+
+    Une même empreinte peut apparaître deux fois dans un relevé (deux virements
+    réellement identiques le même jour). Le compteur d'occurrences évite alors
+    de supprimer la seconde : seul ce qui dépasse le nombre déjà en base est
+    considéré comme nouveau.
+    """
+    restants: Dict[tuple, int] = {}
+    for empreinte in deja_importes or ():
+        restants[empreinte] = restants.get(empreinte, 0) + 1
+
+    nouveaux, ignores = [], []
+    for mouvement in mouvements:
+        empreinte = empreinte_mouvement(mouvement.get("compte_banque"), mouvement)
+        if restants.get(empreinte):
+            restants[empreinte] -= 1
+            ignores.append(mouvement)
+        else:
+            nouveaux.append(mouvement)
+    return {"nouveaux": nouveaux, "ignores": ignores}

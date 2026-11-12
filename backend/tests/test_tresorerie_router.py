@@ -184,11 +184,11 @@ class FakeDf:
         self.index = list(range(size))
 
 
-def _mouvement(quand, libelle="VIREMENT CLIENT", debit=0.0, credit=100.0):
+def _mouvement(quand, libelle="VIREMENT CLIENT", debit=0.0, credit=100.0, reference=None):
     return {
         "date_operation": quand,
         "libelle": libelle,
-        "reference": None,
+        "reference": reference,
         "debit": debit,
         "credit": credit,
     }
@@ -232,7 +232,7 @@ class TestImportPeriode(unittest.TestCase):
             return treso_router.importer_extrait(
                 request=None,
                 file=FakeUpload(),
-                compte_banque=kwargs.pop("compte_banque", "BI1"),
+                compte_banque=kwargs.pop("compte_banque", "BI1 TRAPSA"),
                 periode_debut=periodes[0],
                 periode_fin=periodes[1],
                 user={"id": 1, "username": "test"},
@@ -291,32 +291,37 @@ class TestImportPeriode(unittest.TestCase):
         self.assertIn("20/12/2025", raised.exception.detail)
         self.assertIn("02/02/2026", raised.exception.detail)
 
-    def test_chevauchement_refuse_avec_409(self):
+    def test_meme_jour_deja_importe_accepte_les_nouveaux(self):
+        # Le contrôle ne bloque plus sur le chevauchement : seule compte la
+        # présence réelle des mouvements. Ici la base en connaît un, le relevé
+        # en apporte deux, dont un inédit -> import accepté avec 1 mouvement.
+        connue = _mouvement(date(2026, 1, 5))
+        nouvelle = _mouvement(date(2026, 1, 5), reference="TT-NOUVEAU")
         cursor = SequencedCursor([
-            [{
-                "id": 7,
-                "file_name": "janvier.csv",
-                "periode_debut": date(2026, 1, 1),
-                "periode_fin": date(2026, 1, 5),
+            [{                          # mouvements déjà en base pour la banque
+                "date_operation": connue["date_operation"],
+                "reference": connue["reference"],
+                "debit": connue["debit"],
+                "credit": connue["credit"],
             }],
+            {"id": 8, "compte_banque": "BI1 TRAPSA"},   # entête relue
+            [],                                          # aperçu
         ])
-        with self.assertRaises(HTTPException) as raised:
-            self._importer(cursor=cursor, periodes=("2026-01-04", "2026-01-08"))
-        self.assertEqual(raised.exception.status_code, 409)
-        self.assertIn("BI1", raised.exception.detail)
-        self.assertIn("janvier.csv", raised.exception.detail)
-        # Rien ne doit avoir été inséré
-        self.assertEqual(cursor.inserted_rows, [])
+        resultat = self._importer(
+            cursor=cursor,
+            mouvements=[connue, nouvelle],
+            periodes=("2026-01-04", "2026-01-08"),
+        )
+        self.assertEqual(resultat["total_mouvements"], 1)
+        self.assertEqual([ligne[2] for ligne in cursor.inserted_rows], ["TT-NOUVEAU"])
+        self.assertTrue(
+            any("déjà importé" in m for m in resultat["controle_extraction"]["messages"])
+        )
 
     def test_periode_disjointe_acceptee(self):
         cursor = SequencedCursor([
-            [{
-                "id": 7,
-                "file_name": "janvier.csv",
-                "periode_debut": date(2026, 1, 1),
-                "periode_fin": date(2026, 1, 5),
-            }],
-            {"id": 8, "compte_banque": "BI1"},
+            [],                                          # aucun mouvement en base
+            {"id": 8, "compte_banque": "BI1 TRAPSA"},
             [],
         ])
         resultat = self._importer(
@@ -326,18 +331,18 @@ class TestImportPeriode(unittest.TestCase):
         )
         self.assertEqual(resultat["total_mouvements"], 1)
 
-    def test_chevauchement_ignore_l_import_remplace(self):
-        # Le remplacement exclut l'import existant du contrôle : ses dates ne bloquent pas.
+    def test_remplacement_d_import_accepte(self):
+        # Le remplacement explicite supprime l'import visé, puis insère le relevé.
         cursor = SequencedCursor([
-            [],                          # contrôle anti-doublon (import remplacé exclu en SQL)
+            [],                          # mouvements déjà en base
             [{"id": 7}],                 # l'import à remplacer existe
-            {"id": 8, "compte_banque": "BI1"},
+            {"id": 8, "compte_banque": "BI1 TRAPSA"},
             [],
         ])
         resultat = self._importer(cursor=cursor, periodes=("2026-01-01", "2026-01-05"), remplacer_import_id=7)
         self.assertEqual(resultat["total_mouvements"], 1)
-        # La requête anti-doublon exclut bien l'import remplacé
-        self.assertIn("id <> %s", cursor.queries[0])
+        # L'import remplacé est bien supprimé (mouvements en cascade par la FK)
+        self.assertTrue(any("DELETE FROM tresorerie_imports" in q for q in cursor.queries))
 
     def test_banque_invalide(self):
         with self.assertRaises(HTTPException) as raised:
@@ -351,32 +356,60 @@ class FakeOpening:
         self.balance_date = balance_date
 
 
-class TestImportChevauchement(unittest.TestCase):
-    """Le contrôle anti-doublon refuse tout chevauchement pour une même banque."""
+class TestImportDeduplication(unittest.TestCase):
+    """Un relevé de fin de journée complète celui du matin, sans le remplacer.
+
+    L'import ne bloque plus sur le chevauchement de périodes : chaque mouvement
+    est comparé à ceux déjà en base (référence, date, montants). Les doublons
+    sont ignorés — leur classement en base est préservé — et seuls les inédits
+    sont insérés.
+    """
 
     def _importer(self, cursor, mouvements, periodes=("2026-01-01", "2026-01-31")):
-        with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)),              patch.object(treso_router, "_parse_csv_text", return_value=FakeDf()),              patch.object(treso_router, "_extract_movements", return_value=list(mouvements)),              patch.object(treso_router, "extract_bank_opening_balance", return_value=FakeOpening()),              patch.object(treso_router, "log_audit_action"),              patch.object(treso_router, "ws_manager"):
+        with patch.object(treso_router.db, "get_cursor", _cursor_context(cursor)), \
+             patch.object(treso_router, "_parse_csv_text", return_value=FakeDf()), \
+             patch.object(treso_router, "_extract_movements", return_value=list(mouvements)), \
+             patch.object(treso_router, "extract_bank_opening_balance", return_value=FakeOpening()), \
+             patch.object(treso_router, "log_audit_action"), \
+             patch.object(treso_router, "ws_manager"):
             return treso_router.importer_extrait(
-                request=None, file=FakeUpload(), compte_banque="BI1",
+                request=None, file=FakeUpload(), compte_banque="BI1 TRAPSA",
                 periode_debut=periodes[0], periode_fin=periodes[1],
                 user={"id": 1, "username": "test"},
             )
 
-    def test_chevauchement_refuse_meme_si_import_est_englobe(self):
+    def test_meme_jour_deja_importe_complete_par_les_nouveaux(self):
+        # Le matin : une opération déjà en base. Le soir : la même + une nouvelle.
+        existante = _mouvement(date(2026, 1, 12))
+        nouvelle = _mouvement(date(2026, 1, 12), reference="TT-NOUVEAU")
         cursor = SequencedCursor([
-            [{"id": 3, "file_name": "partiel.csv",
-              "periode_debut": date(2026, 1, 10), "periode_fin": date(2026, 1, 15)}],
+            [{"date_operation": date(2026, 1, 12),
+              "reference": existante["reference"],
+              "debit": existante["debit"], "credit": existante["credit"]}],
+            {"id": 4, "compte_banque": "BI1"},   # entête d'import
+            [],                                   # aperçu
+        ])
+        resultat = self._importer(cursor, [existante, nouvelle])
+        self.assertEqual(resultat["total_mouvements"], 1)
+        self.assertEqual(len(cursor.inserted_rows), 1)
+        self.assertEqual(cursor.inserted_rows[0][2], "TT-NOUVEAU")
+
+    def test_relevé_entierement_connu_refuse(self):
+        existante = _mouvement(date(2026, 1, 12))
+        cursor = SequencedCursor([
+            [{"date_operation": date(2026, 1, 12),
+              "reference": existante["reference"],
+              "debit": existante["debit"], "credit": existante["credit"]}],
         ])
         with self.assertRaises(HTTPException) as raised:
-            self._importer(cursor, [_mouvement(date(2026, 1, 12))])
+            self._importer(cursor, [existante])
         self.assertEqual(raised.exception.status_code, 409)
-        self.assertIn("chevauche", raised.exception.detail)
+        self.assertIn("Aucun nouveau mouvement", raised.exception.detail)
         self.assertEqual(cursor.inserted_rows, [])
 
     def test_periode_disjointe_acceptee(self):
         cursor = SequencedCursor([
-            [{"id": 3, "file_name": "janvier.csv",
-              "periode_debut": date(2026, 1, 1), "periode_fin": date(2026, 1, 5)}],
+            [],                                   # aucun mouvement en base
             {"id": 4, "compte_banque": "BI1"},
             [],
         ])
@@ -467,7 +500,7 @@ class TestAncreSoldeImport(unittest.TestCase):
              patch.object(treso_router, "log_audit_action"), \
              patch.object(treso_router, "ws_manager"):
             return treso_router.importer_extrait(
-                request=None, file=FakeUpload(), compte_banque="BI1",
+                request=None, file=FakeUpload(), compte_banque="BI1 TRAPSA",
                 periode_debut="2026-01-01", periode_fin="2026-01-31",
                 user={"id": 1, "username": "test"},
             )
@@ -479,7 +512,7 @@ class TestAncreSoldeImport(unittest.TestCase):
         self.assertTrue(resultat["solde_ouverture_fige"])
         requete = next(q for q in cursor.queries if "INSERT IGNORE INTO tresorerie_soldes_ouverture" in q)
         params = cursor.params[cursor.queries.index(requete)]
-        self.assertEqual(params[0], "BI1")
+        self.assertEqual(params[0], "BI1 TRAPSA")
         self.assertEqual(params[1], 5000.0)
         self.assertEqual(params[2], date(2025, 12, 31))
 

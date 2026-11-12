@@ -47,10 +47,11 @@ from .service import (
     construire_serie_totale,
     demarrer_couverture,
     echantillonner_serie,
+    empreinte_mouvement,
     filtrer_mouvements_par_periode,
     normaliser_granularite,
-    periodes_chevauchent,
     preparer_mouvements_extraits,
+    separer_mouvements_nouveaux,
     totaliser,
     totaliser_commissions,
 )
@@ -273,8 +274,13 @@ def importer_extrait(
     les deux modules lisent les relevés de la même manière.
 
     La période début/fin est obligatoire : elle délimite les mouvements à
-    retenir dans un relevé plus large et sert au contrôle anti-doublon
-    (un même jour ne peut pas être importé deux fois pour une banque).
+    retenir dans un relevé plus large.
+
+    L'import est **incrémental** : un relevé de fin de journée peut reprendre
+    les opérations déjà extraites le matin et y ajouter les nouvelles. Chaque
+    mouvement est comparé à ceux déjà en base (référence, date, montants) ; les
+    doublons sont ignorés sans toucher au classement existant, seuls les
+    inédits sont insérés. Un relevé entièrement déjà connu est refusé (409).
     """
     if not file.filename:
         raise HTTPException(status_code=400, detail="Fichier manquant")
@@ -344,6 +350,43 @@ def importer_extrait(
             ),
         )
 
+    # ─── Déduplication au niveau du mouvement ───
+    # Un relevé de fin de journée répète les opérations déjà extraites le matin
+    # et y ajoute les nouvelles : c'est le même jour, mais pas les mêmes
+    # mouvements. Bloquer sur le chevauchement de périodes obligeait à supprimer
+    # l'import précédent — donc à perdre son classement. On ne compare donc plus
+    # les périodes, mais chaque mouvement à ceux déjà en base.
+    for mouvement in mouvements:
+        mouvement["compte_banque"] = code_banque
+
+    with db.get_cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT m.date_operation, m.reference, m.debit, m.credit
+            FROM tresorerie_movements m
+            JOIN tresorerie_imports i ON i.id = m.import_id
+            WHERE i.compte_banque = %s
+            """,
+            (code_banque,),
+        )
+        deja_en_base = [
+            empreinte_mouvement(code_banque, ligne) for ligne in cursor.fetchall()
+        ]
+
+    separation = separer_mouvements_nouveaux(mouvements, deja_en_base)
+    mouvements = separation["nouveaux"]
+    ignores = separation["ignores"]
+
+    if not mouvements:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Aucun nouveau mouvement : les {len(ignores)} opération(s) de ce relevé "
+                f"sont déjà importées pour {code_banque}. Le dédoublonnage porte sur la "
+                "référence, la date et les montants de chaque opération."
+            ),
+        )
+
     devise_source = DEVISES_TRESORERIE.get(code_banque)
     if devise_source:
         if not taux_conversion or taux_conversion <= 0:
@@ -389,40 +432,6 @@ def importer_extrait(
         )
 
     with db.get_cursor() as cursor:
-        # ─── Contrôle anti-doublon : une période déjà importée pour cette banque ───
-        cursor.execute(
-            """
-            SELECT id, file_name, periode_debut, periode_fin
-            FROM tresorerie_imports
-            WHERE compte_banque = %s
-              AND periode_debut IS NOT NULL
-              AND periode_fin IS NOT NULL
-              AND (%s IS NULL OR id <> %s)
-            ORDER BY periode_debut ASC
-            """,
-            (code_banque, remplacer_import_id, remplacer_import_id),
-        )
-        conflits = [
-            ligne for ligne in cursor.fetchall()
-            if periodes_chevauchent(
-                date_debut, date_fin, ligne["periode_debut"], ligne["periode_fin"]
-            )
-        ]
-        if conflits:
-            details = " ; ".join(
-                f"du {c['periode_debut'].strftime('%d/%m/%Y')} au {c['periode_fin'].strftime('%d/%m/%Y')} "
-                f"({c['file_name']})"
-                for c in conflits
-            )
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Des mouvements existent déjà pour la banque {code_banque} sur une période qui "
-                    f"chevauche celle demandée : {details}. Choisissez une période non couverte, "
-                    "ou supprimez l'import existant puis recommencez."
-                ),
-            )
-
         # Remplacement explicite d'un import erroné (suppression en cascade des mouvements)
         if remplacer_import_id:
             cursor.execute("SELECT id FROM tresorerie_imports WHERE id = %s", (remplacer_import_id,))
@@ -436,6 +445,11 @@ def importer_extrait(
                 cursor.execute("DELETE FROM tresorerie_imports WHERE id = %s", (remplacer_import_id,))
 
         messages = []
+        if ignores:
+            messages.append(
+                f"{len(ignores)} mouvement(s) déjà importé(s) ignoré(s) "
+                f"(même référence, date et montants)."
+            )
         if hors_periode:
             messages.append(
                 f"{len(hors_periode)} mouvement(s) hors période ignoré(s) "

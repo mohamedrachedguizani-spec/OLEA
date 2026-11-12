@@ -231,21 +231,11 @@ const OngletImport = ({ banques, peut, onImporte, imports, onOuvrirImport, onSup
         if (requiertTaux && (!form.taux_conversion || Number(form.taux_conversion) <= 0)) {
             return setErreur(`Le compte ${form.compte_banque} est en ${banque?.devise}. Saisissez un taux de conversion valide.`);
         }
-        // Période déjà utilisée pour cette banque : inutile d'envoyer le fichier,
-        // le backend répondrait 409. On prévient tout de suite.
-        const chevauche = imports.find((imp) => (
-            imp.compte_banque === form.compte_banque
-            && imp.periode_debut && imp.periode_fin
-            && form.periode_debut <= longDate(imp.periode_fin)
-            && longDate(imp.periode_debut) <= form.periode_fin
-        ));
-        if (chevauche) {
-            return setErreur(
-                `La période chevauche un import existant pour ${form.compte_banque} : `
-                + `${jour(chevauche.periode_debut)} → ${jour(chevauche.periode_fin)} `
-                + `(${chevauche.file_name}). Choisissez une autre période ou supprimez cet import.`,
-            );
-        }
+        // Un import existant peut couvrir la même période : c'est le cas normal
+        // d'un relevé de fin de journée qui reprend les opérations du matin.
+        // On ne bloque donc plus ici ; le backend compare chaque mouvement à
+        // ceux déjà en base et n'insère que les nouveaux. Un relevé entièrement
+        // connu est refusé là-bas avec un message explicite.
         const payload = new FormData();
         payload.append('file', form.file);
         payload.append('compte_banque', form.compte_banque);
