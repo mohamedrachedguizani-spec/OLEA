@@ -60,21 +60,13 @@ const IconTresorerie = () => (
 const formatTaille = (n) => (n < 1024 * 1024 ? `${Math.round(n / 1024)} Ko` : `${(n / 1024 / 1024).toFixed(2)} Mo`);
 
 /* ───────── En-tête du module ───────── */
-const Entete = ({ resume, onglet, setOnglet, peut, nbImports, nbMouvements }) => (
+const Entete = ({ resume, onglet, setOnglet, peut }) => (
     <>
         <div className="tr-header">
             <span className="tr-header-icon"><IconTresorerie /></span>
             <div className="tr-header-main">
                 <h2 className="tr-title">Trésorerie</h2>
                 <p className="tr-subtitle">Suivi quotidien des extraits bancaires, classement et ratios d’exploitation</p>
-            </div>
-            <div className="tr-header-stats">
-                <span className="tr-chip">Imports <strong>{resume?.imports_count ?? nbImports ?? 0}</strong></span>
-                <span className="tr-chip">Mouvements <strong>{resume?.mouvements_count ?? nbMouvements ?? 0}</strong></span>
-                <span className="tr-chip">Banques <strong>{resume?.banques_count ?? 0}</strong></span>
-                {Number(resume?.non_classes_count || 0) > 0
-                    ? <span className="tr-chip warn">À classer <strong>{resume.non_classes_count}</strong></span>
-                    : <span className="tr-chip ok"><FiCheckCircle /> Tout est classé</span>}
             </div>
         </div>
 
@@ -696,12 +688,6 @@ const OngletMouvements = ({ banques, peut, importOuvert, onImportConsomme, refre
                                                         </button>
                                                     ))}
                                                 </div>
-                                                {!m.nature && m.nature_suggeree && peut.classer && (
-                                                    <span className="tr-suggest">
-                                                        Suggestion : {NATURES[m.nature_suggeree]?.label}
-                                                        <button type="button" onClick={() => classifier({ ...m, nature: null }, m.nature_suggeree)} title="Appliquer la suggestion">Appliquer</button>
-                                                    </span>
-                                                )}
                                                 {m.nature && m.classified_by_username && (
                                                     <span className="tr-ref" title={`Classé le ${jour(m.classified_at)}`}>{m.classified_by_username}</span>
                                                 )}
@@ -1277,7 +1263,7 @@ const Tresorerie = ({ refreshTrigger = 0 }) => {
 
     return (
         <div className="tr">
-            <Entete resume={resume} onglet={onglet} setOnglet={setOnglet} peut={peut} nbImports={imports.length} />
+            <Entete resume={resume} onglet={onglet} setOnglet={setOnglet} peut={peut} />
 
             {erreur && <div className="tr-alert"><FiAlertTriangle /><span>{erreur}</span></div>}
             {message && <div className="tr-alert ok"><FiCheckCircle /><span>{message}</span></div>}

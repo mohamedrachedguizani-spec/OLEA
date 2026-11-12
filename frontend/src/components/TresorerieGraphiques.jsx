@@ -4,7 +4,7 @@
 //   2. solde de chaque banque jour par jour, depuis son ancre figée.
 import React, { useMemo } from 'react';
 import {
-    Bar, BarChart, CartesianGrid, Legend, Line, LineChart,
+    CartesianGrid, Legend, Line, LineChart,
     ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from 'recharts';
 
@@ -111,7 +111,7 @@ export const GraphiqueFlux = ({ flux, granularite, banque, nomBanque }) => {
     }), [flux, banque]);
 
     // Avec une banque sélectionnée, une période où elle n'a rien fait n'a pas à
-    // occuper une barre vide : on ne garde que les périodes où elle a bougé.
+    // occuper un point vide : on ne garde que les périodes où elle a bougé.
     const donneesAffichees = useMemo(
         () => (banque
             ? donnees.filter((ligne) => ligne.recette !== 0 || ligne.depense !== 0)
@@ -134,15 +134,31 @@ export const GraphiqueFlux = ({ flux, granularite, banque, nomBanque }) => {
                 </Vide>
             ) : (
                 <ResponsiveContainer width="100%" height={300}>
-                    <BarChart data={donneesAffichees} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+                    <LineChart data={donneesAffichees} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
                         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-light)" vertical={false} />
                         <XAxis dataKey="periode" tickFormatter={fmtDateCourte} fontSize={11} tick={{ fill: 'var(--text-muted)' }} />
                         <YAxis tickFormatter={fmtCourt} fontSize={11} tick={{ fill: 'var(--text-muted)' }} width={56} />
                         <Tooltip content={<TooltipFlux />} />
                         <Legend wrapperStyle={{ fontSize: 12 }} />
-                        <Bar dataKey="recette" name="Recette (crédits)" fill={COULEUR_RECETTE} radius={[3, 3, 0, 0]} maxBarSize={38} />
-                        <Bar dataKey="depense" name="Dépense (débits)" fill={COULEUR_DEPENSE} radius={[3, 3, 0, 0]} maxBarSize={38} />
-                    </BarChart>
+                        <Line
+                            type="monotone"
+                            dataKey="recette"
+                            name="Recette (crédits)"
+                            stroke={COULEUR_RECETTE}
+                            strokeWidth={2.2}
+                            dot={{ r: 2.5, fill: COULEUR_RECETTE, strokeWidth: 0 }}
+                            activeDot={{ r: 5 }}
+                        />
+                        <Line
+                            type="monotone"
+                            dataKey="depense"
+                            name="Dépense (débits)"
+                            stroke={COULEUR_DEPENSE}
+                            strokeWidth={2.2}
+                            dot={{ r: 2.5, fill: COULEUR_DEPENSE, strokeWidth: 0 }}
+                            activeDot={{ r: 5 }}
+                        />
+                    </LineChart>
                 </ResponsiveContainer>
             )}
         </Carte>
